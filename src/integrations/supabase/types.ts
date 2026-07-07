@@ -14,16 +14,277 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      communities: {
+        Row: {
+          center_lat: number | null
+          center_lng: number | null
+          created_at: string
+          description: string | null
+          hero_image_url: string | null
+          id: string
+          name: string
+          slug: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          center_lat?: number | null
+          center_lng?: number | null
+          created_at?: string
+          description?: string | null
+          hero_image_url?: string | null
+          id?: string
+          name: string
+          slug: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          center_lat?: number | null
+          center_lng?: number | null
+          created_at?: string
+          description?: string | null
+          hero_image_url?: string | null
+          id?: string
+          name?: string
+          slug?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      developers: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          logo_url: string | null
+          name: string
+          slug: string
+          updated_at: string
+          website: string | null
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          logo_url?: string | null
+          name: string
+          slug: string
+          updated_at?: string
+          website?: string | null
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          logo_url?: string | null
+          name?: string
+          slug?: string
+          updated_at?: string
+          website?: string | null
+        }
+        Relationships: []
+      }
+      project_amenities: {
+        Row: {
+          created_at: string
+          icon: string | null
+          id: string
+          name: string
+          project_id: string
+        }
+        Insert: {
+          created_at?: string
+          icon?: string | null
+          id?: string
+          name: string
+          project_id: string
+        }
+        Update: {
+          created_at?: string
+          icon?: string | null
+          id?: string
+          name?: string
+          project_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_amenities_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_images: {
+        Row: {
+          created_at: string
+          id: string
+          project_id: string
+          sort_order: number
+          url: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          project_id: string
+          sort_order?: number
+          url: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          project_id?: string
+          sort_order?: number
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_images_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      projects: {
+        Row: {
+          address: string | null
+          bathrooms: number | null
+          bedrooms_max: number | null
+          bedrooms_min: number | null
+          brochure_url: string | null
+          category: string
+          community_id: string | null
+          completion_date: string | null
+          created_at: string
+          description: string | null
+          developer_id: string | null
+          featured: boolean
+          id: string
+          lat: number
+          lng: number
+          main_image_url: string | null
+          name: string
+          payment_plan: string | null
+          slug: string
+          starting_price_aed: number | null
+          status: string
+          tags: string[]
+          tour_360_url: string | null
+          updated_at: string
+          video_url: string | null
+        }
+        Insert: {
+          address?: string | null
+          bathrooms?: number | null
+          bedrooms_max?: number | null
+          bedrooms_min?: number | null
+          brochure_url?: string | null
+          category?: string
+          community_id?: string | null
+          completion_date?: string | null
+          created_at?: string
+          description?: string | null
+          developer_id?: string | null
+          featured?: boolean
+          id?: string
+          lat: number
+          lng: number
+          main_image_url?: string | null
+          name: string
+          payment_plan?: string | null
+          slug: string
+          starting_price_aed?: number | null
+          status?: string
+          tags?: string[]
+          tour_360_url?: string | null
+          updated_at?: string
+          video_url?: string | null
+        }
+        Update: {
+          address?: string | null
+          bathrooms?: number | null
+          bedrooms_max?: number | null
+          bedrooms_min?: number | null
+          brochure_url?: string | null
+          category?: string
+          community_id?: string | null
+          completion_date?: string | null
+          created_at?: string
+          description?: string | null
+          developer_id?: string | null
+          featured?: boolean
+          id?: string
+          lat?: number
+          lng?: number
+          main_image_url?: string | null
+          name?: string
+          payment_plan?: string | null
+          slug?: string
+          starting_price_aed?: number | null
+          status?: string
+          tags?: string[]
+          tour_360_url?: string | null
+          updated_at?: string
+          video_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "projects_community_id_fkey"
+            columns: ["community_id"]
+            isOneToOne: false
+            referencedRelation: "communities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "projects_developer_id_fkey"
+            columns: ["developer_id"]
+            isOneToOne: false
+            referencedRelation: "developers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "user"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +411,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "user"],
+    },
   },
 } as const
