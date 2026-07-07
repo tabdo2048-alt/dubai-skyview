@@ -57,6 +57,10 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
     });
 
     map.on("load", () => {
+      // Hide all text labels and POI icons from the base style (place names,
+      // street names, points of interest) for a clean, uncluttered 3D view.
+      hideLabelsAndPois(map);
+
       // Terrain
       if (!map.getSource("mapbox-dem")) {
         map.addSource("mapbox-dem", {
@@ -129,6 +133,17 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken]);
+
+  // Hide every symbol layer in the base style — this removes place/street/POI
+  // text labels and POI icons, giving a clean satellite/3D surface.
+  function hideLabelsAndPois(map: mapboxgl.Map) {
+    const layers = map.getStyle()?.layers ?? [];
+    for (const layer of layers) {
+      if (layer.type === "symbol") {
+        map.setLayoutProperty(layer.id, "visibility", "none");
+      }
+    }
+  }
 
   // Typed wrapper so we can pass hand-built style-expression arrays without
   // fighting mapbox-gl v3's strict layer typing.
@@ -292,26 +307,6 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
           "fill-extrusion-height": ["interpolate", ["linear"], ["zoom"], 11, 0, 14, ["get", "height"]],
           "fill-extrusion-base": 0,
           "fill-extrusion-opacity": 0.85,
-        },
-      });
-    }
-    // Station name labels floating above the structures.
-    if (!map.getLayer("metro-stations-label")) {
-      addLayerSafe(map, {
-        id: "metro-stations-label",
-        type: "symbol",
-        source: "metro-stations",
-        minzoom: 13,
-        layout: {
-          "text-field": ["get", "name"],
-          "text-size": 11,
-          "text-offset": [0, -1.4],
-          "text-anchor": "bottom",
-        },
-        paint: {
-          "text-color": "#f5ead1",
-          "text-halo-color": "#0b3d2c",
-          "text-halo-width": 1.5,
         },
       });
     }

@@ -15,15 +15,80 @@ export type WaterArea = {
   id: string;
   name: string;
   center: [number, number];
-  // Half-size of the water plane in metres (x, y). The plane is axis-aligned.
-  size: [number, number];
+  // Hand-traced ring hugging the basin's coastline, ordered around the perimeter.
+  polygon: [number, number][];
 };
 
-// Water planes drawn under the boats. Sized generously to cover each basin.
+// Water polygons traced along the real basins so the water doesn't spill onto
+// land the way an axis-aligned rectangle would. Approximate, not survey-grade.
 export const WATER_AREAS: WaterArea[] = [
-  { id: "marina", name: "Dubai Marina & JBR", center: [55.138, 25.078], size: [3200, 3200] },
-  { id: "palm", name: "Palm Jumeirah", center: [55.138, 25.116], size: [5000, 5000] },
-  { id: "creek", name: "Dubai Creek", center: [55.32, 25.235], size: [2600, 2600] },
+  {
+    id: "marina",
+    name: "Dubai Marina & JBR",
+    center: [55.138, 25.078],
+    polygon: [
+      [55.1420, 25.0690],
+      [55.1395, 25.0700],
+      [55.1300, 25.0660],
+      [55.1180, 25.0640],
+      [55.1080, 25.0700],
+      [55.1030, 25.0800],
+      [55.1010, 25.0920],
+      [55.1050, 25.1000],
+      [55.1140, 25.0980],
+      [55.1220, 25.0920],
+      [55.1290, 25.0870],
+      [55.1345, 25.0810],
+      [55.1390, 25.0745],
+      [55.1420, 25.0690],
+    ],
+  },
+  {
+    id: "palm",
+    name: "Palm Jumeirah",
+    center: [55.138, 25.116],
+    polygon: [
+      [55.0960, 25.1260],
+      [55.1000, 25.1360],
+      [55.1120, 25.1420],
+      [55.1300, 25.1440],
+      [55.1480, 25.1420],
+      [55.1620, 25.1340],
+      [55.1700, 25.1220],
+      [55.1660, 25.1100],
+      [55.1550, 25.1020],
+      [55.1400, 25.0980],
+      [55.1240, 25.0990],
+      [55.1100, 25.1050],
+      [55.1000, 25.1150],
+      [55.0960, 25.1260],
+    ],
+  },
+  {
+    id: "creek",
+    name: "Dubai Creek",
+    center: [55.32, 25.235],
+    polygon: [
+      [55.2960, 25.2660],
+      [55.2990, 25.2600],
+      [55.3050, 25.2560],
+      [55.3110, 25.2500],
+      [55.3170, 25.2430],
+      [55.3230, 25.2360],
+      [55.3290, 25.2290],
+      [55.3350, 25.2220],
+      [55.3390, 25.2190],
+      [55.3410, 25.2230],
+      [55.3360, 25.2280],
+      [55.3300, 25.2350],
+      [55.3240, 25.2420],
+      [55.3180, 25.2490],
+      [55.3120, 25.2555],
+      [55.3060, 25.2620],
+      [55.3010, 25.2690],
+      [55.2960, 25.2660],
+    ],
+  },
 ];
 
 // --- Boat routes ---
@@ -156,3 +221,29 @@ export function boatPointAt(
   }
   return { coord: path[path.length - 1], heading: 0 };
 }
+
+// --- Clouds ---
+export type CloudSpec = {
+  id: string;
+  center: [number, number]; // lng/lat the cloud drifts near
+  altitude: number; // metres
+  scale: number; // sprite size in metres
+  speed: [number, number]; // drift in metres/second, local XY
+  phase: number; // offset into the fade cycle
+};
+
+export const CLOUDS: CloudSpec[] = Array.from({ length: 10 }, (_, i) => {
+  const angle = (i / 10) * Math.PI * 2;
+  const radius = 2600 + (i % 3) * 900;
+  return {
+    id: `cloud-${i}`,
+    center: [55.19 + Math.cos(angle) * (radius / 100000), 25.13 + Math.sin(angle) * (radius / 100000)] as [
+      number,
+      number,
+    ],
+    altitude: 420 + (i % 4) * 90,
+    scale: 900 + (i % 5) * 220,
+    speed: [8 + (i % 3) * 4, 3 + (i % 2) * 3],
+    phase: i * 0.6,
+  };
+});
