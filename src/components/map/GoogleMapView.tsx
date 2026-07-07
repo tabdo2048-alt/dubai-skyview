@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { APIProvider, Map, AdvancedMarker, useMap } from "@vis.gl/react-google-maps";
+import { TrainFront as TrainIcon } from "lucide-react";
 import Supercluster from "supercluster";
 import { DUBAI_BOUNDS, DUBAI_CENTER, DEFAULT_ZOOM } from "@/lib/dubai";
 import type { ProjectWithRelations } from "@/lib/types";
@@ -101,13 +102,13 @@ function ClusteredMarkers({ projects }: { projects: ProjectWithRelations[] }) {
           >
             <div className="group relative -translate-y-1/2">
               <div
-                className={`grid h-8 w-8 place-items-center rounded-full border-2 transition-all ${
+                className={`grid h-9 w-9 place-items-center rounded-full border-2 transition-all ${
                   selected
                     ? "scale-125 border-gold bg-gold shadow-[0_0_24px_theme(colors.amber.400)]"
                     : "border-gold/70 bg-emerald-deep hover:scale-110"
                 }`}
               >
-                <div className={`h-2 w-2 rounded-full ${selected ? "bg-emerald-deep" : "bg-gold"}`} />
+                <TrainIcon className={`h-5 w-5 ${selected ? "text-emerald-deep" : "text-gold"}`} />
               </div>
             </div>
           </AdvancedMarker>
