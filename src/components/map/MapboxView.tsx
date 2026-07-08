@@ -480,9 +480,10 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
   }
 
   // Drive the metro network draw animation on/off as metroMode changes.
+  // Only animate when in 3D mode (active === true).
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || !active) return;
     const run = () => {
       if (metroMode) playNetworkSequence(map, METRO_LINES, "metro");
       else stopNetworkAnimation(map, METRO_LINES, "metro");
@@ -490,12 +491,13 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
     if (styleLoadedRef.current) run();
     else map.once("load", run);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [metroMode]);
+  }, [metroMode, active]);
 
   // Drive the regional train network draw animation on/off as trainMode changes.
+  // Only animate when in 3D mode (active === true).
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || !active) return;
     const run = () => {
       if (trainMode) playNetworkSequence(map, TRAIN_LINES, "train");
       else stopNetworkAnimation(map, TRAIN_LINES, "train");
@@ -503,7 +505,7 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
     if (styleLoadedRef.current) run();
     else map.once("load", run);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trainMode]);
+  }, [trainMode, active]);
 
   // Switch Mapbox Standard's built-in light preset (day/dawn/dusk/night) live,
   // any time — no full style reload needed.
