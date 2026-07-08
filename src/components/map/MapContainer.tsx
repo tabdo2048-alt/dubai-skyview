@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Globe2, Satellite, Loader2, TrainFront, TramFront, Sunrise, Sun, Sunset, Moon } from "lucide-react";
-import { GoogleMapView } from "./GoogleMapView";
 import { MapboxView, type LightPreset } from "./MapboxView";
 import { CloudLayer } from "./CloudLayer";
 import { ProjectPopup } from "./ProjectPopup";
@@ -59,11 +58,15 @@ export function MapContainer() {
       {cfg && (
         <>
           <div className={mapMode === "satellite" ? "absolute inset-0" : "absolute inset-0 opacity-0 pointer-events-none"}>
-            <GoogleMapView
-              apiKey={cfg.googleMapsApiKey}
+            <MapboxView
+              accessToken={cfg.mapboxAccessToken}
               projects={filtered}
               camera={camera}
               onCameraChange={setCamera}
+              active={mapMode === "satellite"}
+              metroMode={metroMode}
+              trainMode={trainMode}
+              lightPreset={lightPreset}
             />
           </div>
           <div className={mapMode === "3d" ? "absolute inset-0" : "absolute inset-0 opacity-0 pointer-events-none"}>
@@ -100,24 +103,20 @@ export function MapContainer() {
         >
           <Globe2 className="mr-1.5 h-4 w-4" /> 3D View
         </Button>
-        {mapMode === "3d" && (
-          <>
-            <Button
-              size="sm"
-              onClick={() => setMetroMode(!metroMode)}
-              className={`glass gold-hairline rounded-full px-4 ${metroMode ? "bg-gold text-gold-foreground" : "text-cream"}`}
-            >
-              <TrainFront className="mr-1.5 h-4 w-4" /> Metro
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => setTrainMode(!trainMode)}
-              className={`glass gold-hairline rounded-full px-4 ${trainMode ? "bg-gold text-gold-foreground" : "text-cream"}`}
-            >
-              <TramFront className="mr-1.5 h-4 w-4" /> Train
-            </Button>
-          </>
-        )}
+        <Button
+          size="sm"
+          onClick={() => setMetroMode(!metroMode)}
+          className={`glass gold-hairline rounded-full px-4 ${metroMode ? "bg-gold text-gold-foreground" : "text-cream"}`}
+        >
+          <TrainFront className="mr-1.5 h-4 w-4" /> Metro
+        </Button>
+        <Button
+          size="sm"
+          onClick={() => setTrainMode(!trainMode)}
+          className={`glass gold-hairline rounded-full px-4 ${trainMode ? "bg-gold text-gold-foreground" : "text-cream"}`}
+        >
+          <TramFront className="mr-1.5 h-4 w-4" /> Train
+        </Button>
       </div>
 
       {/* Light preset switcher — Mapbox Standard's built-in day/dawn/dusk/night */}
