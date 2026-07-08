@@ -1,8 +1,10 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import { DUBAI_BOUNDS, DEFAULT_PITCH, DEFAULT_BEARING } from "@/lib/dubai";
 import { METRO_LINES, TRAIN_LINES, ALL_RAIL_LINES, STATION_PROGRESS, pointAlongPath, type MetroLine } from "@/lib/metro";
 import { createWaterLayer } from "./WaterLayer";
+import { createModel3DLayer } from "@/lib/mapbox/Model3DLayer";
+import { MODEL_REGISTRY } from "@/lib/mapbox/modelRegistry";
 import type { ProjectWithRelations } from "@/lib/types";
 import { useFiltersStore } from "@/store/filters";
 
@@ -22,6 +24,8 @@ type Props = {
   trainMode: boolean;
   lightPreset: LightPreset;
   mode?: "satellite" | "3d";
+  /** Show the 3D GLB model layer (boats/yachts/ships). 3D mode only. */
+  show3DModels?: boolean;
 };
 
 // Small SVG metro/train icon used for the project markers.
@@ -39,7 +43,7 @@ const TRAIN_MARKER_SVG = `
 const DRAW_DURATION = 2400; // ms per line's draw animation
 const LINE_STAGGER = 350; // ms delay between each line starting to draw
 
-export function MapboxView({ accessToken, projects, camera, onCameraChange, active, metroMode, trainMode, lightPreset, mode = "3d" }: Props) {
+export function MapboxView({ accessToken, projects, camera, onCameraChange, active, metroMode, trainMode, lightPreset, mode = "3d", show3DModels = true }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<Map<string, mapboxgl.Marker>>(new globalThis.Map());
@@ -49,11 +53,16 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
   const metroTimeoutsRef = useRef<number[]>([]);
   const trainRafRef = useRef<number | null>(null);
   const styleLoadedRef = useRef(false);
+  const modelsAddedRef = useRef(false);
   // Latest toggle state, readable inside the (stale-closure) style.load handler.
   const metroModeRef = useRef(metroMode);
   const trainModeRef = useRef(trainMode);
+  const show3DModelsRef = useRef(show3DModels);
   // Per-network station-reveal thresholds (0 = none revealed, 1 = all).
   const revealThreshRef = useRef<{ metro: number; train: number }>({ metro: 0, train: 0 });
+  // Loading overlay: shown until the map style + tiles are idle and heavy
+  // Three.js layers have been added, so no black/blank frame is visible.
+  const [mapReady, setMapReady] = useState(false);
   const { selectedProjectId, setSelectedProjectId } = useFiltersStore();
 
   useEffect(() => {
@@ -108,17 +117,8 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
         }
       }
 
-      // Three.js animated water + boats — 3D always, satellite as a subtle overlay.
-      // Same shared-WebGL custom layer in both modes (alpha 0.3, reads fine flat).
-      if (!map.getLayer("dubai-water-3d")) {
-        try {
-          map.addLayer(createWaterLayer());
-        } catch (err) {
-          console.error("Failed to add 3D water layer", err);
-        }
-      }
-
       // --- Metro 2030 network (layers created hidden; metroMode drives them) ---
+      // Lightweight vector layers — safe to add immediately on style.load.
       try {
         addMetroLayers(map);
         addStationLayers(map);
@@ -132,6 +132,14 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
       // play it now that the layers exist.
       if (metroModeRef.current) playNetworkSequence(map, METRO_LINES, "metro");
       if (trainModeRef.current) playNetworkSequence(map, TRAIN_LINES, "train");
+    });
+
+    // Heavy Three.js custom layers (water shimmer + 3D models) are added only
+    // AFTER the map is idle — style loaded, tiles in — so the first frames are
+    // never a black/blank WebGL canvas. Runs once.
+    map.once("idle", () => {
+      addHeavyLayers(map);
+      setMapReady(true);
     });
 
     map.on("moveend", () => {
@@ -197,6 +205,27 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
   // fighting mapbox-gl v3's strict layer typing.
   function addLayerSafe(map: mapboxgl.Map, layer: Record<string, unknown>, before?: string) {
     (map.addLayer as (l: unknown, b?: string) => void)(layer, before);
+  }
+
+  // Add the heavy Three.js custom layers once the map is idle. Water shimmer
+  // runs in both modes; the 3D GLB model layer (boats/yachts/ships) is 3D-only
+  // and gated behind show3DModels. Every add is guarded against duplicates.
+  function addHeavyLayers(map: mapboxgl.Map) {
+    if (!map.getLayer("dubai-water-3d")) {
+      try {
+        map.addLayer(createWaterLayer());
+      } catch (err) {
+        console.error("Failed to add water shimmer layer", err);
+      }
+    }
+    if (mode === "3d" && show3DModelsRef.current && !map.getLayer("dubai-3d-models")) {
+      try {
+        map.addLayer(createModel3DLayer(MODEL_REGISTRY));
+        modelsAddedRef.current = true;
+      } catch (err) {
+        console.error("Failed to add 3D model layer", err);
+      }
+    }
   }
 
   // A station is shown when its network's reveal threshold has passed its
@@ -575,8 +604,17 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
     // its dimensions now that it's visible or nothing renders / tiles are wrong.
     map.resize();
     map.jumpTo({ center: [camera.lng, camera.lat], zoom: camera.zoom, pitch: 0, bearing: 0 });
+    // Extra resizes after the mode-switch transition settles, so the canvas
+    // never ends up sized to the old (hidden/zero) container → no black bands.
+    const r1 = setTimeout(() => map.resize(), 300);
+    const r2 = setTimeout(() => map.resize(), 900);
     // Satellite mode stays a flat top-down view — no pitch/bearing animation.
-    if (mode !== "3d") return;
+    if (mode !== "3d") {
+      return () => {
+        clearTimeout(r1);
+        clearTimeout(r2);
+      };
+    }
     // 3D mode: two-stage cinematic fly up into pitch/bearing.
     const t = setTimeout(() => {
       map.resize();
@@ -588,9 +626,38 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
         easing: (t2) => t2 * (2 - t2),
       });
     }, 150);
-    return () => clearTimeout(t);
+    return () => {
+      clearTimeout(t);
+      clearTimeout(r1);
+      clearTimeout(r2);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
+
+  // Show/hide the 3D model layer at runtime (Phase 10 control). Only meaningful
+  // in 3D mode; the layer is added lazily so we self-heal if it's missing.
+  useEffect(() => {
+    show3DModelsRef.current = show3DModels;
+    const map = mapRef.current;
+    if (!map || mode !== "3d") return;
+    const hasLayer = !!map.getLayer("dubai-3d-models");
+    if (show3DModels && !hasLayer && styleLoadedRef.current) {
+      try {
+        map.addLayer(createModel3DLayer(MODEL_REGISTRY));
+        modelsAddedRef.current = true;
+      } catch (err) {
+        console.error("Failed to add 3D model layer", err);
+      }
+    } else if (!show3DModels && hasLayer) {
+      try {
+        map.removeLayer("dubai-3d-models");
+        modelsAddedRef.current = false;
+      } catch (err) {
+        console.error("Failed to remove 3D model layer", err);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [show3DModels]);
 
   // Markers
   useEffect(() => {
@@ -643,11 +710,32 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
 
   return (
     <div className="relative h-full w-full">
-      <div ref={containerRef} className="h-full w-full" />
+      {/* Neutral Dubai water/land tone behind the canvas so the first paint is
+          never black while Mapbox loads its style + tiles. */}
+      <div ref={containerRef} className="h-full w-full" style={{ background: "#d9eef2" }} />
       <div
         className="pointer-events-none absolute inset-0 bg-black transition-opacity duration-700"
         style={{ opacity: metroMode ? 0.28 : 0 }}
       />
+
+      {/* Premium loading overlay — shown until the map is idle (style + tiles in
+          and heavy Three.js layers added), then fades out. No black flicker. */}
+      <div
+        className="pointer-events-none absolute inset-0 z-[5] grid place-items-center transition-opacity duration-700"
+        style={{
+          opacity: mapReady ? 0 : 1,
+          background: "linear-gradient(180deg, #dff0f5 0%, #c9e6ee 100%)",
+        }}
+        aria-hidden={mapReady}
+      >
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-9 w-9 animate-spin rounded-full border-2 border-gold/30 border-t-gold" />
+          <div className="font-display text-sm tracking-wide text-emerald-deep/80">
+            Loading Dubai map…
+          </div>
+        </div>
+      </div>
+
       <style>{`
         @keyframes metro-station-pulse {
           0% { transform: scale(0.6); box-shadow: 0 0 0 0 currentColor; opacity: 0.9; }
