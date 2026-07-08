@@ -58,29 +58,15 @@ export function MapContainer() {
 
       {cfg && (
         <>
-          {/* Google Maps satellite base — always shown in satellite mode */}
+          {/* Google Maps satellite with Metro/Train lines drawn on top */}
           <div className={mapMode === "satellite" ? "absolute inset-0" : "absolute inset-0 opacity-0 pointer-events-none"}>
             <GoogleMapView
               apiKey={cfg.googleMapsApiKey}
               projects={filtered}
               camera={camera}
               onCameraChange={setCamera}
-            />
-          </div>
-
-          {/* Mapbox overlay for metro/train in satellite mode — transparent so Google Maps shows through */}
-          <div className={mapMode === "satellite" && (metroMode || trainMode) ? "absolute inset-0 pointer-events-none" : "absolute inset-0 opacity-0 pointer-events-none"}>
-            <MapboxView
-              accessToken={cfg.mapboxAccessToken}
-              projects={filtered}
-              camera={camera}
-              onCameraChange={setCamera}
-              active={mapMode === "satellite" && (metroMode || trainMode)}
               metroMode={metroMode}
               trainMode={trainMode}
-              lightPreset={lightPreset}
-              mode="satellite"
-              overlayMode={true}
             />
           </div>
 

@@ -5,15 +5,18 @@ import Supercluster from "supercluster";
 import { DUBAI_BOUNDS, DUBAI_CENTER, DEFAULT_ZOOM } from "@/lib/dubai";
 import type { ProjectWithRelations } from "@/lib/types";
 import { useFiltersStore } from "@/store/filters";
+import { METRO_LINES, TRAIN_LINES } from "@/lib/metro";
 
 type Props = {
   apiKey: string;
   projects: ProjectWithRelations[];
   camera: { lat: number; lng: number; zoom: number };
   onCameraChange: (c: { lat: number; lng: number; zoom: number }) => void;
+  metroMode?: boolean;
+  trainMode?: boolean;
 };
 
-export function GoogleMapView({ apiKey, projects, camera, onCameraChange }: Props) {
+export function GoogleMapView({ apiKey, projects, camera, onCameraChange, metroMode = false, trainMode = false }: Props) {
   if (!apiKey) return <MissingKey label="Google Maps API key" />;
   return (
     <APIProvider apiKey={apiKey}>
@@ -35,9 +38,128 @@ export function GoogleMapView({ apiKey, projects, camera, onCameraChange }: Prop
         onCameraChanged={(e) => onCameraChange({ lat: e.detail.center.lat, lng: e.detail.center.lng, zoom: e.detail.zoom })}
       >
         <ClusteredMarkers projects={projects} />
+        {(metroMode || trainMode) && <MetroTrainPolylines metroMode={metroMode} trainMode={trainMode} />}
       </Map>
     </APIProvider>
   );
+}
+
+function MetroTrainPolylines({ metroMode, trainMode }: { metroMode: boolean; trainMode: boolean }) {
+  const map = useMap();
+  const polylinesRef = useRef<any[]>([]);
+
+  useEffect(() => {
+    if (!map) return;
+
+    // Clear existing polylines
+    polylinesRef.current.forEach((p: any) => p.setMap?.(null));
+    polylinesRef.current = [];
+
+    const drawMetro = () => {
+      METRO_LINES.forEach((line) => {
+        // Glow line (thick, semi-transparent)
+        const glowPolyline = new (window as any).google.maps.Polyline({
+          path: line.path.map(([lng, lat]) => ({ lat, lng })),
+          geodesic: true,
+          strokeColor: line.color,
+          strokeOpacity: 0.3,
+          strokeWeight: 8,
+          map,
+        });
+        polylinesRef.current.push(glowPolyline);
+
+        // Main line (crisp, solid)
+        const mainPolyline = new (window as any).google.maps.Polyline({
+          path: line.path.map(([lng, lat]) => ({ lat, lng })),
+          geodesic: true,
+          strokeColor: line.color,
+          strokeOpacity: 0.85,
+          strokeWeight: 3,
+          map,
+        });
+        polylinesRef.current.push(mainPolyline);
+
+        // Station markers
+        line.stations.forEach((station) => {
+          const marker = new (window as any).google.maps.Marker({
+            position: { lat: station.coord[1], lng: station.coord[0] },
+            map,
+            title: station.name,
+            icon: {
+              path: (window as any).google.maps.SymbolPath.CIRCLE,
+              scale: station.interchange ? 8 : 5,
+              fillColor: line.color,
+              fillOpacity: 1,
+              strokeColor: "#fff",
+              strokeWeight: 1.5,
+            },
+          });
+          polylinesRef.current.push(marker);
+        });
+      });
+    };
+
+    const drawTrain = () => {
+      TRAIN_LINES.forEach((line) => {
+        // Glow line
+        const glowPolyline = new (window as any).google.maps.Polyline({
+          path: line.path.map(([lng, lat]) => ({ lat, lng })),
+          geodesic: true,
+          strokeColor: line.color,
+          strokeOpacity: 0.25,
+          strokeWeight: 6,
+          map,
+        });
+        polylinesRef.current.push(glowPolyline);
+
+        // Main line (dashed for trains)
+        const mainPolyline = new (window as any).google.maps.Polyline({
+          path: line.path.map(([lng, lat]) => ({ lat, lng })),
+          geodesic: true,
+          strokeColor: line.color,
+          strokeOpacity: 0.8,
+          strokeWeight: 2.5,
+          icons: [
+            {
+              icon: { path: "M 0,-1 0,1", strokeOpacity: 1, scale: 3 },
+              offset: "0",
+              repeat: "10px",
+            },
+          ],
+          map,
+        });
+        polylinesRef.current.push(mainPolyline);
+
+        // Station markers
+        line.stations.forEach((station) => {
+          const marker = new (window as any).google.maps.Marker({
+            position: { lat: station.coord[1], lng: station.coord[0] },
+            map,
+            title: station.name,
+            icon: {
+              path: (window as any).google.maps.SymbolPath.CIRCLE,
+              scale: 5,
+              fillColor: line.color,
+              fillOpacity: 0.7,
+              strokeColor: "#fff",
+              strokeWeight: 1,
+            },
+          });
+          polylinesRef.current.push(marker);
+        });
+      });
+    };
+
+    if (metroMode) drawMetro();
+    if (trainMode) drawTrain();
+
+    return () => {
+      polylinesRef.current.forEach((p: any) => p.setMap?.(null));
+      polylinesRef.current = [];
+    };
+  }, [map, metroMode, trainMode]);
+
+  return null;
 }
 
 function ClusteredMarkers({ projects }: { projects: ProjectWithRelations[] }) {
