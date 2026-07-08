@@ -33,10 +33,11 @@ export const oceanVertexShader = `
     vUv = uv;
     vec3 pos = position;
 
-    // Apply multiple Gerstner waves for natural ocean surface
-    vec4 wave1 = vec4(1.0, 0.0, 0.25, 60.0);
-    vec4 wave2 = vec4(0.2, 0.4, 0.15, 31.0);
-    vec4 wave3 = vec4(0.5, 0.1, 0.1, 18.0);
+    // Subtle Gerstner waves — premium soft movement, not cartoonish
+    // Reduced wave steepness (0.1-0.15 instead of 0.25) for smooth shimmer
+    vec4 wave1 = vec4(1.0, 0.0, 0.1, 60.0);
+    vec4 wave2 = vec4(0.2, 0.4, 0.08, 31.0);
+    vec4 wave3 = vec4(0.5, 0.1, 0.06, 18.0);
 
     pos += gerstnerWave(wave1, position);
     pos += gerstnerWave(wave2, position);
@@ -72,21 +73,21 @@ export const oceanFragmentShader = `
   varying vec2 vUv;
 
   void main() {
-    // Fresnel effect: water reflects sky at grazing angles, shows depth up close
+    // Subtle Fresnel effect — premium water doesn't over-reflect
     vec3 viewDir = normalize(cameraPosition - vPosition);
-    float fresnel = pow(1.0 - dot(viewDir, vNormal), 3.0) * 0.8 + 0.2;
+    float fresnel = pow(1.0 - dot(viewDir, vNormal), 3.0) * 0.4 + 0.2;
 
-    // Specular highlight from sun (simplified)
-    vec3 lightDir = normalize(vec3(1.0, 1.0, 1.0));
+    // Soft specular highlight — reduced intensity for subtlety
+    vec3 lightDir = normalize(vec3(0.5, 0.8, 0.5));
     float spec = pow(max(dot(reflect(-lightDir, vNormal), viewDir), 0.0), shininess);
 
-    // Blend sky (reflection) and water color (refraction) based on depth
+    // Blend water base color with subtle sky reflection
     vec3 color = mix(waterColor, skyColor, fresnel);
-    color += vec3(1.0) * spec * 0.5;
+    color += vec3(1.0) * spec * 0.15; // very subtle highlight
 
-    // Add slight wave pattern for visual interest
-    float wave = sin(vUv.x * 10.0 + vPosition.y * 0.5) * 0.1;
-    color += vec3(wave * 0.1);
+    // Minimal wave pattern — just a hint of texture
+    float wave = sin(vUv.x * 8.0 + vPosition.y * 0.3) * 0.05;
+    color += vec3(wave * 0.05);
 
     gl_FragColor = vec4(color, transparency);
   }

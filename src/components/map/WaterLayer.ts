@@ -296,12 +296,14 @@ export function createWaterLayer(): mapboxgl.CustomLayerInterface {
       const hemi = new THREE.HemisphereLight(0x87ceeb, 0xf5f3f0, 1.2);
       scene.add(hemi);
 
-      // Ocean shader water — Gerstner waves for realistic surface
+      // Ocean shader water — premium subtle animated layer over Mapbox base water
+      // The Mapbox base water provides the main sky-blue color (#8FEAFF).
+      // This Three.js layer adds only soft wave movement, shimmer, and reflection.
       const oceanMaterial = createOceanMaterial({
-        waterColor: new THREE.Color(0x5edfff),
-        skyColor: new THREE.Color(0xb3e5fc),
-        transparency: 0.8,
-        shininess: 32.0,
+        waterColor: new THREE.Color(0x8FEAFF), // soft sky blue to match Mapbox
+        skyColor: new THREE.Color(0xd4f1ff), // very light sky for subtle reflections
+        transparency: 0.35, // mostly transparent — let Mapbox water show through
+        shininess: 16.0, // reduce specularity for subtle effect
       });
 
       for (const area of WATER_AREAS) {
@@ -408,12 +410,12 @@ export function createWaterLayer(): mapboxgl.CustomLayerInterface {
         }
       }
 
-      // Animate water shaders — continuously update time for wave animation.
+      // Animate water shaders — soft subtle wave movement
       for (const w of waters) {
         const mat = w.material as THREE.ShaderMaterial;
         if (mat.uniforms && mat.uniforms["time"]) {
-          // Fast animation for visible wave motion
-          mat.uniforms["time"].value = clock.elapsedTime * 2.0;
+          // Slow subtle animation — premium feel
+          mat.uniforms["time"].value += dt * 0.3;
         }
       }
 

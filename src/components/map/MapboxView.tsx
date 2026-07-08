@@ -182,9 +182,9 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
       if (map.getLayer(id)) (map.setPaintProperty as (id: string, prop: string, value: unknown) => void)(id, prop, value);
     };
 
-    // Brighten sky-blue water
-    setColor("water", "fill-color", "#5EDFFF");
-    setColor("water", "fill-opacity", 0.8);
+    // Premium soft sky-blue water — serves as the base layer
+    setColor("water", "fill-color", "#8FEAFF");
+    setColor("water", "fill-opacity", 0.9);
 
     // Brighten land/background for premium look
     const layers = map.getStyle()?.layers ?? [];
