@@ -130,6 +130,15 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
         console.error("Failed to add metro/train layers", err);
       }
 
+      // Subtle boat route guide lines — 3D mode only (the boats are 3D-only too).
+      if (mode === "3d") {
+        try {
+          addBoatRouteLayers(map);
+        } catch (err) {
+          console.error("Failed to add boat route layers", err);
+        }
+      }
+
       styleLoadedRef.current = true;
 
       // If a network toggle was flipped on before the style finished loading,
@@ -237,6 +246,45 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
     }
   }
 
+  // Thin, subtle transparent guide lines tracing each boat's route (3D only).
+  // Premium/faint — a soft cyan dashed hairline, unlike the bold metro lines,
+  // and always below the DOM project markers (canvas layer). Duplicate-guarded.
+  function addBoatRouteLayers(map: mapboxgl.Map) {
+    let added = 0;
+    for (const cfg of MODEL_REGISTRY) {
+      if (!cfg.route || cfg.route.length < 2) continue;
+      const srcId = `boat-route-${cfg.id}`;
+      const layerId = `${srcId}-line`;
+      if (!map.getSource(srcId)) {
+        map.addSource(srcId, {
+          type: "geojson",
+          data: {
+            type: "Feature",
+            properties: {},
+            geometry: { type: "LineString", coordinates: cfg.route },
+          },
+        });
+      }
+      if (!map.getLayer(layerId)) {
+        addLayerSafe(map, {
+          id: layerId,
+          type: "line",
+          source: srcId,
+          layout: { "line-cap": "round", "line-join": "round" },
+          paint: {
+            "line-color": "rgba(190, 239, 255, 0.25)",
+            "line-width": 1.5,
+            "line-blur": 1,
+            "line-dasharray": [2, 2],
+            "line-opacity": 0.22,
+          },
+        });
+        added++;
+      }
+    }
+    if (added > 0) console.log("[Boats] route lines added");
+  }
+
   // A station is shown when its network's reveal threshold has passed its
   // position along the line. Each network reveals independently.
   function stationFilter(): Expr {
@@ -277,9 +325,9 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
           source: srcId,
           layout: { "line-cap": "round", "line-join": "round", visibility: "none" },
           paint: {
-            "line-width": ["interpolate", ["linear"], ["zoom"], 10, 8, 16, 18],
+            "line-width": ["interpolate", ["linear"], ["zoom"], 10, 7, 16, 18],
             "line-blur": 6,
-            "line-opacity": 0.4,
+            "line-opacity": 0.45,
             "line-gradient": lineGradient(line.color, 0),
           },
         });
@@ -291,7 +339,7 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
           source: srcId,
           layout: { "line-cap": "round", "line-join": "round", visibility: "none" },
           paint: {
-            "line-width": ["interpolate", ["linear"], ["zoom"], 10, 3.5, 16, 9],
+            "line-width": ["interpolate", ["linear"], ["zoom"], 10, 3, 16, 8],
             "line-gradient": lineGradient(line.color, 0),
           },
         });
@@ -631,7 +679,8 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
       map.jumpTo({ center: [camera.lng, camera.lat], zoom: camera.zoom, pitch: 0, bearing: 0 });
       // Extra resizes after the mode-switch transition settles, so the canvas
       // never ends up sized to the old (hidden/zero) container → no black bands.
-      const r1 = setTimeout(() => map.resize(), 300);
+      const r0 = setTimeout(() => map.resize(), 100);
+      const r1 = setTimeout(() => map.resize(), 400);
       const r2 = setTimeout(() => map.resize(), 900);
       // Kick the custom layers' render loops back on (they were paused while inactive).
       map.triggerRepaint();
@@ -643,18 +692,22 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
           map.easeTo({
             pitch: DEFAULT_PITCH,
             bearing: DEFAULT_BEARING,
-            zoom: Math.max(camera.zoom, 15),
-            duration: 2400,
+            // Cinematic 3D view — a gentle push-in, NOT a deep city zoom (keeps
+            // the wide Dubai overview + clouds readable). Clamped to 11.2–12.2.
+            zoom: Math.min(12.2, Math.max(camera.zoom + 1.4, 11.2)),
+            duration: 2600,
             easing: (t2) => t2 * (2 - t2),
           });
         }, 150);
         return () => {
           clearTimeout(t);
+          clearTimeout(r0);
           clearTimeout(r1);
           clearTimeout(r2);
         };
       }
       return () => {
+        clearTimeout(r0);
         clearTimeout(r1);
         clearTimeout(r2);
       };

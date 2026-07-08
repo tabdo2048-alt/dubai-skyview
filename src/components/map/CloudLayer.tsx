@@ -9,7 +9,7 @@ type CloudLayerProps = {
  * clouds read at a cinematic altitude but clear out as you zoom into the city.
  */
 export function CloudLayer({ zoom }: CloudLayerProps) {
-  const opacity = Math.max(0, Math.min(1, 11.5 - zoom));
+  const opacity = zoom <= 11.2 ? 1 : Math.max(0, Math.min(1, (13 - zoom) / 1.8));
 
   return (
     <div className="map-clouds-wrapper" style={{ opacity }} aria-hidden="true">

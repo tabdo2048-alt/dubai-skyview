@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Globe2, Satellite, Loader2, TrainFront, TramFront, Sunrise, Sun, Sunset, Moon } from "lucide-react";
+import { Globe2, Satellite, Loader2, TrainFront, TramFront, Sunrise, Sun, Sunset, Moon, ChevronDown } from "lucide-react";
 import { MapboxView, type LightPreset } from "./MapboxView";
 import { CloudLayer } from "./CloudLayer";
 import { ProjectPopup } from "./ProjectPopup";
@@ -8,7 +8,7 @@ import { useMapConfig } from "@/hooks/use-map-config";
 import { useFiltersStore } from "@/store/filters";
 import { useProjects, filterProjects } from "@/hooks/use-projects";
 import { DUBAI_CENTER, DEFAULT_ZOOM } from "@/lib/dubai";
-import { METRO_LINES } from "@/lib/metro";
+import { CATEGORY_COLORS } from "@/lib/metro";
 import { Button } from "@/components/ui/button";
 
 const LIGHT_PRESETS: { value: LightPreset; label: string; Icon: typeof Sun }[] = [
@@ -16,6 +16,16 @@ const LIGHT_PRESETS: { value: LightPreset; label: string; Icon: typeof Sun }[] =
   { value: "day", label: "Day", Icon: Sun },
   { value: "dusk", label: "Dusk", Icon: Sunset },
   { value: "night", label: "Night", Icon: Moon },
+];
+
+// The premium guide legend — one row per line category, matching the palette
+// used to draw the lines (see CATEGORY_COLORS in lib/metro).
+const RAIL_GUIDE: { category: keyof typeof CATEGORY_COLORS; name: string; status: string }[] = [
+  { category: "red", name: "Red Line", status: "Operational" },
+  { category: "green", name: "Green Line", status: "Operational" },
+  { category: "blue", name: "Blue Line", status: "2029" },
+  { category: "future", name: "Future Extensions", status: "Planned 2030" },
+  { category: "train", name: "Etihad Rail", status: "Future" },
 ];
 
 export function MapContainer() {
@@ -36,6 +46,9 @@ export function MapContainer() {
   } = useFiltersStore();
   const [camera, setCamera] = useState({ lat: DUBAI_CENTER.lat, lng: DUBAI_CENTER.lng, zoom: DEFAULT_ZOOM });
   const [transitioning, setTransitioning] = useState(false);
+  // Guide panel is expanded on desktop, collapsible on mobile (starts collapsed
+  // under md via the `hidden md:block` body + this toggle for the mobile chevron).
+  const [guideOpen, setGuideOpen] = useState(false);
 
   const filtered = useMemo(() => filterProjects(projects, filters), [projects, filters]);
   const selected = filtered.find((p) => p.id === selectedProjectId) ?? projects.find((p) => p.id === selectedProjectId) ?? null;
@@ -143,33 +156,55 @@ export function MapContainer() {
         </div>
       )}
 
-      {/* Metro 2030 legend — only shown while metro mode is playing */}
-      {mapMode === "3d" && metroMode && (
-        <div className="pointer-events-auto absolute bottom-6 left-4 z-20 max-w-[220px]">
-          <div className="glass gold-hairline rounded-2xl p-3.5">
-            <div className="mb-2 flex items-center gap-1.5 font-display text-sm text-cream">
-              <TrainFront className="h-4 w-4 text-gold" /> Metro 2030
+      {/* Dubai Metro & Rail Guide — premium legend, only while metro mode plays */}
+      <AnimatePresence>
+        {mapMode === "3d" && metroMode && (
+          <motion.div
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.35, ease: "easeOut" }}
+            className="pointer-events-auto absolute bottom-6 left-4 z-20 w-[230px] max-w-[calc(100vw-2rem)]"
+          >
+            <div className="glass gold-hairline rounded-2xl p-3.5">
+              {/* Header — doubles as the mobile collapse toggle. */}
+              <button
+                type="button"
+                onClick={() => setGuideOpen((o) => !o)}
+                className="flex w-full items-center gap-1.5 font-display text-sm text-cream"
+              >
+                <TrainFront className="h-4 w-4 text-gold" />
+                <span className="flex-1 text-left">Dubai Metro &amp; Rail Guide</span>
+                <ChevronDown
+                  className={`h-4 w-4 text-cream/70 transition-transform md:hidden ${guideOpen ? "rotate-180" : ""}`}
+                />
+              </button>
+
+              {/* Body — always shown from md up; toggled by guideOpen on mobile. */}
+              <div className={guideOpen ? "block" : "hidden md:block"}>
+                <ul className="mt-2 space-y-1.5">
+                  {RAIL_GUIDE.map((l) => (
+                    <li key={l.category} className="flex items-center gap-2 text-xs text-cream/90">
+                      <span
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ background: CATEGORY_COLORS[l.category], boxShadow: `0 0 8px ${CATEGORY_COLORS[l.category]}` }}
+                      />
+                      <span className="flex-1 truncate">{l.name}</span>
+                      <span className="shrink-0 rounded-full bg-white/10 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-cream/70">
+                        {l.status}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-2.5 border-t border-white/10 pt-2 text-[10px] leading-tight text-muted-foreground">
+                  Watch the network draw itself across Dubai. Yachts &amp; ships sail the Marina, Palm and Creek
+                  waters.
+                </p>
+              </div>
             </div>
-            <ul className="space-y-1.5">
-              {METRO_LINES.map((l) => (
-                <li key={l.id} className="flex items-center gap-2 text-xs text-cream/90">
-                  <span className="h-2.5 w-2.5 rounded-full" style={{ background: l.color }} />
-                  <span className="flex-1 truncate">{l.name}</span>
-                  {l.status !== "operational" && (
-                    <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-cream/70">
-                      {l.status === "under-construction" ? "2029" : "2030"}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-            <p className="mt-2.5 border-t border-white/10 pt-2 text-[10px] leading-tight text-muted-foreground">
-              Watch the network draw itself across Dubai. Yachts &amp; ships sail the Marina, Palm and Creek
-              waters.
-            </p>
-          </div>
-        </div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Cinematic overlay during transition */}
       <AnimatePresence>

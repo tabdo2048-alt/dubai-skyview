@@ -9,9 +9,12 @@ export const DUBAI_BOUNDS = {
   east: 55.65,
 };
 
-export const DEFAULT_ZOOM = 12;
-export const DEFAULT_PITCH = 60;
-export const DEFAULT_BEARING = 30;
+// Opening view: wide over Dubai, flat (pitch/bearing 0). After the map is idle
+// the cinematic fly-in (see MapboxView) eases up to DEFAULT_PITCH/BEARING and
+// a closer zoom — so we deliberately start zoomed OUT, not in the city.
+export const DEFAULT_ZOOM = 10.4;
+export const DEFAULT_PITCH = 55;
+export const DEFAULT_BEARING = -28;
 
 export const CATEGORIES = [
   { value: "apartment", label: "Apartment" },

@@ -344,7 +344,9 @@ export function createModel3DLayer(registry: ModelConfig[], controller?: { shoul
       scene.add(sun);
       scene.add(new THREE.HemisphereLight(0x87ceeb, 0xf5f3f0, 1.1));
 
+      console.log(`[Boats] ${registry.length} boat configs loaded`);
       const loader = new GLTFLoader();
+      let wakeCount = 0;
 
       for (const config of registry) {
         const group = new THREE.Group();
@@ -364,7 +366,10 @@ export function createModel3DLayer(registry: ModelConfig[], controller?: { shoul
           bobOffset: instances.length * 1.3,
         };
         scene.add(group);
-        if (inst.wake) scene.add(inst.wake.mesh);
+        if (inst.wake) {
+          scene.add(inst.wake.mesh);
+          wakeCount++;
+        }
         instances.push(inst);
 
         // Try the real GLB; fall back to a low-poly placeholder on any failure.
@@ -374,6 +379,7 @@ export function createModel3DLayer(registry: ModelConfig[], controller?: { shoul
           config.modelUrl,
           (gltf) => {
             if (disposed) return;
+            console.log("[Boats] model loaded");
             const obj = gltf.scene;
             obj.scale.setScalar(config.scale);
             obj.rotation.set(config.rotation[0], config.rotation[1], config.rotation[2]);
@@ -382,13 +388,15 @@ export function createModel3DLayer(registry: ModelConfig[], controller?: { shoul
           undefined,
           () => {
             if (disposed) return;
-            console.warn(`Model file missing, using placeholder for: ${config.id}`);
+            console.log("[Boats] placeholder used");
             const ph = makePlaceholder(config.type, color);
             ph.scale.multiplyScalar(config.scale);
             group.add(ph);
           },
         );
       }
+
+      if (wakeCount > 0) console.log("[Boats] wake trails active");
 
       renderer = acquireSharedRenderer(map.getCanvas(), gl);
       onResize = () => syncSharedRendererSize(map.getCanvas());

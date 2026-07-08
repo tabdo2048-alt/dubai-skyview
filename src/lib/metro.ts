@@ -9,6 +9,9 @@ export type MetroStation = {
   interchange?: boolean;
 };
 
+// Visual/legend category — drives the premium palette and the guide grouping.
+export type LineCategory = "red" | "green" | "blue" | "future" | "train";
+
 export type MetroLine = {
   id: string;
   name: string;
@@ -17,7 +20,43 @@ export type MetroLine = {
   path: [number, number][];
   stations: MetroStation[];
   status: "operational" | "under-construction" | "planned-2030";
+  // Assigned at build time (see applyCategory) — legend groups by this.
+  category?: LineCategory;
 };
+
+// Premium line palette, keyed by category (matches the guide legend).
+export const CATEGORY_COLORS: Record<LineCategory, string> = {
+  red: "#E63946",
+  green: "#2ECC71",
+  blue: "#2D9CDB",
+  future: "#B66DFF",
+  train: "#F2C94C",
+};
+
+// Decide a line's category from its id/name/status. Regional/rail lines are
+// tagged "train" by the caller; everything else maps by operational family.
+function lineCategory(line: MetroLine, isTrain: boolean): LineCategory {
+  if (isTrain) return "train";
+  const key = `${line.id} ${line.name}`.toLowerCase();
+  if (line.status === "operational") {
+    if (key.includes("green")) return "green";
+    if (key.includes("red")) return "red";
+    // Any other currently-operational line reads as the red trunk visually.
+    return "red";
+  }
+  if (line.status === "under-construction" || key.includes("blue")) return "blue";
+  // Everything else (planned-2030 corridors, future concepts) → purple.
+  return "future";
+}
+
+// Non-destructively recolor + tag a set of lines by category. The generated
+// data file is never edited by hand; this runs on the imported lists instead.
+function applyCategory(lines: MetroLine[], isTrain: boolean): MetroLine[] {
+  return lines.map((line) => {
+    const category = lineCategory(line, isTrain);
+    return { ...line, category, color: CATEGORY_COLORS[category] };
+  });
+}
 
 // Real RTA metro + regional train networks, generated from the reference data.
 // (Type-only cycle: the generated module imports MetroLine as a type, so there
@@ -169,10 +208,13 @@ const PURPLE: MetroLine = {
 // Full RTA network imported from the reference project (see
 // scripts/convert-network.mjs). Falls back to the hand-authored lines above if
 // the generated data is empty.
-export const METRO_LINES: MetroLine[] = IMPORTED_METRO_LINES.length ? IMPORTED_METRO_LINES : [RED, GREEN, BLUE, PURPLE];
+export const METRO_LINES: MetroLine[] = applyCategory(
+  IMPORTED_METRO_LINES.length ? IMPORTED_METRO_LINES : [RED, GREEN, BLUE, PURPLE],
+  false,
+);
 
 // Separate regional train network, driven by its own "Train" toggle.
-export const TRAIN_LINES: MetroLine[] = IMPORTED_TRAIN_LINES;
+export const TRAIN_LINES: MetroLine[] = applyCategory(IMPORTED_TRAIN_LINES, true);
 
 // Both networks combined — used for animation/progress bookkeeping.
 export const ALL_RAIL_LINES: MetroLine[] = [...METRO_LINES, ...TRAIN_LINES];
