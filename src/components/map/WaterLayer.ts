@@ -133,7 +133,8 @@ function makeWaterMaterial(): THREE.ShaderMaterial {
       // Pale icy highlight (0xBEEFFF) — the shimmer/reflection tint only.
       uShimmer: { value: new THREE.Color(0xbeefff) },
       uDistortion: { value: 0.25 }, // 0.15 .. 0.35
-      uOpacity: { value: 0.18 }, // 0.12 .. 0.22 — very light
+      // Increased opacity for better visibility in satellite mode (0.12-0.22 range)
+      uOpacity: { value: 0.22 },
     },
   });
 }
