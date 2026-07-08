@@ -305,16 +305,17 @@ export function createWaterLayer(): mapboxgl.CustomLayerInterface {
           waterNormals,
           sunDirection: new THREE.Vector3(-1, -1, 1).normalize(),
           sunColor: 0xffffff,
-          waterColor: 0x2ec5e6, // light sky-blue/cyan to match ThreeWaterLayer
+          waterColor: 0x5EDFFF, // premium sky-blue/cyan
           distortionScale: 3.8,
-          alpha: 0.85,
+          alpha: 0.75, // semi-transparent to blend naturally
           fog: false,
         });
-        // Lift above the basemap and disable depth test so the Standard style's
-        // own water/terrain can't occlude it.
-        water.position.z = 5;
+        // Position the water slightly above ground for visibility
+        water.position.z = 2;
+        // Disable depth test so water isn't occluded by terrain/buildings
         (water.material as THREE.Material).depthTest = false;
-        water.renderOrder = 0;
+        (water.material as THREE.Material).depthWrite = false;
+        water.renderOrder = 1;
         waters.push(water);
         scene.add(water);
       }

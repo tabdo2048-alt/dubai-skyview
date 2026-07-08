@@ -100,24 +100,20 @@ export function MapContainer() {
         >
           <Globe2 className="mr-1.5 h-4 w-4" /> 3D View
         </Button>
-        {mapMode === "3d" && (
-          <>
-            <Button
-              size="sm"
-              onClick={() => setMetroMode(!metroMode)}
-              className={`glass gold-hairline rounded-full px-4 ${metroMode ? "bg-gold text-gold-foreground" : "text-cream"}`}
-            >
-              <TrainFront className="mr-1.5 h-4 w-4" /> Metro
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => setTrainMode(!trainMode)}
-              className={`glass gold-hairline rounded-full px-4 ${trainMode ? "bg-gold text-gold-foreground" : "text-cream"}`}
-            >
-              <TramFront className="mr-1.5 h-4 w-4" /> Train
-            </Button>
-          </>
-        )}
+        <Button
+          size="sm"
+          onClick={() => setMetroMode(!metroMode)}
+          className={`glass gold-hairline rounded-full px-4 ${metroMode ? "bg-gold text-gold-foreground" : "text-cream"}`}
+        >
+          <TrainFront className="mr-1.5 h-4 w-4" /> Metro
+        </Button>
+        <Button
+          size="sm"
+          onClick={() => setTrainMode(!trainMode)}
+          className={`glass gold-hairline rounded-full px-4 ${trainMode ? "bg-gold text-gold-foreground" : "text-cream"}`}
+        >
+          <TramFront className="mr-1.5 h-4 w-4" /> Train
+        </Button>
       </div>
 
       {/* Light preset switcher — Mapbox Standard's built-in day/dawn/dusk/night */}

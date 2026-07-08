@@ -3,7 +3,6 @@ import mapboxgl from "mapbox-gl";
 import { DUBAI_BOUNDS, DEFAULT_PITCH, DEFAULT_BEARING } from "@/lib/dubai";
 import { METRO_LINES, TRAIN_LINES, ALL_RAIL_LINES, STATION_PROGRESS, pointAlongPath, type MetroLine } from "@/lib/metro";
 import { createWaterLayer } from "./WaterLayer";
-import { createThreeWaterLayer } from "@/lib/mapbox/ThreeWaterLayer";
 import type { ProjectWithRelations } from "@/lib/types";
 import { useFiltersStore } from "@/store/filters";
 
@@ -100,17 +99,6 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
         } catch (err) {
           // Non-fatal: metro/buildings still render if the water layer fails.
           console.error("Failed to add 3D water layer", err);
-        }
-      }
-
-      // --- Premium sky-blue/cyan animated water overlay (separate, lightweight
-      // three.js custom layer) — added after buildings/metro/other layers are
-      // registered so it stays visually beneath markers and metro overlays. ---
-      if (!map.getLayer("three-water-layer")) {
-        try {
-          map.addLayer(createThreeWaterLayer());
-        } catch (err) {
-          console.error("Failed to add three-water-layer", err);
         }
       }
 
