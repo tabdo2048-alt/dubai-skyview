@@ -172,9 +172,10 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
       if (map.getLayer(id)) (map.setPaintProperty as (id: string, prop: string, value: unknown) => void)(id, prop, value);
     };
 
-    // Calm real-estate style base water — the main visible water color.
-    // The Three.js overlay only adds subtle movement/shimmer on top.
-    setColor("water", "fill-color", "#9BE7F5");
+    // Muted base water so the animated Three.js shimmer above it is clearly
+    // distinguishable (a bright base would swamp the moving overlay). The
+    // Three.js layer supplies the lively sky-blue movement on top.
+    setColor("water", "fill-color", "#7ECAD8");
     setColor("water", "fill-opacity", 0.9);
 
     // Brighten land/background for premium look

@@ -8,7 +8,6 @@
 // buildings, terrain, and controls are untouched — this is purely an overlay.
 
 import * as THREE from "three";
-import { Water } from "three/examples/jsm/objects/Water.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import mapboxgl from "mapbox-gl";
 import { WATER_AREAS, BOAT_ROUTES, CLOUDS, boatPointAt, type BoatKind } from "@/lib/water";
@@ -241,6 +240,82 @@ function makeCloudTexture(): THREE.Texture {
   return tex;
 }
 
+// --- Animated water shader ------------------------------------------------
+// A self-contained animated water material. We deliberately DO NOT use three's
+// stock `Water` object here: `Water` runs an internal reflection render pass
+// that reads `camera.matrixWorld` and mutates the projection matrix. In a
+// Mapbox custom layer the camera is a bare THREE.Camera whose projectionMatrix
+// we overwrite by hand each frame and whose matrixWorld stays identity — so the
+// reflector renders an empty/garbage mirror and the water reads as a flat,
+// static tint. This shader has no reflection pass and no camera dependency:
+// its whole appearance is driven by `uTime`, so it visibly animates.
+const WATER_VERTEX = /* glsl */ `
+  varying vec2 vUv;
+  varying vec3 vWorld;
+  uniform float uTime;
+  void main() {
+    vUv = uv;
+    vec3 pos = position;
+    // Gentle vertical ripple so the surface silhouette moves, not just its color.
+    pos.z += sin(pos.x * 0.020 + uTime * 0.9) * 0.8
+           + sin(pos.y * 0.017 - uTime * 0.7) * 0.8;
+    vWorld = pos;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+  }
+`;
+
+const WATER_FRAGMENT = /* glsl */ `
+  precision highp float;
+  varying vec2 vUv;
+  varying vec3 vWorld;
+  uniform float uTime;
+  uniform vec3 uDeep;
+  uniform vec3 uShallow;
+  uniform vec3 uHighlight;
+  uniform float uOpacity;
+
+  // Cheap flowing bands of brightness — reads as moving light on water.
+  float band(vec2 p, float freq, float speed, float t) {
+    return sin((p.x + p.y) * freq + t * speed) * 0.5 + 0.5;
+  }
+
+  void main() {
+    float t = uTime;
+    // Use world XY (metres) so the pattern scale is stable regardless of zoom.
+    vec2 p = vWorld.xy * 0.006;
+    float w1 = band(p, 1.0, 1.1, t);
+    float w2 = band(p * 1.7 + 4.3, 1.0, -0.8, t);
+    float shimmer = band(p * 6.0, 1.0, 2.6, t);
+
+    vec3 base = mix(uDeep, uShallow, clamp(w1 * 0.6 + w2 * 0.4, 0.0, 1.0));
+    // Bright crest streaks drifting across the surface.
+    float crest = smoothstep(0.82, 1.0, band(p * vec2(1.4, 3.2), 1.0, 0.9, t));
+    vec3 color = mix(base, uHighlight, crest * 0.5 + shimmer * 0.12);
+
+    gl_FragColor = vec4(color, uOpacity);
+  }
+`;
+
+// Build the animated water material. `uTime` is advanced every frame in render().
+function makeWaterMaterial(): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    vertexShader: WATER_VERTEX,
+    fragmentShader: WATER_FRAGMENT,
+    transparent: true,
+    depthTest: false,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    uniforms: {
+      uTime: { value: 0 },
+      // Soft sky-blue palette that blends with the Mapbox base water.
+      uDeep: { value: new THREE.Color(0x5ec8e6) },
+      uShallow: { value: new THREE.Color(0x8feaff) },
+      uHighlight: { value: new THREE.Color(0xe6fbff) },
+      uOpacity: { value: 0.34 },
+    },
+  });
+}
+
 type Boat = {
   group: THREE.Object3D;
   routeIdx: number;
@@ -262,8 +337,9 @@ export function createWaterLayer(): mapboxgl.CustomLayerInterface {
   let scene: THREE.Scene;
   let camera: THREE.Camera;
   let map: mapboxgl.Map;
-  const waters: Water[] = [];
+  const waters: THREE.Mesh[] = [];
   const boats: Boat[] = [];
+  let renderLogged = false;
   const clouds: Cloud[] = [];
   let ref: MercatorRef;
   let clock: THREE.Clock;
@@ -276,6 +352,8 @@ export function createWaterLayer(): mapboxgl.CustomLayerInterface {
     renderingMode: "3d",
 
     onAdd(m: mapboxgl.Map, gl: WebGLRenderingContext) {
+      console.log("[WaterLayer] onAdd");
+      console.log("[WaterLayer] WATER_AREAS:", WATER_AREAS.length);
       map = m;
       clock = new THREE.Clock();
       scene = new THREE.Scene();
@@ -296,17 +374,10 @@ export function createWaterLayer(): mapboxgl.CustomLayerInterface {
       const hemi = new THREE.HemisphereLight(0x87ceeb, 0xf5f3f0, 1.2);
       scene.add(hemi);
 
-      // Three.js Water — a TRANSPARENT ANIMATED OVERLAY only. The Mapbox
-      // Standard base water provides the main sky-blue color; this layer adds
-      // subtle movement, shimmer and soft reflection on top — never a solid
-      // cartoon sheet. Uses the real waternormals normal-map for realism.
-      const waterNormals = new THREE.TextureLoader().load(
-        "https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/waternormals.jpg",
-        (t) => {
-          t.wrapS = t.wrapT = THREE.RepeatWrapping;
-        },
-      );
-
+      // Animated water — a TRANSPARENT ANIMATED OVERLAY only. The Mapbox base
+      // water supplies the underlying tone; this layer adds visible movement and
+      // shimmer on top via a time-driven shader (see makeWaterMaterial). One
+      // subdivided mesh per basin so it never covers land/buildings.
       for (const area of WATER_AREAS) {
         const shape = new THREE.Shape();
         area.polygon.forEach(([lng, lat], i) => {
@@ -314,26 +385,15 @@ export function createWaterLayer(): mapboxgl.CustomLayerInterface {
           if (i === 0) shape.moveTo(p.x, p.y);
           else shape.lineTo(p.x, p.y);
         });
-        const geo = new THREE.ShapeGeometry(shape);
-        const water = new Water(geo, {
-          textureWidth: 512,
-          textureHeight: 512,
-          waterNormals,
-          sunDirection: new THREE.Vector3(-0.2, -0.6, 1).normalize(),
-          sunColor: 0xffffff,
-          waterColor: 0x8FEAFF, // soft sky-blue, matches Mapbox base water
-          distortionScale: 0.6, // subtle waves — not cartoonish
-          alpha: 0.3, // mostly transparent overlay
-          fog: false,
-        });
+        // Subdivide so the vertex ripple in the shader has geometry to move.
+        const geo = new THREE.ShapeGeometry(shape, 12);
+        const water = new THREE.Mesh(geo, makeWaterMaterial());
         // Slightly above ground; do not occlude terrain/buildings/metro.
         water.position.z = 2;
-        (water.material as THREE.Material).transparent = true;
-        (water.material as THREE.Material).depthTest = false;
-        (water.material as THREE.Material).depthWrite = false;
         water.renderOrder = 1;
         waters.push(water);
         scene.add(water);
+        console.log("[WaterLayer] mesh created", area.name);
       }
 
       // Boats + wake trails. Procedural now; swaps to real glTF automatically
@@ -394,6 +454,10 @@ export function createWaterLayer(): mapboxgl.CustomLayerInterface {
 
     render(_gl: WebGLRenderingContext, matrix: unknown) {
       if (!renderer) return;
+      if (!renderLogged) {
+        console.log("[WaterLayer] render loop running");
+        renderLogged = true;
+      }
       const dt = Math.min(clock.getDelta(), 0.1); // guard against huge jumps on tab refocus
 
       // Advance boats along their routes + record wake samples.
@@ -413,11 +477,12 @@ export function createWaterLayer(): mapboxgl.CustomLayerInterface {
         }
       }
 
-      // Animate water — very slow, subtle shimmer (premium calm sea)
+      // Animate water — advance the shader clock so the surface visibly moves.
+      // dt * 0.6 gives a calm-but-clearly-moving sea (not a frozen sheet).
       for (const w of waters) {
         const mat = w.material as THREE.ShaderMaterial;
-        if (mat.uniforms && mat.uniforms["time"]) {
-          mat.uniforms["time"].value += dt * 0.18;
+        if (mat.uniforms && mat.uniforms.uTime) {
+          mat.uniforms.uTime.value += dt * 0.6;
         }
       }
 
