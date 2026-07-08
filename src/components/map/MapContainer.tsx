@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Globe2, Satellite, Loader2, TrainFront, TramFront, Sunrise, Sun, Sunset, Moon } from "lucide-react";
-import { GoogleMapView } from "./GoogleMapView";
 import { MapboxView, type LightPreset } from "./MapboxView";
 import { CloudLayer } from "./CloudLayer";
 import { ProjectPopup } from "./ProjectPopup";
@@ -58,19 +57,22 @@ export function MapContainer() {
 
       {cfg && (
         <>
-          {/* Google Maps satellite with Metro/Train lines drawn on top */}
+          {/* Flat Mapbox satellite view (satellite-streets) with metro/train + water overlay */}
           <div className={mapMode === "satellite" ? "absolute inset-0" : "absolute inset-0 opacity-0 pointer-events-none"}>
-            <GoogleMapView
-              apiKey={cfg.googleMapsApiKey}
+            <MapboxView
+              accessToken={cfg.mapboxAccessToken}
               projects={filtered}
               camera={camera}
               onCameraChange={setCamera}
+              active={mapMode === "satellite"}
               metroMode={metroMode}
               trainMode={trainMode}
+              lightPreset={lightPreset}
+              mode="satellite"
             />
           </div>
 
-          {/* 3D Mapbox view */}
+          {/* 3D Mapbox view (Standard style, buildings, animated water/boats/clouds) */}
           <div className={mapMode === "3d" ? "absolute inset-0" : "absolute inset-0 opacity-0 pointer-events-none"}>
             <MapboxView
               accessToken={cfg.mapboxAccessToken}

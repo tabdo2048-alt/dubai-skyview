@@ -22,7 +22,6 @@ type Props = {
   trainMode: boolean;
   lightPreset: LightPreset;
   mode?: "satellite" | "3d";
-  overlayMode?: boolean;
 };
 
 // Small SVG metro/train icon used for the project markers.
@@ -40,7 +39,7 @@ const TRAIN_MARKER_SVG = `
 const DRAW_DURATION = 2400; // ms per line's draw animation
 const LINE_STAGGER = 350; // ms delay between each line starting to draw
 
-export function MapboxView({ accessToken, projects, camera, onCameraChange, active, metroMode, trainMode, lightPreset, mode = "3d", overlayMode = false }: Props) {
+export function MapboxView({ accessToken, projects, camera, onCameraChange, active, metroMode, trainMode, lightPreset, mode = "3d" }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<Map<string, mapboxgl.Marker>>(new globalThis.Map());
@@ -62,11 +61,13 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
     mapboxgl.accessToken = accessToken;
     const map = new mapboxgl.Map({
       container: containerRef.current,
-      style: "mapbox://styles/2shraf-tamer/cmrarm85z002x01shfp2680g9",
+      // Satellite mode → flat Mapbox satellite imagery; 3D mode → Standard style
+      // (buildings, lighting) which the Three.js water/boats overlay sits atop.
+      style: mode === "3d" ? "mapbox://styles/mapbox/standard" : "mapbox://styles/mapbox/satellite-streets-v12",
       center: [camera.lng, camera.lat],
       zoom: camera.zoom,
-      pitch: mode === "3d" ? 0 : 0,
-      bearing: mode === "3d" ? 0 : 0,
+      pitch: 0, // both modes start flat; 3D pitches up in the fly-in effect below
+      bearing: 0,
       maxBounds: [
         [DUBAI_BOUNDS.west, DUBAI_BOUNDS.south],
         [DUBAI_BOUNDS.east, DUBAI_BOUNDS.north],
@@ -75,22 +76,10 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
     });
 
     map.on("style.load", () => {
-      // Overlay mode: only show metro/train lines over the base satellite map.
-      // Hide all base layers (buildings, water, terrain, labels).
-      if (overlayMode) {
-        try {
-          const layers = map.getStyle()?.layers ?? [];
-          for (const layer of layers) {
-            // Hide all layers except our metro/train layers
-            if (!layer.id.includes("metro") && !layer.id.includes("station")) {
-              map.setLayoutProperty(layer.id, "visibility", "none");
-            }
-          }
-        } catch (err) {
-          console.warn("Failed to hide overlay base layers", err);
-        }
-      } else {
-        // Normal mode: show the full Mapbox scene
+      // 3D-only scene setup: Standard-style recoloring, decluttered labels, and
+      // exaggerated terrain. Flat satellite imagery has no vector fills/symbols to
+      // touch and shouldn't be exaggerated, so this is skipped in satellite mode.
+      if (mode === "3d") {
         try {
           applyStandardConfig(map, lightPreset);
         } catch (err) {
@@ -117,14 +106,15 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
         } catch (err) {
           console.warn("terrain setup failed (non-fatal)", err);
         }
+      }
 
-        // 3D water + boats
-        if (!map.getLayer("dubai-water-3d")) {
-          try {
-            map.addLayer(createWaterLayer());
-          } catch (err) {
-            console.error("Failed to add 3D water layer", err);
-          }
+      // Three.js animated water + boats — 3D always, satellite as a subtle overlay.
+      // Same shared-WebGL custom layer in both modes (alpha 0.3, reads fine flat).
+      if (!map.getLayer("dubai-water-3d")) {
+        try {
+          map.addLayer(createWaterLayer());
+        } catch (err) {
+          console.error("Failed to add 3D water layer", err);
         }
       }
 
@@ -584,7 +574,9 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
     // its dimensions now that it's visible or nothing renders / tiles are wrong.
     map.resize();
     map.jumpTo({ center: [camera.lng, camera.lat], zoom: camera.zoom, pitch: 0, bearing: 0 });
-    // Two-stage cinematic fly
+    // Satellite mode stays a flat top-down view — no pitch/bearing animation.
+    if (mode !== "3d") return;
+    // 3D mode: two-stage cinematic fly up into pitch/bearing.
     const t = setTimeout(() => {
       map.resize();
       map.easeTo({
