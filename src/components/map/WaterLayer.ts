@@ -106,6 +106,7 @@ function makeProceduralBoat(kind: BoatKind, color: number): THREE.Group {
     mast.position.set(20, 0, 13);
     g.add(mast);
   } else {
+    // Large cargo ship
     const hull = makeHull(220, 46, 28, color);
     g.add(hull);
     const tower = makeCabin(46, 40, 44, deckColor);
@@ -114,6 +115,13 @@ function makeProceduralBoat(kind: BoatKind, color: number): THREE.Group {
     const funnel = new THREE.Mesh(new THREE.CylinderGeometry(8, 10, 30, 12), darkMat);
     funnel.position.set(-68, 0, 70);
     g.add(funnel);
+    // Additional cargo containers on deck for visual detail
+    const containerMat = new THREE.MeshStandardMaterial({ color: 0x8b7355, metalness: 0.1, roughness: 0.8 });
+    for (let i = 0; i < 3; i++) {
+      const container = new THREE.Mesh(new THREE.BoxGeometry(20, 15, 20), containerMat);
+      container.position.set(-30 + i * 35, 0, 25);
+      g.add(container);
+    }
   }
   // Lathe axis (length) sits along local Z; rotate so +X becomes the bow heading.
   g.rotation.z = -Math.PI / 2;
@@ -278,11 +286,15 @@ export function createWaterLayer(): mapboxgl.CustomLayerInterface {
       const origin = mapboxgl.MercatorCoordinate.fromLngLat(originLngLat, 0);
       ref = { x: origin.x, y: origin.y, z: origin.z, scale: origin.meterInMercatorCoordinateUnits() };
 
-      // Lighting
-      scene.add(new THREE.AmbientLight(0xffffff, 1.0));
-      const sun = new THREE.DirectionalLight(0xfff2d6, 1.3);
+      // Lighting — bright for visibility
+      scene.add(new THREE.AmbientLight(0xffffff, 1.5)); // brighter ambient
+      const sun = new THREE.DirectionalLight(0xfff2d6, 1.8); // brighter sun
       sun.position.set(-1, -1, 2);
       scene.add(sun);
+
+      // Add hemisphere light for better global illumination
+      const hemi = new THREE.HemisphereLight(0x87ceeb, 0xf5f3f0, 1.2);
+      scene.add(hemi);
 
       // Water — one Water mesh per hand-fitted coastline polygon.
       const waterNormals = new THREE.TextureLoader().load(
@@ -397,11 +409,13 @@ export function createWaterLayer(): mapboxgl.CustomLayerInterface {
         }
       }
 
-      // Animate water shaders — scroll the normal map a touch faster than the
-      // built-in uniform alone for a livelier surface.
+      // Animate water shaders — continuously update time for wave animation.
       for (const w of waters) {
         const mat = w.material as THREE.ShaderMaterial;
-        mat.uniforms["time"].value += dt * 1.15;
+        if (mat.uniforms && mat.uniforms["time"]) {
+          // Fast animation for visible wave motion
+          mat.uniforms["time"].value = clock.elapsedTime * 2.0;
+        }
       }
 
       // Drift clouds slowly, fading in and out, wrapping back around.
