@@ -19,6 +19,11 @@ export type MetroLine = {
   status: "operational" | "under-construction" | "planned-2030";
 };
 
+// Real RTA metro + regional train networks, generated from the reference data.
+// (Type-only cycle: the generated module imports MetroLine as a type, so there
+// is no runtime circular-value dependency.)
+import { IMPORTED_METRO_LINES, IMPORTED_TRAIN_LINES } from "./metroNetwork.generated";
+
 // --- Red Line (operational, Rashidiya → UAE Exchange / Expo 2020) ---
 const RED: MetroLine = {
   id: "red",
@@ -161,9 +166,18 @@ const PURPLE: MetroLine = {
   ],
 };
 
-export const METRO_LINES: MetroLine[] = [RED, GREEN, BLUE, PURPLE];
+// Full RTA network imported from the reference project (see
+// scripts/convert-network.mjs). Falls back to the hand-authored lines above if
+// the generated data is empty.
+export const METRO_LINES: MetroLine[] = IMPORTED_METRO_LINES.length ? IMPORTED_METRO_LINES : [RED, GREEN, BLUE, PURPLE];
 
-export const METRO_LINE_BY_ID = Object.fromEntries(METRO_LINES.map((l) => [l.id, l])) as Record<string, MetroLine>;
+// Separate regional train network, driven by its own "Train" toggle.
+export const TRAIN_LINES: MetroLine[] = IMPORTED_TRAIN_LINES;
+
+// Both networks combined — used for animation/progress bookkeeping.
+export const ALL_RAIL_LINES: MetroLine[] = [...METRO_LINES, ...TRAIN_LINES];
+
+export const METRO_LINE_BY_ID = Object.fromEntries(ALL_RAIL_LINES.map((l) => [l.id, l])) as Record<string, MetroLine>;
 
 // Closest point on `path` to `coord`, expressed as a 0..1 fraction of the
 // path's total length — used to know when the draw animation "reaches" a
@@ -193,7 +207,7 @@ function fractionAlongPathNearest(path: [number, number][], coord: [number, numb
 // position along that line's path, so the draw animation can reveal stations
 // exactly as the line reaches them.
 export const STATION_PROGRESS: Record<string, number> = {};
-for (const line of METRO_LINES) {
+for (const line of ALL_RAIL_LINES) {
   for (const station of line.stations) {
     STATION_PROGRESS[station.id] = fractionAlongPathNearest(line.path, station.coord);
   }

@@ -9,6 +9,7 @@
 
 import * as THREE from "three";
 import mapboxgl from "mapbox-gl";
+import { acquireSharedRenderer, releaseSharedRenderer, syncSharedRendererSize } from "./sharedThreeRenderer";
 
 // ---- Palette (exact, per spec) -------------------------------------------
 const WATER_MAIN_COLOR = "#5EDFFF";
@@ -251,6 +252,10 @@ export function createThreeWaterLayer(): mapboxgl.CustomLayerInterface {
           vertexShader: waterVertexShader,
           fragmentShader: waterFragmentShader,
           transparent: true,
+          // On the Mapbox Standard style the basemap renders its own water/terrain
+          // at ground level; disable depth test/write so this overlay always draws
+          // on top instead of being occluded or z-fighting with the basemap.
+          depthTest: false,
           depthWrite: false,
           side: THREE.DoubleSide,
           uniforms: {
@@ -262,27 +267,22 @@ export function createThreeWaterLayer(): mapboxgl.CustomLayerInterface {
           },
         });
         const mesh = new THREE.Mesh(geometry, material);
-        mesh.position.z = 0.4; // sit just above ground/water basemap, below markers/metro (rendered as DOM/separate layers)
-        mesh.renderOrder = 0;
+        // Lift a few metres above ground so it clearly reads above the basemap.
+        mesh.position.z = 6;
+        mesh.renderOrder = 1;
         scene.add(mesh);
         meshes.push(mesh);
         geometries.push(geometry);
         materials.push(material);
       }
 
-      renderer = new THREE.WebGLRenderer({
-        canvas: map.getCanvas(),
-        context: gl,
-        antialias: true,
-      });
-      renderer.autoClear = false;
+      // Share a single renderer across all custom three.js layers so they don't
+      // fight over Mapbox's WebGL context (which silently breaks rendering).
+      renderer = acquireSharedRenderer(map.getCanvas(), gl);
 
-      // Keep the renderer's internal size synced — three.js doesn't observe
-      // Mapbox's own canvas resizing since we share its context/canvas.
       onResize = () => {
-        if (!renderer || !map) return;
-        const canvas = map.getCanvas();
-        renderer.setSize(canvas.width, canvas.height, false);
+        if (!map) return;
+        syncSharedRendererSize(map.getCanvas());
       };
       map.on("resize", onResize);
     },
@@ -324,7 +324,7 @@ export function createThreeWaterLayer(): mapboxgl.CustomLayerInterface {
       geometries.length = 0;
       materials.length = 0;
 
-      renderer?.dispose();
+      releaseSharedRenderer();
       renderer = null;
       scene = null;
       camera = null;

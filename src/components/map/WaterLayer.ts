@@ -12,6 +12,11 @@ import { Water } from "three/examples/jsm/objects/Water.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import mapboxgl from "mapbox-gl";
 import { WATER_AREAS, BOAT_ROUTES, CLOUDS, boatPointAt, type BoatKind } from "@/lib/water";
+import {
+  acquireSharedRenderer,
+  releaseSharedRenderer,
+  syncSharedRendererSize,
+} from "@/lib/mapbox/sharedThreeRenderer";
 
 type MercatorRef = {
   x: number;
@@ -299,13 +304,17 @@ export function createWaterLayer(): mapboxgl.CustomLayerInterface {
           textureHeight: 1024,
           waterNormals,
           sunDirection: new THREE.Vector3(-1, -1, 1).normalize(),
-          sunColor: 0xfff6df,
-          waterColor: 0x045f73,
+          sunColor: 0xffffff,
+          waterColor: 0x2ec5e6, // light sky-blue/cyan to match ThreeWaterLayer
           distortionScale: 3.8,
-          alpha: 0.96,
+          alpha: 0.85,
           fog: false,
         });
-        water.position.z = 0.5; // sit just above ground to avoid z-fighting
+        // Lift above the basemap and disable depth test so the Standard style's
+        // own water/terrain can't occlude it.
+        water.position.z = 5;
+        (water.material as THREE.Material).depthTest = false;
+        water.renderOrder = 0;
         waters.push(water);
         scene.add(water);
       }
@@ -356,19 +365,12 @@ export function createWaterLayer(): mapboxgl.CustomLayerInterface {
         });
       }
 
-      renderer = new THREE.WebGLRenderer({
-        canvas: map.getCanvas(),
-        context: gl,
-        antialias: true,
-      });
-      renderer.autoClear = false;
+      // Share a single renderer across all custom three.js layers so they don't
+      // fight over Mapbox's WebGL context (which silently breaks rendering).
+      renderer = acquireSharedRenderer(map.getCanvas(), gl);
 
-      // three.js doesn't observe Mapbox's own canvas resizing since we share
-      // its context — keep the renderer's internal size in sync.
       onResize = () => {
-        if (!renderer) return;
-        const canvas = map.getCanvas();
-        renderer.setSize(canvas.width, canvas.height, false);
+        syncSharedRendererSize(map.getCanvas());
       };
       map.on("resize", onResize);
     },
@@ -451,7 +453,7 @@ export function createWaterLayer(): mapboxgl.CustomLayerInterface {
         mat.map?.dispose();
         mat.dispose();
       }
-      renderer?.dispose();
+      releaseSharedRenderer();
       renderer = null;
     },
   } as unknown as mapboxgl.CustomLayerInterface;

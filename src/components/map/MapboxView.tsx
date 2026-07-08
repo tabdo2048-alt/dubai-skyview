@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import mapboxgl from "mapbox-gl";
 import { DUBAI_BOUNDS, DEFAULT_PITCH, DEFAULT_BEARING } from "@/lib/dubai";
-import { METRO_LINES, STATION_PROGRESS, pointAlongPath, type MetroLine } from "@/lib/metro";
+import { METRO_LINES, TRAIN_LINES, ALL_RAIL_LINES, STATION_PROGRESS, pointAlongPath, type MetroLine } from "@/lib/metro";
 import { createWaterLayer } from "./WaterLayer";
 import { createThreeWaterLayer } from "@/lib/mapbox/ThreeWaterLayer";
 import type { ProjectWithRelations } from "@/lib/types";
@@ -20,6 +20,7 @@ type Props = {
   onCameraChange: (c: { lat: number; lng: number; zoom: number }) => void;
   active: boolean;
   metroMode: boolean;
+  trainMode: boolean;
   lightPreset: LightPreset;
 };
 
@@ -38,7 +39,7 @@ const TRAIN_MARKER_SVG = `
 const DRAW_DURATION = 2400; // ms per line's draw animation
 const LINE_STAGGER = 350; // ms delay between each line starting to draw
 
-export function MapboxView({ accessToken, projects, camera, onCameraChange, active, metroMode, lightPreset }: Props) {
+export function MapboxView({ accessToken, projects, camera, onCameraChange, active, metroMode, trainMode, lightPreset }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<Map<string, mapboxgl.Marker>>(new globalThis.Map());
@@ -48,6 +49,8 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
   const metroTimeoutsRef = useRef<number[]>([]);
   const trainRafRef = useRef<number | null>(null);
   const styleLoadedRef = useRef(false);
+  // Per-network station-reveal thresholds (0 = none revealed, 1 = all).
+  const revealThreshRef = useRef<{ metro: number; train: number }>({ metro: 0, train: 0 });
   const { selectedProjectId, setSelectedProjectId } = useFiltersStore();
 
   useEffect(() => {
@@ -121,7 +124,8 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
 
     mapRef.current = map;
     return () => {
-      stopMetroAnimation(map);
+      stopNetworkAnimation(map, METRO_LINES, "metro");
+      stopNetworkAnimation(map, TRAIN_LINES, "train");
       styleLoadedRef.current = false;
       map.remove();
       mapRef.current = null;
@@ -174,11 +178,27 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
     (map.addLayer as (l: unknown, b?: string) => void)(layer, before);
   }
 
+  // A station is shown when its network's reveal threshold has passed its
+  // position along the line. Each network reveals independently.
+  function stationFilter(): Expr {
+    const { metro, train } = revealThreshRef.current;
+    return [
+      "any",
+      ["all", ["==", ["get", "network"], "metro"], ["<=", ["get", "progress"], metro]],
+      ["all", ["==", ["get", "network"], "train"], ["<=", ["get", "progress"], train]],
+    ];
+  }
+
+  function applyStationFilters(map: mapboxgl.Map) {
+    if (map.getLayer("metro-stations-3d")) map.setFilter("metro-stations-3d", stationFilter());
+    if (map.getLayer("metro-stations-label")) map.setFilter("metro-stations-label", stationFilter());
+  }
+
   // Build the line sources/layers once (hidden until metroMode plays them).
   // Each line has: a glow layer (wide, blurred), and a crisp reveal layer —
   // both driven by the same `line-gradient` progress during the draw animation.
   function addMetroLayers(map: mapboxgl.Map) {
-    for (const line of METRO_LINES) {
+    for (const line of ALL_RAIL_LINES) {
       const srcId = `metro-${line.id}`;
       if (!map.getSource(srcId)) {
         map.addSource(srcId, {
@@ -242,7 +262,8 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
   // Station footprints (3D extrusions) + labels, created once and hidden;
   // revealed progressively as each line's draw animation reaches them.
   function addStationLayers(map: mapboxgl.Map) {
-    const features = METRO_LINES.flatMap((line) =>
+    const metroIds = new Set(METRO_LINES.map((l) => l.id));
+    const features = ALL_RAIL_LINES.flatMap((line) =>
       line.stations.map((s) => {
         const [lng, lat] = s.coord;
         const d = s.interchange ? 0.0011 : 0.0007;
@@ -254,6 +275,7 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
             height: s.interchange ? 180 : 110,
             name: s.name,
             progress: STATION_PROGRESS[s.id] ?? 0,
+            network: metroIds.has(line.id) ? "metro" : "train",
           },
           geometry: {
             type: "Polygon" as const,
@@ -283,7 +305,7 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
         type: "fill-extrusion",
         source: "metro-stations",
         minzoom: 11,
-        filter: ["<=", ["get", "progress"], 0],
+        filter: stationFilter(),
         paint: {
           "fill-extrusion-color": ["get", "color"],
           "fill-extrusion-height": ["interpolate", ["linear"], ["zoom"], 11, 0, 14, ["get", "height"]],
@@ -298,7 +320,7 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
         type: "symbol",
         source: "metro-stations",
         minzoom: 13,
-        filter: ["<=", ["get", "progress"], 0],
+        filter: stationFilter(),
         layout: {
           "text-field": ["get", "name"],
           "text-size": 11,
@@ -316,23 +338,32 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
     }
   }
 
-  // Cancel every metro animation frame/timeout, hide all metro layers, and
-  // remove train + pulse markers. Called on metroMode -> off and on unmount.
-  function stopMetroAnimation(map: mapboxgl.Map) {
-    for (const id of metroFrameRef.current.values()) cancelAnimationFrame(id);
-    metroFrameRef.current.clear();
-    if (trainRafRef.current) cancelAnimationFrame(trainRafRef.current);
-    trainRafRef.current = null;
+  // Stop and hide one network's animation (metro or train), leaving the other
+  // untouched. Called when that network's toggle turns off (and on unmount).
+  function stopNetworkAnimation(map: mapboxgl.Map, lines: MetroLine[], network: "metro" | "train") {
+    for (const line of lines) {
+      const id = metroFrameRef.current.get(line.id);
+      if (id != null) cancelAnimationFrame(id);
+      metroFrameRef.current.delete(line.id);
+
+      const marker = trainMarkersRef.current.get(line.id);
+      if (marker) {
+        marker.remove();
+        trainMarkersRef.current.delete(line.id);
+      }
+    }
+    // Clear any pending stagger timeouts (shared; cheap to clear all).
     for (const t of metroTimeoutsRef.current) clearTimeout(t);
     metroTimeoutsRef.current = [];
-
-    for (const m of trainMarkersRef.current.values()) m.remove();
-    trainMarkersRef.current.clear();
     for (const m of pulseMarkersRef.current) m.remove();
     pulseMarkersRef.current = [];
+    if (trainMarkersRef.current.size === 0 && trainRafRef.current) {
+      cancelAnimationFrame(trainRafRef.current);
+      trainRafRef.current = null;
+    }
 
     if (!styleLoadedRef.current) return;
-    for (const line of METRO_LINES) {
+    for (const line of lines) {
       const srcId = `metro-${line.id}`;
       if (map.getLayer(`${srcId}-glow`)) {
         map.setLayoutProperty(`${srcId}-glow`, "visibility", "none");
@@ -343,11 +374,8 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
         map.setPaintProperty(`${srcId}-reveal`, "line-gradient", lineGradient(line.color, 0));
       }
     }
-    if (map.getLayer("metro-stations-3d")) map.setFilter("metro-stations-3d", ["<=", ["get", "progress"], 0]);
-    if (map.getLayer("metro-stations-label")) {
-      map.setFilter("metro-stations-label", ["<=", ["get", "progress"], 0]);
-      map.setPaintProperty("metro-stations-label", "text-opacity", 0);
-    }
+    revealThreshRef.current[network] = 0;
+    applyStationFilters(map);
   }
 
   // Small pulse marker dropped at a station the instant the drawing line
@@ -369,13 +397,16 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
     }, 850);
   }
 
-  // Play the full-network draw animation: each line staggered slightly,
+  // Play one network's full draw animation: each line staggered slightly,
   // glow + crisp line grow together, stations pulse in as the line reaches
   // them, labels fade in, then a train starts once that line finishes.
-  function playMetroSequence(map: mapboxgl.Map) {
+  function playNetworkSequence(map: mapboxgl.Map, lines: MetroLine[], network: "metro" | "train") {
     const revealedStations = new Set<string>();
+    if (map.getLayer("metro-stations-label")) {
+      map.setPaintProperty("metro-stations-label", "text-opacity", 1);
+    }
 
-    METRO_LINES.forEach((line, lineIdx) => {
+    lines.forEach((line, lineIdx) => {
       const timeout = window.setTimeout(() => {
         const srcId = `metro-${line.id}`;
         if (!map.getLayer(`${srcId}-glow`) || !map.getLayer(`${srcId}-reveal`)) return;
@@ -399,20 +430,15 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
               spawnStationPulse(map, s.coord, line.color);
             }
           }
-          if (map.getLayer("metro-stations-3d")) {
-            map.setFilter("metro-stations-3d", ["<=", ["get", "progress"], eased]);
-          }
-          if (map.getLayer("metro-stations-label")) {
-            map.setFilter("metro-stations-label", ["<=", ["get", "progress"], eased]);
-          }
+          // Advance this network's station reveal threshold to the furthest
+          // line-draw progress reached so far.
+          revealThreshRef.current[network] = Math.max(revealThreshRef.current[network], eased);
+          applyStationFilters(map);
 
           if (t < 1) {
             metroFrameRef.current.set(line.id, requestAnimationFrame(step));
           } else {
             metroFrameRef.current.delete(line.id);
-            if (map.getLayer("metro-stations-label")) {
-              map.setPaintProperty("metro-stations-label", "text-opacity", 1);
-            }
             startTrainForLine(map, line);
           }
         };
@@ -446,14 +472,14 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
   function ensureTrainLoop() {
     if (trainRafRef.current) return;
     const speeds: Record<string, number> = {};
-    METRO_LINES.forEach((l, i) => (speeds[l.id] = 0.00004 + i * 0.000012));
+    ALL_RAIL_LINES.forEach((l, i) => (speeds[l.id] = 0.00004 + i * 0.000012));
     const startT = performance.now();
     const tick = (now: number) => {
       const elapsed = now - startT;
-      for (const line of METRO_LINES) {
+      for (const line of ALL_RAIL_LINES) {
         const marker = trainMarkersRef.current.get(line.id);
         if (!marker) continue;
-        const raw = (elapsed * speeds[line.id]) % 2;
+        const raw = (elapsed * (speeds[line.id] ?? 0.00005)) % 2;
         const t = raw <= 1 ? raw : 2 - raw;
         const { coord } = pointAlongPath(line.path, t);
         marker.setLngLat(coord);
@@ -463,18 +489,31 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
     trainRafRef.current = requestAnimationFrame(tick);
   }
 
-  // Drive the metro draw animation on/off as the metroMode prop changes.
+  // Drive the metro network draw animation on/off as metroMode changes.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     const run = () => {
-      if (metroMode) playMetroSequence(map);
-      else stopMetroAnimation(map);
+      if (metroMode) playNetworkSequence(map, METRO_LINES, "metro");
+      else stopNetworkAnimation(map, METRO_LINES, "metro");
     };
     if (styleLoadedRef.current) run();
     else map.once("load", run);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [metroMode]);
+
+  // Drive the regional train network draw animation on/off as trainMode changes.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const run = () => {
+      if (trainMode) playNetworkSequence(map, TRAIN_LINES, "train");
+      else stopNetworkAnimation(map, TRAIN_LINES, "train");
+    };
+    if (styleLoadedRef.current) run();
+    else map.once("load", run);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trainMode]);
 
   // Switch Mapbox Standard's built-in light preset (day/dawn/dusk/night) live,
   // any time — no full style reload needed.

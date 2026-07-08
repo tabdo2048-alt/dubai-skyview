@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Globe2, Satellite, Loader2, TrainFront, Sunrise, Sun, Sunset, Moon } from "lucide-react";
+import { Globe2, Satellite, Loader2, TrainFront, TramFront, Sunrise, Sun, Sunset, Moon } from "lucide-react";
 import { GoogleMapView } from "./GoogleMapView";
 import { MapboxView, type LightPreset } from "./MapboxView";
 import { CloudLayer } from "./CloudLayer";
@@ -28,6 +28,8 @@ export function MapContainer() {
     setMapMode,
     metroMode,
     setMetroMode,
+    trainMode,
+    setTrainMode,
     lightPreset,
     setLightPreset,
     selectedProjectId,
@@ -72,14 +74,15 @@ export function MapContainer() {
               onCameraChange={setCamera}
               active={mapMode === "3d"}
               metroMode={metroMode}
+              trainMode={trainMode}
               lightPreset={lightPreset}
             />
           </div>
         </>
       )}
 
-      {/* Premium aerial cloud layer — fades out as you zoom into the city */}
-      {mapMode === "3d" && <CloudLayer zoom={camera.zoom} />}
+      {/* Premium aerial cloud layer — fades out as you zoom into the city (both modes) */}
+      <CloudLayer zoom={camera.zoom} />
 
       {/* Mode toggle */}
       <div className="pointer-events-auto absolute right-4 top-4 z-20 flex gap-2">
@@ -98,13 +101,22 @@ export function MapContainer() {
           <Globe2 className="mr-1.5 h-4 w-4" /> 3D View
         </Button>
         {mapMode === "3d" && (
-          <Button
-            size="sm"
-            onClick={() => setMetroMode(!metroMode)}
-            className={`glass gold-hairline rounded-full px-4 ${metroMode ? "bg-gold text-gold-foreground" : "text-cream"}`}
-          >
-            <TrainFront className="mr-1.5 h-4 w-4" /> Metro
-          </Button>
+          <>
+            <Button
+              size="sm"
+              onClick={() => setMetroMode(!metroMode)}
+              className={`glass gold-hairline rounded-full px-4 ${metroMode ? "bg-gold text-gold-foreground" : "text-cream"}`}
+            >
+              <TrainFront className="mr-1.5 h-4 w-4" /> Metro
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => setTrainMode(!trainMode)}
+              className={`glass gold-hairline rounded-full px-4 ${trainMode ? "bg-gold text-gold-foreground" : "text-cream"}`}
+            >
+              <TramFront className="mr-1.5 h-4 w-4" /> Train
+            </Button>
+          </>
         )}
       </div>
 
