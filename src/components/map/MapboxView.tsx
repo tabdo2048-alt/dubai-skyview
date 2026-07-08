@@ -49,6 +49,9 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
   const metroTimeoutsRef = useRef<number[]>([]);
   const trainRafRef = useRef<number | null>(null);
   const styleLoadedRef = useRef(false);
+  // Latest toggle state, readable inside the (stale-closure) style.load handler.
+  const metroModeRef = useRef(metroMode);
+  const trainModeRef = useRef(trainMode);
   // Per-network station-reveal thresholds (0 = none revealed, 1 = all).
   const revealThreshRef = useRef<{ metro: number; train: number }>({ metro: 0, train: 0 });
   const { selectedProjectId, setSelectedProjectId } = useFiltersStore();
@@ -71,27 +74,43 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
     });
 
     map.on("style.load", () => {
-      // Mapbox Standard config: premium, clean, uncluttered — its own built-in
-      // 3D buildings, atmosphere and lighting are driven by lightPreset below.
-      applyStandardConfig(map, lightPreset);
+      // Each setup block is independently guarded: a failure in one (e.g. the
+      // custom style lacking a layer, or terrain/water erroring) must never
+      // abort the rest — especially the metro/train layers below.
+      try {
+        applyStandardConfig(map, lightPreset);
+      } catch (err) {
+        console.warn("applyStandardConfig failed (non-fatal)", err);
+      }
 
-      // Hide any remaining text labels/POI icons Standard's config didn't cover.
-      hideLabelsAndPois(map);
+      try {
+        hideLabelsAndPois(map);
+      } catch (err) {
+        console.warn("hideLabelsAndPois failed (non-fatal)", err);
+      }
 
       // Terrain — Standard doesn't enable elevation exaggeration by default.
-      if (!map.getSource("mapbox-dem")) {
-        map.addSource("mapbox-dem", {
-          type: "raster-dem",
-          url: "mapbox://mapbox.mapbox-terrain-dem-v1",
-          tileSize: 512,
-          maxzoom: 14,
-        });
-        map.setTerrain({ source: "mapbox-dem", exaggeration: 1.2 });
+      try {
+        if (!map.getSource("mapbox-dem")) {
+          map.addSource("mapbox-dem", {
+            type: "raster-dem",
+            url: "mapbox://mapbox.mapbox-terrain-dem-v1",
+            tileSize: 512,
+            maxzoom: 14,
+          });
+          map.setTerrain({ source: "mapbox-dem", exaggeration: 1.2 });
+        }
+      } catch (err) {
+        console.warn("terrain setup failed (non-fatal)", err);
       }
 
       // --- Metro 2030 network (layers created hidden; metroMode drives them) ---
-      addMetroLayers(map);
-      addStationLayers(map);
+      try {
+        addMetroLayers(map);
+        addStationLayers(map);
+      } catch (err) {
+        console.error("Failed to add metro/train layers", err);
+      }
 
       // --- 3D water + moving ships/yachts (three.js custom layer) ---
       if (!map.getLayer("dubai-water-3d")) {
@@ -104,6 +123,11 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
       }
 
       styleLoadedRef.current = true;
+
+      // If a network toggle was flipped on before the style finished loading,
+      // play it now that the layers exist.
+      if (metroModeRef.current) playNetworkSequence(map, METRO_LINES, "metro");
+      if (trainModeRef.current) playNetworkSequence(map, TRAIN_LINES, "train");
     });
 
     map.on("moveend", () => {
@@ -482,27 +506,42 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
 
   // Drive the metro network draw animation on/off as metroMode changes.
   useEffect(() => {
+    metroModeRef.current = metroMode;
     const map = mapRef.current;
     if (!map) return;
-    const run = () => {
-      if (metroMode) playNetworkSequence(map, METRO_LINES, "metro");
-      else stopNetworkAnimation(map, METRO_LINES, "metro");
-    };
-    if (styleLoadedRef.current) run();
-    else map.once("load", run);
+    // If the style is loaded, act now. Otherwise the style.load handler reads
+    // metroModeRef and plays it once the layers exist.
+    if (!styleLoadedRef.current) return;
+    // Self-heal: if for any reason the layers weren't added, add them now.
+    if (!map.getLayer("metro-red-reveal") && !map.getLayer(`metro-${METRO_LINES[0]?.id}-reveal`)) {
+      try {
+        addMetroLayers(map);
+        addStationLayers(map);
+      } catch (err) {
+        console.error("Failed to (re)add metro/train layers", err);
+      }
+    }
+    if (metroMode) playNetworkSequence(map, METRO_LINES, "metro");
+    else stopNetworkAnimation(map, METRO_LINES, "metro");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [metroMode]);
 
   // Drive the regional train network draw animation on/off as trainMode changes.
   useEffect(() => {
+    trainModeRef.current = trainMode;
     const map = mapRef.current;
     if (!map) return;
-    const run = () => {
-      if (trainMode) playNetworkSequence(map, TRAIN_LINES, "train");
-      else stopNetworkAnimation(map, TRAIN_LINES, "train");
-    };
-    if (styleLoadedRef.current) run();
-    else map.once("load", run);
+    if (!styleLoadedRef.current) return;
+    if (TRAIN_LINES[0] && !map.getLayer(`metro-${TRAIN_LINES[0].id}-reveal`)) {
+      try {
+        addMetroLayers(map);
+        addStationLayers(map);
+      } catch (err) {
+        console.error("Failed to (re)add metro/train layers", err);
+      }
+    }
+    if (trainMode) playNetworkSequence(map, TRAIN_LINES, "train");
+    else stopNetworkAnimation(map, TRAIN_LINES, "train");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trainMode]);
 
@@ -526,9 +565,13 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
   useEffect(() => {
     if (!mapRef.current || !active) return;
     const map = mapRef.current;
+    // The container was hidden (0-size) while inactive; Mapbox must recompute
+    // its dimensions now that it's visible or nothing renders / tiles are wrong.
+    map.resize();
     map.jumpTo({ center: [camera.lng, camera.lat], zoom: camera.zoom, pitch: 0, bearing: 0 });
     // Two-stage cinematic fly
     const t = setTimeout(() => {
+      map.resize();
       map.easeTo({
         pitch: DEFAULT_PITCH,
         bearing: DEFAULT_BEARING,

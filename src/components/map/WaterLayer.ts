@@ -8,10 +8,10 @@
 // buildings, terrain, and controls are untouched — this is purely an overlay.
 
 import * as THREE from "three";
-import { Water } from "three/examples/jsm/objects/Water.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import mapboxgl from "mapbox-gl";
 import { WATER_AREAS, BOAT_ROUTES, CLOUDS, boatPointAt, type BoatKind } from "@/lib/water";
+import { createOceanMaterial } from "@/lib/mapbox/OceanShader";
 import {
   acquireSharedRenderer,
   releaseSharedRenderer,
@@ -262,7 +262,7 @@ export function createWaterLayer(): mapboxgl.CustomLayerInterface {
   let scene: THREE.Scene;
   let camera: THREE.Camera;
   let map: mapboxgl.Map;
-  const waters: Water[] = [];
+  const waters: THREE.Mesh[] = [];
   const boats: Boat[] = [];
   const clouds: Cloud[] = [];
   let ref: MercatorRef;
@@ -296,13 +296,14 @@ export function createWaterLayer(): mapboxgl.CustomLayerInterface {
       const hemi = new THREE.HemisphereLight(0x87ceeb, 0xf5f3f0, 1.2);
       scene.add(hemi);
 
-      // Water — one Water mesh per hand-fitted coastline polygon.
-      const waterNormals = new THREE.TextureLoader().load(
-        "https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/waternormals.jpg",
-        (t) => {
-          t.wrapS = t.wrapT = THREE.RepeatWrapping;
-        },
-      );
+      // Ocean shader water — Gerstner waves for realistic surface
+      const oceanMaterial = createOceanMaterial({
+        waterColor: new THREE.Color(0x5edfff),
+        skyColor: new THREE.Color(0xb3e5fc),
+        transparency: 0.8,
+        shininess: 32.0,
+      });
+
       for (const area of WATER_AREAS) {
         const shape = new THREE.Shape();
         area.polygon.forEach(([lng, lat], i) => {
@@ -311,25 +312,23 @@ export function createWaterLayer(): mapboxgl.CustomLayerInterface {
           else shape.lineTo(p.x, p.y);
         });
         const geo = new THREE.ShapeGeometry(shape);
-        const water = new Water(geo, {
-          textureWidth: 1024,
-          textureHeight: 1024,
-          waterNormals,
-          sunDirection: new THREE.Vector3(-1, -1, 1).normalize(),
-          sunColor: 0xffffff,
-          waterColor: 0x5EDFFF, // premium sky-blue/cyan
-          distortionScale: 3.8,
-          alpha: 0.75, // semi-transparent to blend naturally
-          fog: false,
-        });
-        // Position the water slightly above ground for visibility
-        water.position.z = 2;
-        // Disable depth test so water isn't occluded by terrain/buildings
-        (water.material as THREE.Material).depthTest = false;
-        (water.material as THREE.Material).depthWrite = false;
-        water.renderOrder = 1;
-        waters.push(water);
-        scene.add(water);
+        // Subdivide geometry for smooth wave deformation
+        const subdividedGeo = new THREE.BufferGeometry();
+        const positions = new Float32Array(geo.attributes.position.array as ArrayLike<number>);
+        const indices = geo.index ? new Uint32Array(geo.index.array as ArrayLike<number>) : undefined;
+
+        subdividedGeo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+        if (indices) subdividedGeo.setIndex(new THREE.BufferAttribute(indices, 1));
+        subdividedGeo.setAttribute("uv", new THREE.BufferAttribute(
+          new Float32Array((positions.length / 3) * 2).map((_, i) => (i % 2 === 0 ? i / (positions.length / 6) : (Math.floor(i / 2) % 2))),
+          2
+        ));
+
+        const waterMesh = new THREE.Mesh(subdividedGeo, oceanMaterial.clone());
+        waterMesh.position.z = 2;
+        waterMesh.renderOrder = 1;
+        waters.push(waterMesh);
+        scene.add(waterMesh);
       }
 
       // Boats + wake trails. Procedural now; swaps to real glTF automatically

@@ -48,6 +48,19 @@ export function MapContainer() {
     setTimeout(() => setTransitioning(false), 1200);
   };
 
+  // Metro/Train animations only render on the 3D Mapbox view. Toggling either
+  // on from satellite mode auto-switches to 3D so the animation is visible.
+  const toggleMetro = () => {
+    const next = !metroMode;
+    if (next && mapMode !== "3d") switchMode("3d");
+    setMetroMode(next);
+  };
+  const toggleTrain = () => {
+    const next = !trainMode;
+    if (next && mapMode !== "3d") switchMode("3d");
+    setTrainMode(next);
+  };
+
   return (
     <div className="relative h-full w-full overflow-hidden bg-background">
       {cfgLoading && (
@@ -103,14 +116,14 @@ export function MapContainer() {
         </Button>
         <Button
           size="sm"
-          onClick={() => setMetroMode(!metroMode)}
+          onClick={toggleMetro}
           className={`glass gold-hairline rounded-full px-4 ${metroMode ? "bg-gold text-gold-foreground" : "text-cream"}`}
         >
           <TrainFront className="mr-1.5 h-4 w-4" /> Metro
         </Button>
         <Button
           size="sm"
-          onClick={() => setTrainMode(!trainMode)}
+          onClick={toggleTrain}
           className={`glass gold-hairline rounded-full px-4 ${trainMode ? "bg-gold text-gold-foreground" : "text-cream"}`}
         >
           <TramFront className="mr-1.5 h-4 w-4" /> Train
