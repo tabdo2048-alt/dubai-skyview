@@ -8,10 +8,10 @@
 // buildings, terrain, and controls are untouched — this is purely an overlay.
 
 import * as THREE from "three";
+import { Water } from "three/examples/jsm/objects/Water.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import mapboxgl from "mapbox-gl";
 import { WATER_AREAS, BOAT_ROUTES, CLOUDS, boatPointAt, type BoatKind } from "@/lib/water";
-import { createOceanMaterial } from "@/lib/mapbox/OceanShader";
 import {
   acquireSharedRenderer,
   releaseSharedRenderer,
@@ -262,7 +262,7 @@ export function createWaterLayer(): mapboxgl.CustomLayerInterface {
   let scene: THREE.Scene;
   let camera: THREE.Camera;
   let map: mapboxgl.Map;
-  const waters: THREE.Mesh[] = [];
+  const waters: Water[] = [];
   const boats: Boat[] = [];
   const clouds: Cloud[] = [];
   let ref: MercatorRef;
@@ -296,15 +296,16 @@ export function createWaterLayer(): mapboxgl.CustomLayerInterface {
       const hemi = new THREE.HemisphereLight(0x87ceeb, 0xf5f3f0, 1.2);
       scene.add(hemi);
 
-      // Ocean shader water — premium subtle animated layer over Mapbox base water
-      // The Mapbox base water provides the main sky-blue color (#8FEAFF).
-      // This Three.js layer adds only soft wave movement, shimmer, and reflection.
-      const oceanMaterial = createOceanMaterial({
-        waterColor: new THREE.Color(0x8FEAFF), // soft sky blue to match Mapbox
-        skyColor: new THREE.Color(0xd4f1ff), // very light sky for subtle reflections
-        transparency: 0.35, // mostly transparent — let Mapbox water show through
-        shininess: 16.0, // reduce specularity for subtle effect
-      });
+      // Three.js Water — a TRANSPARENT ANIMATED OVERLAY only. The Mapbox
+      // Standard base water provides the main sky-blue color; this layer adds
+      // subtle movement, shimmer and soft reflection on top — never a solid
+      // cartoon sheet. Uses the real waternormals normal-map for realism.
+      const waterNormals = new THREE.TextureLoader().load(
+        "https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/waternormals.jpg",
+        (t) => {
+          t.wrapS = t.wrapT = THREE.RepeatWrapping;
+        },
+      );
 
       for (const area of WATER_AREAS) {
         const shape = new THREE.Shape();
@@ -314,23 +315,25 @@ export function createWaterLayer(): mapboxgl.CustomLayerInterface {
           else shape.lineTo(p.x, p.y);
         });
         const geo = new THREE.ShapeGeometry(shape);
-        // Subdivide geometry for smooth wave deformation
-        const subdividedGeo = new THREE.BufferGeometry();
-        const positions = new Float32Array(geo.attributes.position.array as ArrayLike<number>);
-        const indices = geo.index ? new Uint32Array(geo.index.array as ArrayLike<number>) : undefined;
-
-        subdividedGeo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-        if (indices) subdividedGeo.setIndex(new THREE.BufferAttribute(indices, 1));
-        subdividedGeo.setAttribute("uv", new THREE.BufferAttribute(
-          new Float32Array((positions.length / 3) * 2).map((_, i) => (i % 2 === 0 ? i / (positions.length / 6) : (Math.floor(i / 2) % 2))),
-          2
-        ));
-
-        const waterMesh = new THREE.Mesh(subdividedGeo, oceanMaterial.clone());
-        waterMesh.position.z = 2;
-        waterMesh.renderOrder = 1;
-        waters.push(waterMesh);
-        scene.add(waterMesh);
+        const water = new Water(geo, {
+          textureWidth: 512,
+          textureHeight: 512,
+          waterNormals,
+          sunDirection: new THREE.Vector3(-0.2, -0.6, 1).normalize(),
+          sunColor: 0xffffff,
+          waterColor: 0x8FEAFF, // soft sky-blue, matches Mapbox base water
+          distortionScale: 0.6, // subtle waves — not cartoonish
+          alpha: 0.3, // mostly transparent overlay
+          fog: false,
+        });
+        // Slightly above ground; do not occlude terrain/buildings/metro.
+        water.position.z = 2;
+        (water.material as THREE.Material).transparent = true;
+        (water.material as THREE.Material).depthTest = false;
+        (water.material as THREE.Material).depthWrite = false;
+        water.renderOrder = 1;
+        waters.push(water);
+        scene.add(water);
       }
 
       // Boats + wake trails. Procedural now; swaps to real glTF automatically
@@ -410,12 +413,11 @@ export function createWaterLayer(): mapboxgl.CustomLayerInterface {
         }
       }
 
-      // Animate water shaders — soft subtle wave movement
+      // Animate water — very slow, subtle shimmer (premium calm sea)
       for (const w of waters) {
         const mat = w.material as THREE.ShaderMaterial;
         if (mat.uniforms && mat.uniforms["time"]) {
-          // Slow subtle animation — premium feel
-          mat.uniforms["time"].value += dt * 0.3;
+          mat.uniforms["time"].value += dt * 0.18;
         }
       }
 

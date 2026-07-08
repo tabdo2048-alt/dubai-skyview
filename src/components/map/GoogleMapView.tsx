@@ -6,7 +6,6 @@ import { DUBAI_BOUNDS, DUBAI_CENTER, DEFAULT_ZOOM } from "@/lib/dubai";
 import type { ProjectWithRelations } from "@/lib/types";
 import { useFiltersStore } from "@/store/filters";
 import { METRO_LINES, TRAIN_LINES } from "@/lib/metro";
-import { WATER_AREAS } from "@/lib/water";
 
 type Props = {
   apiKey: string;
@@ -38,7 +37,6 @@ export function GoogleMapView({ apiKey, projects, camera, onCameraChange, metroM
         className="h-full w-full"
         onCameraChanged={(e) => onCameraChange({ lat: e.detail.center.lat, lng: e.detail.center.lng, zoom: e.detail.zoom })}
       >
-        <PremiumWaterLayer />
         <ClusteredMarkers projects={projects} />
         {(metroMode || trainMode) && <MetroTrainPolylines metroMode={metroMode} trainMode={trainMode} />}
       </Map>
@@ -160,42 +158,6 @@ function MetroTrainPolylines({ metroMode, trainMode }: { metroMode: boolean; tra
       polylinesRef.current = [];
     };
   }, [map, metroMode, trainMode]);
-
-  return null;
-}
-
-// Premium water layer — same color as 3D Mapbox water for visual consistency
-function PremiumWaterLayer() {
-  const map = useMap();
-  const polygonsRef = useRef<any[]>([]);
-
-  useEffect(() => {
-    if (!map) return;
-
-    // Clear existing water polygons
-    polygonsRef.current.forEach((p: any) => p.setMap(null));
-    polygonsRef.current = [];
-
-    // Draw water areas with premium sky-blue color
-    WATER_AREAS.forEach((area) => {
-      const paths = area.polygon.map(([lng, lat]) => ({ lat, lng }));
-      const polygon = new (window as any).google.maps.Polygon({
-        paths,
-        strokeColor: "#7DDFF2",
-        strokeOpacity: 0.4,
-        strokeWeight: 1,
-        fillColor: "#8FEAFF",
-        fillOpacity: 0.3, // subtle overlay — don't obscure satellite
-        map,
-      });
-      polygonsRef.current.push(polygon);
-    });
-
-    return () => {
-      polygonsRef.current.forEach((p: any) => p.setMap(null));
-      polygonsRef.current = [];
-    };
-  }, [map]);
 
   return null;
 }
