@@ -59,6 +59,112 @@ function makeBox(w: number, d: number, h: number, color: number, z: number): THR
   return mesh;
 }
 
+// A tapered deck/superstructure block — a box whose front (bow, +X) face is
+// narrowed and slightly shortened so decks look sleek instead of brick-like.
+function makeTaperedDeck(len: number, beam: number, h: number, color: number, z: number, taper = 0.55): THREE.Mesh {
+  const geo = new THREE.BoxGeometry(len, beam, h);
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    if (x > 0) {
+      // Front half: pull the Y (beam) in and the top (Z) down toward the bow.
+      pos.setY(i, pos.getY(i) * taper);
+      if (pos.getZ(i) > 0) pos.setZ(i, pos.getZ(i) * 0.82);
+    }
+  }
+  geo.computeVertexNormals();
+  const mat = new THREE.MeshStandardMaterial({ color, metalness: 0.15, roughness: 0.65 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(len * 0.04, 0, z);
+  return mesh;
+}
+
+// A band of tinted-glass windows — a thin dark, slightly reflective strip that
+// wraps a deck's side, giving the superstructure that layered-glass look.
+function makeGlassBand(len: number, beam: number, h: number, z: number): THREE.Mesh {
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x1a2733,
+    metalness: 0.85,
+    roughness: 0.15,
+    transparent: true,
+    opacity: 0.9,
+  });
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(len, beam, h), mat);
+  mesh.position.set(len * 0.03, 0, z);
+  return mesh;
+}
+
+// A slim raked radar/comms mast for the top deck.
+function makeMast(height: number, color: number, z: number): THREE.Group {
+  const g = new THREE.Group();
+  const pole = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.1, 1.6, height, 8),
+    new THREE.MeshStandardMaterial({ color, metalness: 0.4, roughness: 0.5 }),
+  );
+  pole.rotation.x = Math.PI / 2;
+  pole.position.z = z + height / 2;
+  pole.rotation.y = -0.18; // slight aft rake
+  g.add(pole);
+  const dome = new THREE.Mesh(
+    new THREE.SphereGeometry(4, 10, 8),
+    new THREE.MeshStandardMaterial({ color: 0xf5f5f5, metalness: 0.2, roughness: 0.6 }),
+  );
+  dome.position.z = z + height * 0.55;
+  g.add(dome);
+  return g;
+}
+
+// A sleek multi-deck luxury yacht (white hull, teak deck, tinted glass, radar
+// mast, aft swim platform) — matches the classic Mediterranean superyacht look.
+function makeLuxuryYacht(hullColor: number): THREE.Group {
+  const g = new THREE.Group();
+  const white = 0xf7f5f0;
+  const teak = 0xcaa26a;
+  const glass = 0x101a24;
+
+  // Hull — long and lean.
+  g.add(makeHull(200, 42, 26, hullColor));
+
+  // Main deck (widest, longest), then a shorter upper deck, then a compact
+  // sun/flybridge deck — each stepped up and tapered toward the bow.
+  const mainDeck = makeTaperedDeck(150, 34, 18, white, 15, 0.5);
+  mainDeck.position.x = -8;
+  g.add(mainDeck);
+  g.add(makeGlassBand(120, 35.2, 6, 16));
+
+  const upperDeck = makeTaperedDeck(104, 27, 15, white, 31, 0.55);
+  upperDeck.position.x = -16;
+  g.add(upperDeck);
+  g.add(makeGlassBand(80, 27.6, 5, 31.5));
+
+  const flyDeck = makeTaperedDeck(60, 20, 10, white, 44, 0.6);
+  flyDeck.position.x = -30;
+  g.add(flyDeck);
+
+  // Teak aft swim platform + cockpit sole (low, at the stern, +teak color).
+  const platform = makeBox(30, 30, 3, teak, 6);
+  platform.position.x = -78;
+  g.add(platform);
+  const cockpit = makeBox(34, 28, 2, teak, 15.5);
+  cockpit.position.x = -52;
+  g.add(cockpit);
+
+  // Dark windshield wrap at the front of the upper deck.
+  const windshield = new THREE.Mesh(
+    new THREE.BoxGeometry(10, 24, 12),
+    new THREE.MeshStandardMaterial({ color: glass, metalness: 0.8, roughness: 0.2, transparent: true, opacity: 0.85 }),
+  );
+  windshield.position.set(30, 0, 33);
+  g.add(windshield);
+
+  // Radar mast on the flybridge.
+  const mast = makeMast(26, white, 49);
+  mast.position.x = -34;
+  g.add(mast);
+
+  return g;
+}
+
 function makePlaceholder(type: ModelType, color: number): THREE.Group {
   const g = new THREE.Group();
   const deck = 0xf5ead1;
@@ -66,9 +172,11 @@ function makePlaceholder(type: ModelType, color: number): THREE.Group {
     g.add(makeHull(90, 30, 15, color));
     g.add(makeBox(42, 20, 12, deck, 12));
   } else if (type === "yacht") {
-    g.add(makeHull(180, 45, 27, color));
-    g.add(makeBox(96, 34, 20, deck, 16));
-    g.add(makeBox(52, 28, 14, deck, 34));
+    g.add(makeLuxuryYacht(color));
+    // makeLuxuryYacht already returns a fully-assembled group; add and skip the
+    // shared bow-alignment rotation below (it applies its own orientation).
+    g.rotation.z = -Math.PI / 2;
+    return g;
   } else if (type === "ship") {
     g.add(makeHull(330, 69, 42, color));
     const tower = makeBox(66, 58, 64, deck, 40);
@@ -260,7 +368,8 @@ export function createModel3DLayer(registry: ModelConfig[], controller?: { shoul
         instances.push(inst);
 
         // Try the real GLB; fall back to a low-poly placeholder on any failure.
-        const color = PLACEHOLDER_COLORS[config.type] ?? 0xffffff;
+        // A per-model `color` overrides the type's default hull color.
+        const color = config.color ?? PLACEHOLDER_COLORS[config.type] ?? 0xffffff;
         loader.load(
           config.modelUrl,
           (gltf) => {

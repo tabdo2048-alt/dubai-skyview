@@ -27,6 +27,8 @@ export type ModelConfig = {
   scale: number;
   /** Euler rotation in radians [x, y, z], applied before heading alignment. */
   rotation: [number, number, number];
+  /** Optional hull color override for the procedural placeholder (hex, e.g. 0xffffff). */
+  color?: number;
 
   /** When true, the model advances along `route` each frame. */
   animate: boolean;
