@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { emptyFilters, type ProjectFilters } from "@/lib/types";
+import type { LightPreset } from "@/components/map/MapboxView";
 
 type MapMode = "satellite" | "3d";
 
@@ -13,6 +14,12 @@ type FiltersStore = {
 
   mapMode: MapMode;
   setMapMode: (mode: MapMode) => void;
+
+  metroMode: boolean;
+  setMetroMode: (on: boolean) => void;
+
+  lightPreset: LightPreset;
+  setLightPreset: (preset: LightPreset) => void;
 
   sidebarOpen: boolean;
   setSidebarOpen: (open: boolean) => void;
@@ -28,6 +35,12 @@ export const useFiltersStore = create<FiltersStore>((set) => ({
 
   mapMode: "satellite",
   setMapMode: (mode) => set({ mapMode: mode }),
+
+  metroMode: false,
+  setMetroMode: (on) => set({ metroMode: on }),
+
+  lightPreset: "day",
+  setLightPreset: (preset) => set({ lightPreset: preset }),
 
   sidebarOpen: true,
   setSidebarOpen: (open) => set({ sidebarOpen: open }),

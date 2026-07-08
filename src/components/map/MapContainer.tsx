@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Globe2, Satellite, Loader2, TrainFront } from "lucide-react";
+import { Globe2, Satellite, Loader2, TrainFront, Sunrise, Sun, Sunset, Moon } from "lucide-react";
 import { GoogleMapView } from "./GoogleMapView";
-import { MapboxView } from "./MapboxView";
+import { MapboxView, type LightPreset } from "./MapboxView";
+import { CloudLayer } from "./CloudLayer";
 import { ProjectPopup } from "./ProjectPopup";
 import { useMapConfig } from "@/hooks/use-map-config";
 import { useFiltersStore } from "@/store/filters";
@@ -11,10 +12,27 @@ import { DUBAI_CENTER, DEFAULT_ZOOM } from "@/lib/dubai";
 import { METRO_LINES } from "@/lib/metro";
 import { Button } from "@/components/ui/button";
 
+const LIGHT_PRESETS: { value: LightPreset; label: string; Icon: typeof Sun }[] = [
+  { value: "dawn", label: "Dawn", Icon: Sunrise },
+  { value: "day", label: "Day", Icon: Sun },
+  { value: "dusk", label: "Dusk", Icon: Sunset },
+  { value: "night", label: "Night", Icon: Moon },
+];
+
 export function MapContainer() {
   const { data: cfg, isLoading: cfgLoading } = useMapConfig();
   const { data: projects = [] } = useProjects();
-  const { filters, mapMode, setMapMode, selectedProjectId, setSelectedProjectId } = useFiltersStore();
+  const {
+    filters,
+    mapMode,
+    setMapMode,
+    metroMode,
+    setMetroMode,
+    lightPreset,
+    setLightPreset,
+    selectedProjectId,
+    setSelectedProjectId,
+  } = useFiltersStore();
   const [camera, setCamera] = useState({ lat: DUBAI_CENTER.lat, lng: DUBAI_CENTER.lng, zoom: DEFAULT_ZOOM });
   const [transitioning, setTransitioning] = useState(false);
 
@@ -53,10 +71,15 @@ export function MapContainer() {
               camera={camera}
               onCameraChange={setCamera}
               active={mapMode === "3d"}
+              metroMode={metroMode}
+              lightPreset={lightPreset}
             />
           </div>
         </>
       )}
+
+      {/* Premium aerial cloud layer — fades out as you zoom into the city */}
+      {mapMode === "3d" && <CloudLayer zoom={camera.zoom} />}
 
       {/* Mode toggle */}
       <div className="pointer-events-auto absolute right-4 top-4 z-20 flex gap-2">
@@ -74,10 +97,38 @@ export function MapContainer() {
         >
           <Globe2 className="mr-1.5 h-4 w-4" /> 3D View
         </Button>
+        {mapMode === "3d" && (
+          <Button
+            size="sm"
+            onClick={() => setMetroMode(!metroMode)}
+            className={`glass gold-hairline rounded-full px-4 ${metroMode ? "bg-gold text-gold-foreground" : "text-cream"}`}
+          >
+            <TrainFront className="mr-1.5 h-4 w-4" /> Metro
+          </Button>
+        )}
       </div>
 
-      {/* Metro 2030 legend — only meaningful in the 3D view */}
+      {/* Light preset switcher — Mapbox Standard's built-in day/dawn/dusk/night */}
       {mapMode === "3d" && (
+        <div className="pointer-events-auto glass gold-hairline absolute right-4 top-16 z-20 flex gap-1 rounded-full p-1">
+          {LIGHT_PRESETS.map(({ value, label, Icon }) => (
+            <button
+              key={value}
+              type="button"
+              title={label}
+              onClick={() => setLightPreset(value)}
+              className={`grid h-8 w-8 place-items-center rounded-full transition-colors ${
+                lightPreset === value ? "bg-gold text-gold-foreground" : "text-cream hover:bg-white/10"
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Metro 2030 legend — only shown while metro mode is playing */}
+      {mapMode === "3d" && metroMode && (
         <div className="pointer-events-auto absolute bottom-6 left-4 z-20 max-w-[220px]">
           <div className="glass gold-hairline rounded-2xl p-3.5">
             <div className="mb-2 flex items-center gap-1.5 font-display text-sm text-cream">
@@ -97,8 +148,8 @@ export function MapContainer() {
               ))}
             </ul>
             <p className="mt-2.5 border-t border-white/10 pt-2 text-[10px] leading-tight text-muted-foreground">
-              Tap a metro line to animate the route and ride along it. Watch yachts &amp; ships sail the
-              Marina, Palm and Creek waters.
+              Watch the network draw itself across Dubai. Yachts &amp; ships sail the Marina, Palm and Creek
+              waters.
             </p>
           </div>
         </div>

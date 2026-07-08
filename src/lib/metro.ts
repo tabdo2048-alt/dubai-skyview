@@ -165,6 +165,40 @@ export const METRO_LINES: MetroLine[] = [RED, GREEN, BLUE, PURPLE];
 
 export const METRO_LINE_BY_ID = Object.fromEntries(METRO_LINES.map((l) => [l.id, l])) as Record<string, MetroLine>;
 
+// Closest point on `path` to `coord`, expressed as a 0..1 fraction of the
+// path's total length — used to know when the draw animation "reaches" a
+// station so it can appear/pulse at the right moment.
+function fractionAlongPathNearest(path: [number, number][], coord: [number, number]): number {
+  const { cum, total } = pathLengthSegments(path);
+  let best = { distSq: Infinity, dist: 0 };
+  for (let i = 1; i < path.length; i++) {
+    const [ax, ay] = path[i - 1];
+    const [bx, by] = path[i];
+    const dx = bx - ax;
+    const dy = by - ay;
+    const lenSq = dx * dx + dy * dy || 1e-12;
+    const t = Math.max(0, Math.min(1, ((coord[0] - ax) * dx + (coord[1] - ay) * dy) / lenSq));
+    const px = ax + dx * t;
+    const py = ay + dy * t;
+    const distSq = (coord[0] - px) ** 2 + (coord[1] - py) ** 2;
+    if (distSq < best.distSq) {
+      const segLen = Math.hypot(dx, dy);
+      best = { distSq, dist: cum[i - 1] + segLen * t };
+    }
+  }
+  return total > 0 ? best.dist / total : 0;
+}
+
+// Precomputed once at module load: for every line id, each station's 0..1
+// position along that line's path, so the draw animation can reveal stations
+// exactly as the line reaches them.
+export const STATION_PROGRESS: Record<string, number> = {};
+for (const line of METRO_LINES) {
+  for (const station of line.stations) {
+    STATION_PROGRESS[station.id] = fractionAlongPathNearest(line.path, station.coord);
+  }
+}
+
 // Total geodesic-ish length of a path in degrees, used to distribute the train.
 export function pathLengthSegments(path: [number, number][]): { cum: number[]; total: number } {
   const cum: number[] = [0];
