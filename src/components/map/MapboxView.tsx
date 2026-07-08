@@ -172,11 +172,11 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
       if (map.getLayer(id)) (map.setPaintProperty as (id: string, prop: string, value: unknown) => void)(id, prop, value);
     };
 
-    // Muted base water so the animated Three.js shimmer above it is clearly
-    // distinguishable (a bright base would swamp the moving overlay). The
-    // Three.js layer supplies the lively sky-blue movement on top.
-    setColor("water", "fill-color", "#7ECAD8");
-    setColor("water", "fill-opacity", 0.9);
+    // Mapbox native water is the REAL, main visible sea. The Three.js layer is
+    // only a faint additive shimmer on top, so let the base water read as a
+    // natural, calm sea tone (not muted, not neon).
+    setColor("water", "fill-color", "#9BD8E8");
+    setColor("water", "fill-opacity", 1);
 
     // Brighten land/background for premium look
     const layers = map.getStyle()?.layers ?? [];

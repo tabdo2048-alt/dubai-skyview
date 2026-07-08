@@ -240,63 +240,73 @@ function makeCloudTexture(): THREE.Texture {
   return tex;
 }
 
-// --- Animated water shader ------------------------------------------------
-// A self-contained animated water material. We deliberately DO NOT use three's
-// stock `Water` object here: `Water` runs an internal reflection render pass
-// that reads `camera.matrixWorld` and mutates the projection matrix. In a
-// Mapbox custom layer the camera is a bare THREE.Camera whose projectionMatrix
-// we overwrite by hand each frame and whose matrixWorld stays identity — so the
-// reflector renders an empty/garbage mirror and the water reads as a flat,
-// static tint. This shader has no reflection pass and no camera dependency:
-// its whole appearance is driven by `uTime`, so it visibly animates.
+// --- Water shimmer overlay -------------------------------------------------
+// This is deliberately NOT a visible ocean surface. The real, visible sea is
+// Mapbox's OWN native water (satellite imagery / Standard water layer). This
+// mesh renders ALMOST NOTHING: a nearly-transparent additive layer that only
+// adds faint moving light — soft wave bands, thin shimmer lines, and a very
+// light reflection sheen — so the user mostly sees Mapbox water that gently
+// moves, never a separate cartoon Three.js ocean.
+//
+// We do NOT use three's stock `Water` object: it runs an internal reflection
+// render pass that reads `camera.matrixWorld` and rewrites the projection
+// matrix. In a Mapbox custom layer the camera is a bare THREE.Camera whose
+// projectionMatrix we overwrite by hand each frame and whose matrixWorld stays
+// identity, so the reflector renders an empty mirror and the water collapses to
+// a flat static tint. This shimmer shader has no reflection pass and no camera
+// dependency — its faint motion is driven entirely by `uTime`.
 const WATER_VERTEX = /* glsl */ `
-  varying vec2 vUv;
   varying vec3 vWorld;
-  uniform float uTime;
   void main() {
-    vUv = uv;
-    vec3 pos = position;
-    // Gentle vertical ripple so the surface silhouette moves, not just its color.
-    pos.z += sin(pos.x * 0.020 + uTime * 0.9) * 0.8
-           + sin(pos.y * 0.017 - uTime * 0.7) * 0.8;
-    vWorld = pos;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+    vWorld = position;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
 
+// Additive shimmer: the fragment output is ONLY the highlight color scaled by a
+// small, mostly-zero intensity. With additive blending, near-zero intensity =
+// invisible (Mapbox water shows through untouched); the thin crest lines add a
+// gentle glint. There is no solid fill — the polygon is transparent everywhere
+// except where the moving shimmer bands light up.
 const WATER_FRAGMENT = /* glsl */ `
   precision highp float;
-  varying vec2 vUv;
   varying vec3 vWorld;
   uniform float uTime;
-  uniform vec3 uDeep;
-  uniform vec3 uShallow;
-  uniform vec3 uHighlight;
-  uniform float uOpacity;
+  uniform vec3 uShimmer;
+  uniform float uDistortion; // wave sharpness/steepness (0.15 .. 0.35)
+  uniform float uOpacity;    // overall strength (0.12 .. 0.22)
 
-  // Cheap flowing bands of brightness — reads as moving light on water.
-  float band(vec2 p, float freq, float speed, float t) {
-    return sin((p.x + p.y) * freq + t * speed) * 0.5 + 0.5;
+  float wave(vec2 p, float speed, float t) {
+    return sin((p.x + p.y) + t * speed) * 0.5 + 0.5;
   }
 
   void main() {
     float t = uTime;
-    // Use world XY (metres) so the pattern scale is stable regardless of zoom.
-    vec2 p = vWorld.xy * 0.006;
-    float w1 = band(p, 1.0, 1.1, t);
-    float w2 = band(p * 1.7 + 4.3, 1.0, -0.8, t);
-    float shimmer = band(p * 6.0, 1.0, 2.6, t);
+    // World XY in metres → stable pattern scale independent of zoom.
+    vec2 p = vWorld.xy * 0.010;
 
-    vec3 base = mix(uDeep, uShallow, clamp(w1 * 0.6 + w2 * 0.4, 0.0, 1.0));
-    // Bright crest streaks drifting across the surface.
-    float crest = smoothstep(0.82, 1.0, band(p * vec2(1.4, 3.2), 1.0, 0.9, t));
-    vec3 color = mix(base, uHighlight, crest * 0.5 + shimmer * 0.12);
+    // Two slow, broad wave bands drifting in opposite directions.
+    float w1 = wave(p * 1.0, 1.1, t);
+    float w2 = wave(p * 1.6 + 3.7, -0.8, t);
+    float swell = w1 * 0.6 + w2 * 0.4;
 
-    gl_FragColor = vec4(color, uOpacity);
+    // Thin bright shimmer lines — the main thing the eye notices moving.
+    float lines = wave(p * vec2(2.2, 5.0), 0.9, t);
+    float glint = smoothstep(1.0 - uDistortion, 1.0, lines);
+
+    // A very light broad sheen so the whole basin isn't dead flat.
+    float sheen = smoothstep(0.55, 1.0, swell) * 0.25;
+
+    // Intensity is mostly near zero → with additive blending the overlay is
+    // invisible there and Mapbox's real water shows through unchanged.
+    float intensity = (glint * 0.9 + sheen) * uOpacity;
+
+    gl_FragColor = vec4(uShimmer * intensity, intensity);
   }
 `;
 
-// Build the animated water material. `uTime` is advanced every frame in render().
+// Build the shimmer overlay material — additive, very low opacity, no solid
+// fill. `uTime` is advanced slowly each frame in render() (dt * 0.08).
 function makeWaterMaterial(): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     vertexShader: WATER_VERTEX,
@@ -304,14 +314,14 @@ function makeWaterMaterial(): THREE.ShaderMaterial {
     transparent: true,
     depthTest: false,
     depthWrite: false,
+    blending: THREE.AdditiveBlending, // only ADD faint light over Mapbox water
     side: THREE.DoubleSide,
     uniforms: {
       uTime: { value: 0 },
-      // Soft sky-blue palette that blends with the Mapbox base water.
-      uDeep: { value: new THREE.Color(0x5ec8e6) },
-      uShallow: { value: new THREE.Color(0x8feaff) },
-      uHighlight: { value: new THREE.Color(0xe6fbff) },
-      uOpacity: { value: 0.34 },
+      // Pale icy highlight (0xBEEFFF) — the shimmer/reflection tint only.
+      uShimmer: { value: new THREE.Color(0xbeefff) },
+      uDistortion: { value: 0.25 }, // 0.15 .. 0.35
+      uOpacity: { value: 0.18 }, // 0.12 .. 0.22 — very light
     },
   });
 }
@@ -374,10 +384,10 @@ export function createWaterLayer(): mapboxgl.CustomLayerInterface {
       const hemi = new THREE.HemisphereLight(0x87ceeb, 0xf5f3f0, 1.2);
       scene.add(hemi);
 
-      // Animated water — a TRANSPARENT ANIMATED OVERLAY only. The Mapbox base
-      // water supplies the underlying tone; this layer adds visible movement and
-      // shimmer on top via a time-driven shader (see makeWaterMaterial). One
-      // subdivided mesh per basin so it never covers land/buildings.
+      // Shimmer overlay — a nearly-invisible additive layer clipped to each
+      // Dubai water basin. The real, visible sea is Mapbox's own native water;
+      // this only adds faint moving light on top (see makeWaterMaterial). One
+      // flat mesh per basin so it never covers land/buildings.
       for (const area of WATER_AREAS) {
         const shape = new THREE.Shape();
         area.polygon.forEach(([lng, lat], i) => {
@@ -385,11 +395,10 @@ export function createWaterLayer(): mapboxgl.CustomLayerInterface {
           if (i === 0) shape.moveTo(p.x, p.y);
           else shape.lineTo(p.x, p.y);
         });
-        // Subdivide so the vertex ripple in the shader has geometry to move.
-        const geo = new THREE.ShapeGeometry(shape, 12);
+        const geo = new THREE.ShapeGeometry(shape);
         const water = new THREE.Mesh(geo, makeWaterMaterial());
-        // Slightly above ground; do not occlude terrain/buildings/metro.
-        water.position.z = 2;
+        // Sit right at the water surface; do not occlude terrain/buildings/metro.
+        water.position.z = 1;
         water.renderOrder = 1;
         waters.push(water);
         scene.add(water);
@@ -477,12 +486,12 @@ export function createWaterLayer(): mapboxgl.CustomLayerInterface {
         }
       }
 
-      // Animate water — advance the shader clock so the surface visibly moves.
-      // dt * 0.6 gives a calm-but-clearly-moving sea (not a frozen sheet).
+      // Advance the shimmer clock very slowly — the sea should look like real
+      // Mapbox water that only gently moves, not an animated ocean.
       for (const w of waters) {
         const mat = w.material as THREE.ShaderMaterial;
         if (mat.uniforms && mat.uniforms.uTime) {
-          mat.uniforms.uTime.value += dt * 0.6;
+          mat.uniforms.uTime.value += dt * 0.08;
         }
       }
 
