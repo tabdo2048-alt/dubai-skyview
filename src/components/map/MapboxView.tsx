@@ -22,6 +22,7 @@ type Props = {
   trainMode: boolean;
   lightPreset: LightPreset;
   mode?: "satellite" | "3d";
+  overlayMode?: boolean;
 };
 
 // Small SVG metro/train icon used for the project markers.
@@ -39,7 +40,7 @@ const TRAIN_MARKER_SVG = `
 const DRAW_DURATION = 2400; // ms per line's draw animation
 const LINE_STAGGER = 350; // ms delay between each line starting to draw
 
-export function MapboxView({ accessToken, projects, camera, onCameraChange, active, metroMode, trainMode, lightPreset, mode = "3d" }: Props) {
+export function MapboxView({ accessToken, projects, camera, onCameraChange, active, metroMode, trainMode, lightPreset, mode = "3d", overlayMode = false }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<Map<string, mapboxgl.Marker>>(new globalThis.Map());
@@ -74,34 +75,57 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
     });
 
     map.on("style.load", () => {
-      // Each setup block is independently guarded: a failure in one (e.g. the
-      // custom style lacking a layer, or terrain/water erroring) must never
-      // abort the rest — especially the metro/train layers below.
-      try {
-        applyStandardConfig(map, lightPreset);
-      } catch (err) {
-        console.warn("applyStandardConfig failed (non-fatal)", err);
-      }
-
-      try {
-        hideLabelsAndPois(map);
-      } catch (err) {
-        console.warn("hideLabelsAndPois failed (non-fatal)", err);
-      }
-
-      // Terrain — Standard doesn't enable elevation exaggeration by default.
-      try {
-        if (!map.getSource("mapbox-dem")) {
-          map.addSource("mapbox-dem", {
-            type: "raster-dem",
-            url: "mapbox://mapbox.mapbox-terrain-dem-v1",
-            tileSize: 512,
-            maxzoom: 14,
-          });
-          map.setTerrain({ source: "mapbox-dem", exaggeration: 1.2 });
+      // Overlay mode: only show metro/train lines over the base satellite map.
+      // Hide all base layers (buildings, water, terrain, labels).
+      if (overlayMode) {
+        try {
+          const layers = map.getStyle()?.layers ?? [];
+          for (const layer of layers) {
+            // Hide all layers except our metro/train layers
+            if (!layer.id.includes("metro") && !layer.id.includes("station")) {
+              map.setLayoutProperty(layer.id, "visibility", "none");
+            }
+          }
+        } catch (err) {
+          console.warn("Failed to hide overlay base layers", err);
         }
-      } catch (err) {
-        console.warn("terrain setup failed (non-fatal)", err);
+      } else {
+        // Normal mode: show the full Mapbox scene
+        try {
+          applyStandardConfig(map, lightPreset);
+        } catch (err) {
+          console.warn("applyStandardConfig failed (non-fatal)", err);
+        }
+
+        try {
+          hideLabelsAndPois(map);
+        } catch (err) {
+          console.warn("hideLabelsAndPois failed (non-fatal)", err);
+        }
+
+        // Terrain
+        try {
+          if (!map.getSource("mapbox-dem")) {
+            map.addSource("mapbox-dem", {
+              type: "raster-dem",
+              url: "mapbox://mapbox.mapbox-terrain-dem-v1",
+              tileSize: 512,
+              maxzoom: 14,
+            });
+            map.setTerrain({ source: "mapbox-dem", exaggeration: 1.2 });
+          }
+        } catch (err) {
+          console.warn("terrain setup failed (non-fatal)", err);
+        }
+
+        // 3D water + boats
+        if (!map.getLayer("dubai-water-3d")) {
+          try {
+            map.addLayer(createWaterLayer());
+          } catch (err) {
+            console.error("Failed to add 3D water layer", err);
+          }
+        }
       }
 
       // --- Metro 2030 network (layers created hidden; metroMode drives them) ---
@@ -110,16 +134,6 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
         addStationLayers(map);
       } catch (err) {
         console.error("Failed to add metro/train layers", err);
-      }
-
-      // --- 3D water + moving ships/yachts (three.js custom layer) ---
-      if (!map.getLayer("dubai-water-3d")) {
-        try {
-          map.addLayer(createWaterLayer());
-        } catch (err) {
-          // Non-fatal: metro/buildings still render if the water layer fails.
-          console.error("Failed to add 3D water layer", err);
-        }
       }
 
       styleLoadedRef.current = true;
