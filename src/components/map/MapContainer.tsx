@@ -67,6 +67,7 @@ export function MapContainer() {
               metroMode={metroMode}
               trainMode={trainMode}
               lightPreset={lightPreset}
+              mode="satellite"
             />
           </div>
           <div className={mapMode === "3d" ? "absolute inset-0" : "absolute inset-0 opacity-0 pointer-events-none"}>
@@ -79,6 +80,7 @@ export function MapContainer() {
               metroMode={metroMode}
               trainMode={trainMode}
               lightPreset={lightPreset}
+              mode="3d"
             />
           </div>
         </>

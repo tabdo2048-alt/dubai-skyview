@@ -21,6 +21,7 @@ type Props = {
   metroMode: boolean;
   trainMode: boolean;
   lightPreset: LightPreset;
+  mode?: "satellite" | "3d";
 };
 
 // Small SVG metro/train icon used for the project markers.
@@ -38,7 +39,7 @@ const TRAIN_MARKER_SVG = `
 const DRAW_DURATION = 2400; // ms per line's draw animation
 const LINE_STAGGER = 350; // ms delay between each line starting to draw
 
-export function MapboxView({ accessToken, projects, camera, onCameraChange, active, metroMode, trainMode, lightPreset }: Props) {
+export function MapboxView({ accessToken, projects, camera, onCameraChange, active, metroMode, trainMode, lightPreset, mode = "3d" }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<Map<string, mapboxgl.Marker>>(new globalThis.Map());
@@ -60,8 +61,8 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
       style: "mapbox://styles/2shraf-tamer/cmrarm85z002x01shfp2680g9",
       center: [camera.lng, camera.lat],
       zoom: camera.zoom,
-      pitch: 0,
-      bearing: 0,
+      pitch: mode === "3d" ? 0 : 0,
+      bearing: mode === "3d" ? 0 : 0,
       maxBounds: [
         [DUBAI_BOUNDS.west, DUBAI_BOUNDS.south],
         [DUBAI_BOUNDS.east, DUBAI_BOUNDS.north],

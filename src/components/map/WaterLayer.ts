@@ -85,41 +85,41 @@ function makeProceduralBoat(kind: BoatKind, color: number): THREE.Group {
   const deckColor = 0xf5ead1;
 
   if (kind === "abra") {
-    const hull = makeHull(60, 20, 10, color);
+    const hull = makeHull(90, 30, 15, color);
     g.add(hull);
-    const canopy = makeCabin(30, 14, 10, deckColor);
-    canopy.position.z = 8;
+    const canopy = makeCabin(45, 21, 15, deckColor);
+    canopy.position.z = 12;
     g.add(canopy);
   } else if (kind === "yacht") {
-    const hull = makeHull(120, 30, 18, color);
+    const hull = makeHull(180, 45, 27, color);
     g.add(hull);
-    const deck = makeCabin(64, 24, 14, deckColor);
-    deck.position.set(-6, 0, 10);
+    const deck = makeCabin(96, 36, 21, deckColor);
+    deck.position.set(-9, 0, 15);
     g.add(deck);
-    const upper = makeCabin(36, 20, 10, deckColor);
-    upper.position.set(-16, 0, 24);
+    const upper = makeCabin(54, 30, 15, deckColor);
+    upper.position.set(-24, 0, 36);
     g.add(upper);
-    const glass = new THREE.Mesh(new THREE.BoxGeometry(58, 21, 1.5), darkMat);
-    glass.position.set(-6, 0, 17);
+    const glass = new THREE.Mesh(new THREE.BoxGeometry(87, 31.5, 2.25), darkMat);
+    glass.position.set(-9, 0, 25.5);
     g.add(glass);
-    const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.9, 26, 8), darkMat);
-    mast.position.set(20, 0, 13);
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.35, 39, 8), darkMat);
+    mast.position.set(30, 0, 19.5);
     g.add(mast);
   } else {
     // Large cargo ship
-    const hull = makeHull(220, 46, 28, color);
+    const hull = makeHull(330, 69, 42, color);
     g.add(hull);
-    const tower = makeCabin(46, 40, 44, deckColor);
-    tower.position.set(-58, 0, 22);
+    const tower = makeCabin(69, 60, 66, deckColor);
+    tower.position.set(-87, 0, 33);
     g.add(tower);
-    const funnel = new THREE.Mesh(new THREE.CylinderGeometry(8, 10, 30, 12), darkMat);
-    funnel.position.set(-68, 0, 70);
+    const funnel = new THREE.Mesh(new THREE.CylinderGeometry(12, 15, 45, 12), darkMat);
+    funnel.position.set(-102, 0, 105);
     g.add(funnel);
     // Additional cargo containers on deck for visual detail
     const containerMat = new THREE.MeshStandardMaterial({ color: 0x8b7355, metalness: 0.1, roughness: 0.8 });
     for (let i = 0; i < 3; i++) {
-      const container = new THREE.Mesh(new THREE.BoxGeometry(20, 15, 20), containerMat);
-      container.position.set(-30 + i * 35, 0, 25);
+      const container = new THREE.Mesh(new THREE.BoxGeometry(30, 22.5, 30), containerMat);
+      container.position.set(-45 + i * 52.5, 0, 37.5);
       g.add(container);
     }
   }
