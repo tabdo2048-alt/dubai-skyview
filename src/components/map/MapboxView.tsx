@@ -57,7 +57,7 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
     mapboxgl.accessToken = accessToken;
     const map = new mapboxgl.Map({
       container: containerRef.current,
-      style: "mapbox://styles/mapbox/standard",
+      style: "mapbox://styles/2shraf-tamer/cmrarm85z002x01shfp2680g9",
       center: [camera.lng, camera.lat],
       zoom: camera.zoom,
       pitch: 0,
@@ -138,26 +138,28 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
   // night), a warm premium color theme, decluttered labels, and a brighter
   // turquoise water tint layered on top via setPaintProperty.
   function applyStandardConfig(map: mapboxgl.Map, preset: LightPreset) {
-    const setConfig = (key: string, value: unknown) => {
-      try {
-        map.setConfigProperty("basemap", key, value);
-      } catch {
-        // Config key not present in this style version — ignore.
-      }
-    };
-    setConfig("lightPreset", preset);
-    setConfig("theme", "faded"); // Standard's softest, warmest built-in theme
-    setConfig("showPointOfInterestLabels", false);
-    setConfig("showTransitLabels", false);
-    setConfig("showPlaceLabels", true);
-    setConfig("showRoadLabels", false);
-    setConfig("show3dObjects", true);
-
-    // Brighter Dubai-sea turquoise, layered over Standard's own water color.
+    // For custom styles, use paint properties to brighten
     const setColor = (id: string, prop: string, value: unknown) => {
       if (map.getLayer(id)) (map.setPaintProperty as (id: string, prop: string, value: unknown) => void)(id, prop, value);
     };
-    setColor("water", "fill-color", "#6fd8cd");
+
+    // Brighten sky-blue water
+    setColor("water", "fill-color", "#5EDFFF");
+    setColor("water", "fill-opacity", 0.8);
+
+    // Brighten land/background for premium look
+    const layers = map.getStyle()?.layers ?? [];
+    for (const layer of layers) {
+      if (layer.type === "fill" && (layer.id.includes("land") || layer.id === "background")) {
+        setColor(layer.id, "fill-color", "#f5f3f0"); // bright beige
+        setColor(layer.id, "fill-opacity", 1);
+      }
+      // Brighten buildings
+      if (layer.type === "fill-extrusion" && layer.id.includes("building")) {
+        setColor(layer.id, "fill-extrusion-color", "#f0e8e0");
+        setColor(layer.id, "fill-extrusion-opacity", 0.95);
+      }
+    }
   }
 
   // Typed wrapper so we can pass hand-built style-expression arrays without
