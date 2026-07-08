@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Globe2, Satellite, Loader2, TrainFront, TramFront, Sunrise, Sun, Sunset, Moon } from "lucide-react";
 import { MapboxView, type LightPreset } from "./MapboxView";
@@ -37,7 +37,7 @@ export function MapContainer() {
   const [camera, setCamera] = useState({ lat: DUBAI_CENTER.lat, lng: DUBAI_CENTER.lng, zoom: DEFAULT_ZOOM });
   const [transitioning, setTransitioning] = useState(false);
 
-  const filtered = filterProjects(projects, filters);
+  const filtered = useMemo(() => filterProjects(projects, filters), [projects, filters]);
   const selected = filtered.find((p) => p.id === selectedProjectId) ?? projects.find((p) => p.id === selectedProjectId) ?? null;
 
   const switchMode = (mode: "satellite" | "3d") => {

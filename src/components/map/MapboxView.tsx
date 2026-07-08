@@ -60,6 +60,10 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
   const show3DModelsRef = useRef(show3DModels);
   // Per-network station-reveal thresholds (0 = none revealed, 1 = all).
   const revealThreshRef = useRef<{ metro: number; train: number }>({ metro: 0, train: 0 });
+  // Track whether this map instance is the active one and whether the tab is visible.
+  // Threaded into custom layers so they can gate their render loops.
+  const isActiveRef = useRef(active);
+  const isVisibleRef = useRef(document.visibilityState === "visible");
   // Loading overlay: shown until the map style + tiles are idle and heavy
   // Three.js layers have been added, so no black/blank frame is visible.
   const [mapReady, setMapReady] = useState(false);
@@ -211,16 +215,21 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
   // runs in both modes; the 3D GLB model layer (boats/yachts/ships) is 3D-only
   // and gated behind show3DModels. Every add is guarded against duplicates.
   function addHeavyLayers(map: mapboxgl.Map) {
+    // Controller object passed to custom layers so they can gate their render loops
+    // based on whether this instance is active and the tab is visible.
+    const renderController = {
+      shouldRender: () => isActiveRef.current && isVisibleRef.current,
+    };
     if (!map.getLayer("dubai-water-3d")) {
       try {
-        map.addLayer(createWaterLayer());
+        map.addLayer(createWaterLayer(renderController));
       } catch (err) {
         console.error("Failed to add water shimmer layer", err);
       }
     }
     if (mode === "3d" && show3DModelsRef.current && !map.getLayer("dubai-3d-models")) {
       try {
-        map.addLayer(createModel3DLayer(MODEL_REGISTRY));
+        map.addLayer(createModel3DLayer(MODEL_REGISTRY, renderController));
         modelsAddedRef.current = true;
       } catch (err) {
         console.error("Failed to add 3D model layer", err);
@@ -596,41 +605,63 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lightPreset]);
 
-  // Cinematic fly-in when this view becomes active
+  // Track visibility state for gating render loops in custom layers.
   useEffect(() => {
-    if (!mapRef.current || !active) return;
+    const handleVisibilityChange = () => {
+      isVisibleRef.current = document.visibilityState === "visible";
+      // If this map became visible again and is the active one, kick the render loops back on.
+      if (isVisibleRef.current && isActiveRef.current && mapRef.current) {
+        mapRef.current.triggerRepaint();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, []);
+
+  // Cinematic fly-in when this view becomes active, and gate the render loops.
+  useEffect(() => {
+    isActiveRef.current = active;
+    if (!mapRef.current) return;
     const map = mapRef.current;
-    // The container was hidden (0-size) while inactive; Mapbox must recompute
-    // its dimensions now that it's visible or nothing renders / tiles are wrong.
-    map.resize();
-    map.jumpTo({ center: [camera.lng, camera.lat], zoom: camera.zoom, pitch: 0, bearing: 0 });
-    // Extra resizes after the mode-switch transition settles, so the canvas
-    // never ends up sized to the old (hidden/zero) container → no black bands.
-    const r1 = setTimeout(() => map.resize(), 300);
-    const r2 = setTimeout(() => map.resize(), 900);
-    // Satellite mode stays a flat top-down view — no pitch/bearing animation.
-    if (mode !== "3d") {
+
+    if (active) {
+      // The container was hidden (0-size) while inactive; Mapbox must recompute
+      // its dimensions now that it's visible or nothing renders / tiles are wrong.
+      map.resize();
+      map.jumpTo({ center: [camera.lng, camera.lat], zoom: camera.zoom, pitch: 0, bearing: 0 });
+      // Extra resizes after the mode-switch transition settles, so the canvas
+      // never ends up sized to the old (hidden/zero) container → no black bands.
+      const r1 = setTimeout(() => map.resize(), 300);
+      const r2 = setTimeout(() => map.resize(), 900);
+      // Kick the custom layers' render loops back on (they were paused while inactive).
+      map.triggerRepaint();
+      // Satellite mode stays a flat top-down view — no pitch/bearing animation.
+      if (mode === "3d") {
+        // 3D mode: two-stage cinematic fly up into pitch/bearing.
+        const t = setTimeout(() => {
+          map.resize();
+          map.easeTo({
+            pitch: DEFAULT_PITCH,
+            bearing: DEFAULT_BEARING,
+            zoom: Math.max(camera.zoom, 15),
+            duration: 2400,
+            easing: (t2) => t2 * (2 - t2),
+          });
+        }, 150);
+        return () => {
+          clearTimeout(t);
+          clearTimeout(r1);
+          clearTimeout(r2);
+        };
+      }
       return () => {
         clearTimeout(r1);
         clearTimeout(r2);
       };
+    } else {
+      // Cancel any in-flight animations when this instance becomes inactive.
+      map.stop();
     }
-    // 3D mode: two-stage cinematic fly up into pitch/bearing.
-    const t = setTimeout(() => {
-      map.resize();
-      map.easeTo({
-        pitch: DEFAULT_PITCH,
-        bearing: DEFAULT_BEARING,
-        zoom: Math.max(camera.zoom, 15),
-        duration: 2400,
-        easing: (t2) => t2 * (2 - t2),
-      });
-    }, 150);
-    return () => {
-      clearTimeout(t);
-      clearTimeout(r1);
-      clearTimeout(r2);
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 

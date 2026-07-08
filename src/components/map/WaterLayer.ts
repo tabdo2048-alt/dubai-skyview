@@ -146,13 +146,12 @@ type Cloud = {
   bounds: number;
 };
 
-export function createWaterLayer(): mapboxgl.CustomLayerInterface {
+export function createWaterLayer(controller?: { shouldRender: () => boolean }): mapboxgl.CustomLayerInterface {
   let renderer: THREE.WebGLRenderer | null = null;
   let scene: THREE.Scene;
   let camera: THREE.Camera;
   let map: mapboxgl.Map;
   const waters: THREE.Mesh[] = [];
-  let renderLogged = false;
   const clouds: Cloud[] = [];
   let ref: MercatorRef;
   let clock: THREE.Clock;
@@ -164,8 +163,6 @@ export function createWaterLayer(): mapboxgl.CustomLayerInterface {
     renderingMode: "3d",
 
     onAdd(m: mapboxgl.Map, gl: WebGLRenderingContext) {
-      console.log("[WaterLayer] onAdd");
-      console.log("[WaterLayer] WATER_AREAS:", WATER_AREAS.length);
       map = m;
       clock = new THREE.Clock();
       scene = new THREE.Scene();
@@ -201,7 +198,6 @@ export function createWaterLayer(): mapboxgl.CustomLayerInterface {
         water.renderOrder = 1;
         waters.push(water);
         scene.add(water);
-        console.log("[WaterLayer] mesh created", area.name);
       }
 
       // Clouds
@@ -240,11 +236,7 @@ export function createWaterLayer(): mapboxgl.CustomLayerInterface {
     },
 
     render(_gl: WebGLRenderingContext, matrix: unknown) {
-      if (!renderer) return;
-      if (!renderLogged) {
-        console.log("[WaterLayer] render loop running");
-        renderLogged = true;
-      }
+      if (!renderer || (controller && !controller.shouldRender())) return;
       const dt = Math.min(clock.getDelta(), 0.1); // guard against huge jumps on tab refocus
 
       // Advance the shimmer clock very slowly — the sea should look like real

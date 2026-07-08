@@ -205,7 +205,7 @@ type ModelInstance = {
 };
 
 // Build the Mapbox custom layer from a registry of model configs.
-export function createModel3DLayer(registry: ModelConfig[]): mapboxgl.CustomLayerInterface {
+export function createModel3DLayer(registry: ModelConfig[], controller?: { shouldRender: () => boolean }): mapboxgl.CustomLayerInterface {
   let renderer: THREE.WebGLRenderer | null = null;
   let scene: THREE.Scene;
   let camera: THREE.Camera;
@@ -213,7 +213,6 @@ export function createModel3DLayer(registry: ModelConfig[]): mapboxgl.CustomLaye
   let ref: MercatorRef;
   let clock: THREE.Clock;
   let disposed = false;
-  let renderLogged = false;
   let onResize: (() => void) | null = null;
   const instances: ModelInstance[] = [];
 
@@ -223,7 +222,6 @@ export function createModel3DLayer(registry: ModelConfig[]): mapboxgl.CustomLaye
     renderingMode: "3d",
 
     onAdd(m: mapboxgl.Map, gl: WebGLRenderingContext) {
-      console.log("[Model3DLayer] onAdd");
       map = m;
       clock = new THREE.Clock();
       scene = new THREE.Scene();
@@ -267,7 +265,6 @@ export function createModel3DLayer(registry: ModelConfig[]): mapboxgl.CustomLaye
           config.modelUrl,
           (gltf) => {
             if (disposed) return;
-            console.log(`[Model3DLayer] loaded model: ${config.id}`);
             const obj = gltf.scene;
             obj.scale.setScalar(config.scale);
             obj.rotation.set(config.rotation[0], config.rotation[1], config.rotation[2]);
@@ -277,7 +274,6 @@ export function createModel3DLayer(registry: ModelConfig[]): mapboxgl.CustomLaye
           () => {
             if (disposed) return;
             console.warn(`Model file missing, using placeholder for: ${config.id}`);
-            console.log(`[Model3DLayer] using placeholder: ${config.id}`);
             const ph = makePlaceholder(config.type, color);
             ph.scale.multiplyScalar(config.scale);
             group.add(ph);
@@ -285,19 +281,13 @@ export function createModel3DLayer(registry: ModelConfig[]): mapboxgl.CustomLaye
         );
       }
 
-      console.log(`[Model3DLayer] model count: ${instances.length}`);
-
       renderer = acquireSharedRenderer(map.getCanvas(), gl);
       onResize = () => syncSharedRendererSize(map.getCanvas());
       map.on("resize", onResize);
     },
 
     render(_gl: WebGLRenderingContext, matrix: unknown) {
-      if (!renderer) return;
-      if (!renderLogged) {
-        console.log("[Model3DLayer] render loop running");
-        renderLogged = true;
-      }
+      if (!renderer || (controller && !controller.shouldRender())) return;
       const dt = Math.min(clock.getDelta(), 0.1);
       const zoom = map.getZoom();
       const time = clock.elapsedTime;
