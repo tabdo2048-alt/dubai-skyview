@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Globe2, Satellite, Loader2, TrainFront, TramFront, Sunrise, Sun, Sunset, Moon } from "lucide-react";
+import { GoogleMapView } from "./GoogleMapView";
 import { MapboxView, type LightPreset } from "./MapboxView";
 import { CloudLayer } from "./CloudLayer";
 import { ProjectPopup } from "./ProjectPopup";
@@ -58,16 +59,11 @@ export function MapContainer() {
       {cfg && (
         <>
           <div className={mapMode === "satellite" ? "absolute inset-0" : "absolute inset-0 opacity-0 pointer-events-none"}>
-            <MapboxView
-              accessToken={cfg.mapboxAccessToken}
+            <GoogleMapView
+              apiKey={cfg.googleMapsApiKey}
               projects={filtered}
               camera={camera}
               onCameraChange={setCamera}
-              active={mapMode === "satellite"}
-              metroMode={metroMode}
-              trainMode={trainMode}
-              lightPreset={lightPreset}
-              mode="satellite"
             />
           </div>
           <div className={mapMode === "3d" ? "absolute inset-0" : "absolute inset-0 opacity-0 pointer-events-none"}>
