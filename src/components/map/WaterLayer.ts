@@ -75,16 +75,15 @@ const WATER_VERTEX = /* glsl */ `
   }
 `;
 
-// Additive shimmer: the fragment output is ONLY the highlight color scaled by a
-// small, mostly-zero intensity. With additive blending, near-zero intensity =
-// invisible (Mapbox water shows through untouched); the thin crest lines add a
-// gentle glint. There is no solid fill — the polygon is transparent everywhere
-// except where the moving shimmer bands light up.
+// Additive shimmer with white wave crests: the fragment output includes both
+// colored shimmer (sky blue) and white whitecaps on wave peaks. With additive
+// blending, the white crests create a realistic foam effect over the water.
 const WATER_FRAGMENT = /* glsl */ `
   precision highp float;
   varying vec3 vWorld;
   uniform float uTime;
   uniform vec3 uShimmer;
+  uniform vec3 uWhitecap; // white color for wave crests
   uniform float uDistortion; // wave sharpness/steepness (0.15 .. 0.35)
   uniform float uOpacity;    // overall strength (0.12 .. 0.22)
 
@@ -98,22 +97,29 @@ const WATER_FRAGMENT = /* glsl */ `
     vec2 p = vWorld.xy * 0.010;
 
     // Two slow, broad wave bands drifting in opposite directions.
-    float w1 = wave(p * 1.0, 1.1, t);
-    float w2 = wave(p * 1.6 + 3.7, -0.8, t);
+    float w1 = wave(p * 1.0, 1.3, t);
+    float w2 = wave(p * 1.6 + 3.7, -1.0, t);
     float swell = w1 * 0.6 + w2 * 0.4;
 
     // Thin bright shimmer lines — the main thing the eye notices moving.
-    float lines = wave(p * vec2(2.2, 5.0), 0.9, t);
+    float lines = wave(p * vec2(2.2, 5.0), 1.1, t);
     float glint = smoothstep(1.0 - uDistortion, 1.0, lines);
+
+    // White wave crests (whitecaps) on the peaks of the waves
+    float whitecap = smoothstep(0.65, 1.0, swell) * 0.8;
 
     // A very light broad sheen so the whole basin isn't dead flat.
     float sheen = smoothstep(0.55, 1.0, swell) * 0.25;
 
-    // Intensity is mostly near zero → with additive blending the overlay is
-    // invisible there and Mapbox's real water shows through unchanged.
+    // Combine blue shimmer + white whitecaps
     float intensity = (glint * 0.9 + sheen) * uOpacity;
+    float whitecapIntensity = whitecap * uOpacity * 0.7;
 
-    gl_FragColor = vec4(uShimmer * intensity, intensity);
+    // Mix sky blue shimmer with white wave crests
+    vec3 color = uShimmer * intensity + uWhitecap * whitecapIntensity;
+    float alpha = intensity + whitecapIntensity;
+
+    gl_FragColor = vec4(color, alpha);
   }
 `;
 
@@ -121,10 +127,9 @@ const WATER_FRAGMENT = /* glsl */ `
 // fill. `uTime` is advanced slowly each frame in render() (dt * 0.08).
 // Keep opacity subtle in both modes (0.12-0.22 range) so Mapbox water is the base.
 function makeWaterMaterial(mode: "satellite" | "3d" = "3d"): THREE.ShaderMaterial {
-  const opacityValue = mode === "satellite" ? 0.2 : 0.15; // Subtle shimmer in both
-  // Satellite uses a richer blue tint (0x6EC6FF) so the additive shimmer reads
-  // clearly blue over the satellite photo water; 3D keeps the pale icy highlight.
-  const shimmerColor = mode === "satellite" ? 0x6ec6ff : 0xbeefff;
+  const opacityValue = mode === "satellite" ? 0.28 : 0.18; // Enhanced for wave visibility
+  // Sky blue shimmer for satellite, pale blue for 3D
+  const shimmerColor = mode === "satellite" ? 0x87ceeb : 0xbeefff; // Sky blue
   return new THREE.ShaderMaterial({
     vertexShader: WATER_VERTEX,
     fragmentShader: WATER_FRAGMENT,
@@ -135,9 +140,11 @@ function makeWaterMaterial(mode: "satellite" | "3d" = "3d"): THREE.ShaderMateria
     side: THREE.DoubleSide,
     uniforms: {
       uTime: { value: 0 },
-      // Shimmer/reflection tint — blue in satellite, pale icy in 3D.
+      // Sky blue shimmer in satellite, pale blue in 3D
       uShimmer: { value: new THREE.Color(shimmerColor) },
-      uDistortion: { value: 0.25 }, // 0.15 .. 0.35
+      // White for wave crests (whitecaps)
+      uWhitecap: { value: new THREE.Color(0xffffff) },
+      uDistortion: { value: 0.3 }, // 0.15 .. 0.35 (increased for more dramatic waves)
       // Higher opacity in satellite mode for visibility over photo tiles
       uOpacity: { value: opacityValue },
     },
