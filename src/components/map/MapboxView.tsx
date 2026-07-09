@@ -9,6 +9,7 @@ import {
   pointAlongPath,
   type MetroLine,
 } from "@/lib/metro";
+import { WATER_AREAS } from "@/lib/water";
 import { createModel3DLayer } from "@/lib/mapbox/Model3DLayer";
 import { MODEL_REGISTRY } from "@/lib/mapbox/modelRegistry";
 import type { ProjectWithRelations } from "@/lib/types";
@@ -59,6 +60,8 @@ const TRAIN_MARKER_SVG = `
 
 const DRAW_DURATION = 2400; // ms per line's draw animation
 const LINE_STAGGER = 350; // ms delay between each line starting to draw
+const SATELLITE_WATER_COLOR = "#65C7E8";
+const SATELLITE_WATER_OPACITY = 0.34;
 
 export function MapboxView({
   accessToken,
@@ -111,8 +114,7 @@ export function MapboxView({
 
     const map = new mapboxgl.Map({
       container: containerRef.current,
-      // Satellite mode → flat Mapbox satellite imagery; 3D mode → Standard style
-      // (buildings, lighting) which the Three.js water/boats overlay sits atop.
+      // Satellite mode → flat Mapbox satellite imagery; 3D mode → Standard style.
       style:
         mode === "3d"
           ? "mapbox://styles/mapbox/standard"
@@ -174,6 +176,12 @@ export function MapboxView({
         } catch (err) {
           console.warn("neutralizeRoadColors failed (non-fatal)", err);
         }
+
+        try {
+          addSatelliteWaterTint(map);
+        } catch (err) {
+          console.warn("addSatelliteWaterTint failed (non-fatal)", err);
+        }
       }
 
       // --- Metro 2030 network (layers created hidden; metroMode drives them) ---
@@ -200,9 +208,9 @@ export function MapboxView({
       if (trainModeRef.current) playNetworkSequence(map, TRAIN_LINES, "train");
     });
 
-    // Heavy Three.js custom layers (water shimmer + 3D models) are added only
-    // AFTER the map is idle — style loaded, tiles in — so the first frames are
-    // never a black/blank WebGL canvas. Runs once.
+    // Heavy Three.js custom layers are added only AFTER the map is idle —
+    // style loaded, tiles in — so the first frames are never a black/blank
+    // WebGL canvas. Runs once.
     map.once("idle", () => {
       addHeavyLayers(map);
       setMapReady(true);
@@ -269,8 +277,7 @@ export function MapboxView({
   }
 
   // Configure Mapbox Standard's built-in basemap: light preset (day/dawn/dusk/
-  // night), a warm premium color theme, decluttered labels, and a brighter
-  // turquoise water tint layered on top via setPaintProperty.
+  // night), a warm premium color theme, and decluttered labels.
   function applyStandardConfig(map: mapboxgl.Map, preset: LightPreset) {
     // For custom styles, use paint properties to brighten
     const setColor = (id: string, prop: string, value: unknown) => {
@@ -301,6 +308,33 @@ export function MapboxView({
   // fighting mapbox-gl v3's strict layer typing.
   function addLayerSafe(map: mapboxgl.Map, layer: Record<string, unknown>, before?: string) {
     (map.addLayer as (l: unknown, b?: string) => void)(layer, before);
+  }
+
+  function addSatelliteWaterTint(map: mapboxgl.Map) {
+    if (map.getSource("satellite-water-tint")) return;
+    map.addSource("satellite-water-tint", {
+      type: "geojson",
+      data: {
+        type: "FeatureCollection",
+        features: WATER_AREAS.map((area) => ({
+          type: "Feature",
+          properties: { id: area.id, name: area.name },
+          geometry: {
+            type: "Polygon",
+            coordinates: [area.polygon],
+          },
+        })),
+      },
+    });
+    addLayerSafe(map, {
+      id: "satellite-water-tint",
+      type: "fill",
+      source: "satellite-water-tint",
+      paint: {
+        "fill-color": SATELLITE_WATER_COLOR,
+        "fill-opacity": SATELLITE_WATER_OPACITY,
+      },
+    });
   }
 
   // Add the heavy Three.js custom layers once the map is idle. The 3D GLB
