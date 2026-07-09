@@ -23,8 +23,7 @@ const LIGHT_PRESETS: { value: LightPreset; label: string; Icon: typeof Sun }[] =
 const RAIL_GUIDE: { category: keyof typeof CATEGORY_COLORS; name: string; status: string }[] = [
   { category: "red", name: "Red Line", status: "Operational" },
   { category: "green", name: "Green Line", status: "Operational" },
-  { category: "blue", name: "Blue Line", status: "2029" },
-  { category: "future", name: "Future Extensions", status: "Planned 2030" },
+  { category: "tram", name: "Dubai Tram", status: "Operational" },
   { category: "train", name: "Etihad Rail", status: "Future" },
 ];
 
@@ -180,7 +179,7 @@ export function MapContainer() {
 
       {/* Dubai Metro & Rail Guide — premium legend, only while metro mode plays */}
       <AnimatePresence>
-        {mapMode === "3d" && metroMode && (
+        {metroMode && (
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
