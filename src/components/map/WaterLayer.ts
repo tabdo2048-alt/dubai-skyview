@@ -121,7 +121,10 @@ const WATER_FRAGMENT = /* glsl */ `
 // fill. `uTime` is advanced slowly each frame in render() (dt * 0.08).
 // Keep opacity subtle in both modes (0.12-0.22 range) so Mapbox water is the base.
 function makeWaterMaterial(mode: "satellite" | "3d" = "3d"): THREE.ShaderMaterial {
-  const opacityValue = mode === "satellite" ? 0.18 : 0.15; // Subtle shimmer in both
+  const opacityValue = mode === "satellite" ? 0.2 : 0.15; // Subtle shimmer in both
+  // Satellite uses a richer blue tint (0x6EC6FF) so the additive shimmer reads
+  // clearly blue over the satellite photo water; 3D keeps the pale icy highlight.
+  const shimmerColor = mode === "satellite" ? 0x6ec6ff : 0xbeefff;
   return new THREE.ShaderMaterial({
     vertexShader: WATER_VERTEX,
     fragmentShader: WATER_FRAGMENT,
@@ -132,8 +135,8 @@ function makeWaterMaterial(mode: "satellite" | "3d" = "3d"): THREE.ShaderMateria
     side: THREE.DoubleSide,
     uniforms: {
       uTime: { value: 0 },
-      // Pale icy highlight (0xBEEFFF) — the shimmer/reflection tint only.
-      uShimmer: { value: new THREE.Color(0xbeefff) },
+      // Shimmer/reflection tint — blue in satellite, pale icy in 3D.
+      uShimmer: { value: new THREE.Color(shimmerColor) },
       uDistortion: { value: 0.25 }, // 0.15 .. 0.35
       // Higher opacity in satellite mode for visibility over photo tiles
       uOpacity: { value: opacityValue },

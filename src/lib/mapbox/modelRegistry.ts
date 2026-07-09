@@ -33,7 +33,7 @@ export const MODEL_REGISTRY: ModelConfig[] = [
       [55.1275, 25.0895],
     ],
     speed: 0.03,
-    visibleFromZoom: 11,
+    visibleFromZoom: 9,
     visibleToZoom: 20,
   },
   {
@@ -57,7 +57,7 @@ export const MODEL_REGISTRY: ModelConfig[] = [
       [55.12, 25.124],
     ],
     speed: 0.024,
-    visibleFromZoom: 11,
+    visibleFromZoom: 9,
     visibleToZoom: 20,
   },
   {
@@ -81,7 +81,7 @@ export const MODEL_REGISTRY: ModelConfig[] = [
       [55.1395, 25.0855],
     ],
     speed: 0.027,
-    visibleFromZoom: 11,
+    visibleFromZoom: 9,
     visibleToZoom: 20,
   },
   {
@@ -106,7 +106,7 @@ export const MODEL_REGISTRY: ModelConfig[] = [
       [55.148, 25.122],
     ],
     speed: 0.02,
-    visibleFromZoom: 11,
+    visibleFromZoom: 9,
     visibleToZoom: 20,
   },
   {
@@ -130,7 +130,7 @@ export const MODEL_REGISTRY: ModelConfig[] = [
       [55.12, 25.13],
     ],
     speed: 0.018,
-    visibleFromZoom: 11,
+    visibleFromZoom: 9,
     visibleToZoom: 20,
   },
   {
@@ -152,7 +152,7 @@ export const MODEL_REGISTRY: ModelConfig[] = [
       [55.165, 25.124],
     ],
     speed: 0.014,
-    visibleFromZoom: 11,
+    visibleFromZoom: 9,
     visibleToZoom: 20,
   },
   {
@@ -174,7 +174,7 @@ export const MODEL_REGISTRY: ModelConfig[] = [
       [55.332, 25.221],
     ],
     speed: 0.05,
-    visibleFromZoom: 11,
+    visibleFromZoom: 9,
     visibleToZoom: 20,
   },
   {
@@ -196,7 +196,7 @@ export const MODEL_REGISTRY: ModelConfig[] = [
       [55.272, 25.1665],
     ],
     speed: 0.035,
-    visibleFromZoom: 11,
+    visibleFromZoom: 9,
     visibleToZoom: 20,
   },
 
@@ -227,7 +227,7 @@ export const MODEL_REGISTRY: ModelConfig[] = [
       [55.118, 25.108],
     ],
     speed: 0.016,
-    visibleFromZoom: 11,
+    visibleFromZoom: 9,
     visibleToZoom: 20,
   },
   {
@@ -256,7 +256,7 @@ export const MODEL_REGISTRY: ModelConfig[] = [
       [55.158, 25.13],
     ],
     speed: 0.019,
-    visibleFromZoom: 11,
+    visibleFromZoom: 9,
     visibleToZoom: 20,
   },
   {
@@ -282,7 +282,7 @@ export const MODEL_REGISTRY: ModelConfig[] = [
       [55.126, 25.106],
     ],
     speed: 0.03,
-    visibleFromZoom: 11,
+    visibleFromZoom: 9,
     visibleToZoom: 20,
   },
   {
@@ -307,7 +307,7 @@ export const MODEL_REGISTRY: ModelConfig[] = [
       [55.14, 25.132],
     ],
     speed: 0.034,
-    visibleFromZoom: 11,
+    visibleFromZoom: 9,
     visibleToZoom: 20,
   },
   {
@@ -333,7 +333,7 @@ export const MODEL_REGISTRY: ModelConfig[] = [
       [55.12, 25.112],
     ],
     speed: 0.028,
-    visibleFromZoom: 11,
+    visibleFromZoom: 9,
     visibleToZoom: 20,
   },
 
@@ -360,7 +360,7 @@ export const MODEL_REGISTRY: ModelConfig[] = [
       [55.148, 25.094],
     ],
     speed: 0.022,
-    visibleFromZoom: 11,
+    visibleFromZoom: 9,
     visibleToZoom: 20,
   },
   {
@@ -385,7 +385,7 @@ export const MODEL_REGISTRY: ModelConfig[] = [
       [55.13, 25.088],
     ],
     speed: 0.013,
-    visibleFromZoom: 11,
+    visibleFromZoom: 9,
     visibleToZoom: 20,
   },
   {
@@ -410,7 +410,7 @@ export const MODEL_REGISTRY: ModelConfig[] = [
       [55.128, 25.076],
     ],
     speed: 0.032,
-    visibleFromZoom: 11,
+    visibleFromZoom: 9,
     visibleToZoom: 20,
   },
   {
@@ -435,7 +435,7 @@ export const MODEL_REGISTRY: ModelConfig[] = [
       [55.134, 25.082],
     ],
     speed: 0.024,
-    visibleFromZoom: 11,
+    visibleFromZoom: 9,
     visibleToZoom: 20,
   },
 
@@ -462,7 +462,7 @@ export const MODEL_REGISTRY: ModelConfig[] = [
       [55.142, 25.072],
     ],
     speed: 0.036,
-    visibleFromZoom: 11,
+    visibleFromZoom: 9,
     visibleToZoom: 20,
   },
   {
@@ -487,7 +487,7 @@ export const MODEL_REGISTRY: ModelConfig[] = [
       [55.31, 25.252],
     ],
     speed: 0.046,
-    visibleFromZoom: 11,
+    visibleFromZoom: 9,
     visibleToZoom: 20,
   },
   {
@@ -512,7 +512,7 @@ export const MODEL_REGISTRY: ModelConfig[] = [
       [55.268, 25.184],
     ],
     speed: 0.038,
-    visibleFromZoom: 11,
+    visibleFromZoom: 9,
     visibleToZoom: 20,
   },
 ];
