@@ -1009,6 +1009,12 @@ export function MapboxView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [show3DModels]);
 
+  // A map can finish loading while hidden behind the other mode. When it later
+  // becomes active, notify the parent again so the shared loading overlay exits.
+  useEffect(() => {
+    if (active && mapReady) onReady?.();
+  }, [active, mapReady, onReady]);
+
   // Markers
   useEffect(() => {
     const map = mapRef.current;
