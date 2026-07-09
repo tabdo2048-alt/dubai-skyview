@@ -3,7 +3,9 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Plus, Trash2, Star, StarOff, Edit3 } from "lucide-react";
 import { AppNavbar } from "@/components/layout/AppNavbar";
+import { AdminLocationPicker } from "@/components/map/AdminLocationPicker";
 import { useAuth, useIsAdmin } from "@/hooks/use-auth";
+import { useMapConfig } from "@/hooks/use-map-config";
 import { useProjects, useCommunities, useDevelopers } from "@/hooks/use-projects";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -110,6 +112,7 @@ function ProjectForm({ id, onClose }: { id: string | null; onClose: () => void }
   const { data: projects = [] } = useProjects();
   const { data: developers = [] } = useDevelopers();
   const { data: communities = [] } = useCommunities();
+  const { data: cfg } = useMapConfig();
   const existing = id ? projects.find((p) => p.id === id) : null;
   const [f, setF] = useState({
     name: existing?.name ?? "",
@@ -174,6 +177,19 @@ function ProjectForm({ id, onClose }: { id: string | null; onClose: () => void }
             {communities.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </Field>
+        {cfg?.mapboxAccessToken && (
+          <div className="sm:col-span-2">
+            <Label className="text-xs uppercase tracking-widest text-muted-foreground">Location on map</Label>
+            <div className="mt-1">
+              <AdminLocationPicker
+                accessToken={cfg.mapboxAccessToken}
+                lat={f.lat}
+                lng={f.lng}
+                onChange={({ lat, lng }) => setF({ ...f, lat, lng })}
+              />
+            </div>
+          </div>
+        )}
         <Field label="Latitude"><Input type="number" step="0.0001" value={f.lat} onChange={(e) => setF({ ...f, lat: Number(e.target.value) })} required /></Field>
         <Field label="Longitude"><Input type="number" step="0.0001" value={f.lng} onChange={(e) => setF({ ...f, lng: Number(e.target.value) })} required /></Field>
         <Field label="Starting price (AED)"><Input type="number" value={f.starting_price_aed} onChange={(e) => setF({ ...f, starting_price_aed: Number(e.target.value) })} /></Field>
