@@ -49,6 +49,8 @@ export function MapContainer() {
   // Guide panel is expanded on desktop, collapsible on mobile (starts collapsed
   // under md via the `hidden md:block` body + this toggle for the mobile chevron).
   const [guideOpen, setGuideOpen] = useState(false);
+  // Track when the active map instance is ready (tiles + heavy layers loaded)
+  const [mapReady, setMapReady] = useState(false);
 
   const filtered = useMemo(() => filterProjects(projects, filters), [projects, filters]);
   const selected = filtered.find((p) => p.id === selectedProjectId) ?? projects.find((p) => p.id === selectedProjectId) ?? null;
@@ -56,6 +58,7 @@ export function MapContainer() {
   const switchMode = (mode: "satellite" | "3d") => {
     if (mode === mapMode) return;
     setTransitioning(true);
+    setMapReady(false); // Show loading overlay while new map loads
     setMapMode(mode);
     setTimeout(() => setTransitioning(false), 1200);
   };
@@ -77,6 +80,7 @@ export function MapContainer() {
               projects={filtered}
               camera={camera}
               onCameraChange={setCamera}
+              onReady={() => mapMode === "satellite" && setMapReady(true)}
               active={mapMode === "satellite"}
               metroMode={metroMode}
               trainMode={trainMode}
@@ -92,6 +96,7 @@ export function MapContainer() {
               projects={filtered}
               camera={camera}
               onCameraChange={setCamera}
+              onReady={() => mapMode === "3d" && setMapReady(true)}
               active={mapMode === "3d"}
               metroMode={metroMode}
               trainMode={trainMode}
@@ -104,6 +109,23 @@ export function MapContainer() {
 
       {/* Premium aerial cloud layer — fades out as you zoom into the city (both modes) */}
       <CloudLayer zoom={camera.zoom} />
+
+      {/* Loading overlay — shown until the active map is ready (idle + heavy layers loaded) */}
+      <AnimatePresence>
+        {!mapReady && (
+          <motion.div
+            initial={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.5 }}
+            className="pointer-events-none absolute inset-0 z-50 grid place-items-center bg-gradient-to-b from-emerald-deep/20 to-background/40 backdrop-blur-sm"
+          >
+            <div className="flex flex-col items-center gap-3">
+              <Loader2 className="h-6 w-6 animate-spin text-gold" />
+              <p className="font-display text-sm tracking-wide text-cream">Loading Dubai...</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Mode toggle */}
       <div className="pointer-events-auto absolute right-4 top-4 z-20 flex gap-2">

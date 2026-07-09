@@ -119,9 +119,9 @@ const WATER_FRAGMENT = /* glsl */ `
 
 // Build the shimmer overlay material — additive, very low opacity, no solid
 // fill. `uTime` is advanced slowly each frame in render() (dt * 0.08).
-// In satellite mode, increase opacity so shimmer is visible over photo tiles.
+// Keep opacity subtle in both modes (0.12-0.22 range) so Mapbox water is the base.
 function makeWaterMaterial(mode: "satellite" | "3d" = "3d"): THREE.ShaderMaterial {
-  const opacityValue = mode === "satellite" ? 0.35 : 0.22; // Stronger in satellite
+  const opacityValue = mode === "satellite" ? 0.18 : 0.15; // Subtle shimmer in both
   return new THREE.ShaderMaterial({
     vertexShader: WATER_VERTEX,
     fragmentShader: WATER_FRAGMENT,

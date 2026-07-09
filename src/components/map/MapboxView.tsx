@@ -19,6 +19,7 @@ type Props = {
   projects: ProjectWithRelations[];
   camera: { lat: number; lng: number; zoom: number };
   onCameraChange: (c: { lat: number; lng: number; zoom: number }) => void;
+  onReady?: () => void;
   active: boolean;
   metroMode: boolean;
   trainMode: boolean;
@@ -43,7 +44,7 @@ const TRAIN_MARKER_SVG = `
 const DRAW_DURATION = 2400; // ms per line's draw animation
 const LINE_STAGGER = 350; // ms delay between each line starting to draw
 
-export function MapboxView({ accessToken, projects, camera, onCameraChange, active, metroMode, trainMode, lightPreset, mode = "3d", show3DModels = true }: Props) {
+export function MapboxView({ accessToken, projects, camera, onCameraChange, onReady, active, metroMode, trainMode, lightPreset, mode = "3d", show3DModels = true }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<Map<string, mapboxgl.Marker>>(new globalThis.Map());
@@ -72,6 +73,10 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
   useEffect(() => {
     if (!containerRef.current || !accessToken) return;
     mapboxgl.accessToken = accessToken;
+
+    // Set the container background to a soft fallback color (not black during loading)
+    containerRef.current.style.backgroundColor = "#d9eef2";
+
     const map = new mapboxgl.Map({
       container: containerRef.current,
       // Satellite mode → flat Mapbox satellite imagery; 3D mode → Standard style
@@ -89,6 +94,9 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
     });
 
     map.on("style.load", () => {
+      // Trigger a resize to ensure the map renders properly after style loads
+      setTimeout(() => map.resize(), 50);
+
       // 3D-only scene setup: Standard-style recoloring, decluttered labels, and
       // exaggerated terrain. Flat satellite imagery has no vector fills/symbols to
       // touch and shouldn't be exaggerated, so this is skipped in satellite mode.
@@ -130,13 +138,11 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
         console.error("Failed to add metro/train layers", err);
       }
 
-      // Subtle boat route guide lines — 3D mode only (the boats are 3D-only too).
-      if (mode === "3d") {
-        try {
-          addBoatRouteLayers(map);
-        } catch (err) {
-          console.error("Failed to add boat route layers", err);
-        }
+      // Subtle boat route guide lines — available in both modes if boats are enabled.
+      try {
+        addBoatRouteLayers(map);
+      } catch (err) {
+        console.error("Failed to add boat route layers", err);
       }
 
       styleLoadedRef.current = true;
@@ -153,6 +159,7 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
     map.once("idle", () => {
       addHeavyLayers(map);
       setMapReady(true);
+      onReady?.();
     });
 
     map.on("moveend", () => {
@@ -237,10 +244,11 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
         console.error("Failed to add water shimmer layer", err);
       }
     }
-    if (mode === "3d" && show3DModelsRef.current && !map.getLayer("dubai-3d-models")) {
+    if (show3DModelsRef.current && !map.getLayer("dubai-3d-models")) {
       try {
         map.addLayer(createModel3DLayer(MODEL_REGISTRY, renderController));
         modelsAddedRef.current = true;
+        console.log("[Boats] 20 boat models loaded in", mode, "mode");
       } catch (err) {
         console.error("Failed to add 3D model layer", err);
       }
