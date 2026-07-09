@@ -314,7 +314,9 @@ export function MapboxView({
     };
     if (!map.getLayer("dubai-water-3d")) {
       try {
+        console.log("[Water] trying to add layer");
         map.addLayer(createWaterLayer(renderController, mode));
+        console.log("[Water] layer added");
       } catch (err) {
         console.error("Failed to add water wave layer", err);
       }

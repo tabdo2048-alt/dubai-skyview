@@ -1,6 +1,5 @@
-// Mapbox custom layer for a very subtle white wave-crest overlay.
-// The real water remains Mapbox satellite/standard water; this only adds
-// transparent moving white crests clipped to Dubai's water basins.
+// Mapbox custom layer for a transparent animated water surface.
+// It renders cyan/deep-blue moving water clipped to Dubai's real marine basins.
 
 import * as THREE from "three";
 import mapboxgl from "mapbox-gl";
@@ -39,6 +38,8 @@ const WATER_FRAGMENT = /* glsl */ `
   precision highp float;
   varying vec3 vWorld;
   uniform float uTime;
+  uniform vec3 uWaterColor;
+  uniform vec3 uDeepColor;
   uniform vec3 uWhitecap;
   uniform float uDistortion;
   uniform float uOpacity;
@@ -51,16 +52,22 @@ const WATER_FRAGMENT = /* glsl */ `
     float t = uTime;
     vec2 p = vWorld.xy * 0.010;
 
-    float w1 = wave(p * 1.0, 1.3, t);
-    float w2 = wave(p * 1.6 + 3.7, -1.0, t);
+    float w1 = wave(p * 1.0, 1.25, t);
+    float w2 = wave(p * 1.7 + 3.7, -0.9, t);
+    float w3 = wave(p * vec2(3.8, 1.4) + 1.6, 0.55, t);
     float swell = w1 * 0.6 + w2 * 0.4;
 
-    float lines = wave(p * vec2(2.2, 5.0), 1.1, t);
+    float lines = wave(p * vec2(2.2, 5.0), 1.05, t);
     float glint = smoothstep(1.0 - uDistortion, 1.0, lines);
-    float whitecap = smoothstep(0.74, 1.0, swell) * 0.55;
-    float crest = max(glint * 0.55, whitecap) * uOpacity;
+    float whitecap = smoothstep(0.78, 1.0, swell) * 0.45;
+    float depthMix = clamp(swell * 0.65 + w3 * 0.35, 0.0, 1.0);
+    float highlight = glint * 0.16 + whitecap;
 
-    gl_FragColor = vec4(uWhitecap * crest, crest);
+    vec3 water = mix(uDeepColor, uWaterColor, depthMix);
+    vec3 color = mix(water, uWhitecap, highlight);
+    float alpha = uOpacity * (0.72 + swell * 0.18 + glint * 0.10);
+
+    gl_FragColor = vec4(color, alpha);
   }
 `;
 
@@ -71,13 +78,15 @@ function makeWaterMaterial(mode: "satellite" | "3d" = "3d"): THREE.ShaderMateria
     transparent: true,
     depthTest: false,
     depthWrite: false,
-    blending: THREE.AdditiveBlending,
+    blending: THREE.NormalBlending,
     side: THREE.DoubleSide,
     uniforms: {
       uTime: { value: 0 },
+      uWaterColor: { value: new THREE.Color(0x66d9ff) },
+      uDeepColor: { value: new THREE.Color(0x0b6f8f) },
       uWhitecap: { value: new THREE.Color(0xffffff) },
-      uDistortion: { value: 0.24 },
-      uOpacity: { value: mode === "satellite" ? 0.13 : 0.1 },
+      uDistortion: { value: 0.26 },
+      uOpacity: { value: mode === "satellite" ? 0.32 : 0.24 },
     },
   });
 }
@@ -94,6 +103,10 @@ export function createWaterLayer(
   let ref: MercatorRef;
   let clock: THREE.Clock;
   let onResize: (() => void) | null = null;
+  let animationLogged = false;
+  const localToMercator = new THREE.Matrix4();
+  const projectionMatrix = new THREE.Matrix4();
+  const mercatorScale = new THREE.Vector3();
 
   return {
     id: "dubai-water-3d",
@@ -115,7 +128,8 @@ export function createWaterLayer(
         scale: origin.meterInMercatorCoordinateUnits(),
       };
 
-      for (const area of WATER_AREAS.filter((waterArea) => waterArea.id !== "palm")) {
+      console.log("[Water] total areas", WATER_AREAS.length);
+      for (const area of WATER_AREAS) {
         const shape = new THREE.Shape();
         area.polygon.forEach(([lng, lat], i) => {
           const p = lngLatToLocal(lng, lat, ref, 0);
@@ -133,6 +147,7 @@ export function createWaterLayer(
       renderer = acquireSharedRenderer(map.getCanvas(), gl);
       onResize = () => syncSharedRendererSize(map.getCanvas());
       map.on("resize", onResize);
+      console.log("[Water] layer added");
     },
 
     render(_gl: WebGLRenderingContext, matrix: unknown) {
@@ -141,7 +156,11 @@ export function createWaterLayer(
 
       for (const w of waters) {
         const mat = w.material as THREE.ShaderMaterial;
-        if (mat.uniforms.uTime) mat.uniforms.uTime.value += dt * 0.16;
+        if (mat.uniforms.uTime) mat.uniforms.uTime.value += dt * 0.8;
+      }
+      if (!animationLogged) {
+        console.log("[Water] animation running");
+        animationLogged = true;
       }
 
       const mArr = Array.isArray(matrix)
@@ -150,10 +169,9 @@ export function createWaterLayer(
             ?.defaultProjectionData?.mainMatrix;
       if (!mArr) return;
 
-      const localToMercator = new THREE.Matrix4()
-        .makeTranslation(ref.x, ref.y, ref.z)
-        .scale(new THREE.Vector3(ref.scale, -ref.scale, ref.scale));
-      camera.projectionMatrix = new THREE.Matrix4().fromArray(mArr).multiply(localToMercator);
+      mercatorScale.set(ref.scale, -ref.scale, ref.scale);
+      localToMercator.makeTranslation(ref.x, ref.y, ref.z).scale(mercatorScale);
+      camera.projectionMatrix = projectionMatrix.fromArray(mArr).multiply(localToMercator);
 
       renderer.resetState();
       renderer.render(scene, camera);
