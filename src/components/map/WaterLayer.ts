@@ -115,7 +115,7 @@ export function createWaterLayer(
         scale: origin.meterInMercatorCoordinateUnits(),
       };
 
-      for (const area of WATER_AREAS) {
+      for (const area of WATER_AREAS.filter((waterArea) => waterArea.id !== "palm")) {
         const shape = new THREE.Shape();
         area.polygon.forEach(([lng, lat], i) => {
           const p = lngLatToLocal(lng, lat, ref, 0);
