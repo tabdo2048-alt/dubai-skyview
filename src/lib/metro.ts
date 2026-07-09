@@ -10,7 +10,7 @@ export type MetroStation = {
 };
 
 // Visual/legend category — drives the premium palette and the guide grouping.
-export type LineCategory = "red" | "green" | "blue" | "tram" | "future" | "train";
+export type LineCategory = "red" | "green" | "blue" | "yellow" | "pink" | "tram" | "future" | "train";
 
 export type MetroLine = {
   id: string;
@@ -29,9 +29,11 @@ export const CATEGORY_COLORS: Record<LineCategory, string> = {
   red: "#E63946",
   green: "#2ECC71",
   blue: "#2D9CDB",
+  yellow: "#F2C94C",
+  pink: "#D85B8C",
   tram: "#F2994A",
   future: "#B66DFF",
-  train: "#F2C94C",
+  train: "#283C86",
 };
 
 // Decide a line's category from its id/name/status. Regional/rail lines are
@@ -48,6 +50,8 @@ function lineCategory(line: MetroLine, isTrain: boolean): LineCategory {
     return "red";
   }
   if (line.status === "under-construction" || key.includes("blue")) return "blue";
+  if (key.includes("yellow")) return "yellow";
+  if (key.includes("pink")) return "pink";
   // Everything else (planned-2030 corridors, future concepts) → purple.
   return "future";
 }
@@ -65,10 +69,12 @@ function applyCategory(lines: MetroLine[], isTrain: boolean): MetroLine[] {
 // (station names in real travel order — see metroAccurate.ts). This replaces
 // the old auto-generated KML import, which had scrambled order + placeholders.
 import { ACCURATE_METRO_LINES } from "./metroAccurate";
-import { IMPORTED_TRAIN_LINES } from "./metroNetwork.generated";
+import { IMPORTED_METRO_LINES, IMPORTED_TRAIN_LINES } from "./metroNetwork.generated";
+
+const FUTURE_METRO_LINES = IMPORTED_METRO_LINES.filter((line) => !["red", "green"].includes(line.id));
 
 // Accurate RTA network (Red + Green + Tram), recolored + tagged by category.
-export const METRO_LINES: MetroLine[] = applyCategory(ACCURATE_METRO_LINES, false);
+export const METRO_LINES: MetroLine[] = applyCategory([...ACCURATE_METRO_LINES, ...FUTURE_METRO_LINES], false);
 
 // Separate regional train network, driven by its own "Train" toggle.
 export const TRAIN_LINES: MetroLine[] = applyCategory(IMPORTED_TRAIN_LINES, true);

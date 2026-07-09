@@ -12,6 +12,14 @@ import { useFiltersStore } from "@/store/filters";
 // We build these by hand, so TypeScript sees them as `any[]` but Mapbox knows better.
 type Expr = any;
 
+type TrainMotionState = {
+  t: number;
+  dir: 1 | -1;
+  last: number;
+  pausedUntil: number;
+  lastStopId?: string;
+};
+
 export type LightPreset = "dawn" | "day" | "dusk" | "night";
 
 type Props = {
@@ -53,6 +61,7 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, onRe
   const metroFrameRef = useRef<Map<string, number>>(new globalThis.Map());
   const metroTimeoutsRef = useRef<number[]>([]);
   const trainRafRef = useRef<number | null>(null);
+  const trainMotionRef = useRef<Map<string, TrainMotionState>>(new globalThis.Map());
   const styleLoadedRef = useRef(false);
   const modelsAddedRef = useRef(false);
   // Latest toggle state, readable inside the (stale-closure) style.load handler.
@@ -113,6 +122,12 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, onRe
           console.warn("hideLabelsAndPois failed (non-fatal)", err);
         }
 
+        try {
+          neutralizeRoadColors(map);
+        } catch (err) {
+          console.warn("neutralizeRoadColors failed (non-fatal)", err);
+        }
+
         // Terrain
         try {
           if (!map.getSource("mapbox-dem")) {
@@ -126,6 +141,12 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, onRe
           }
         } catch (err) {
           console.warn("terrain setup failed (non-fatal)", err);
+        }
+      } else {
+        try {
+          neutralizeRoadColors(map);
+        } catch (err) {
+          console.warn("neutralizeRoadColors failed (non-fatal)", err);
         }
       }
 
@@ -176,6 +197,7 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, onRe
       mapRef.current = null;
       markersRef.current.clear();
       trainMarkersRef.current.clear();
+      trainMotionRef.current.clear();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken]);
@@ -187,6 +209,27 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, onRe
     for (const layer of layers) {
       if (layer.type === "symbol") {
         map.setLayoutProperty(layer.id, "visibility", "none");
+      }
+    }
+  }
+
+  function neutralizeRoadColors(map: mapboxgl.Map) {
+    const layers = map.getStyle()?.layers ?? [];
+    for (const layer of layers) {
+      const layerMeta = layer as { id: string; type?: string; ["source-layer"]?: string };
+      const id = layerMeta.id.toLowerCase();
+      const sourceLayer = (layerMeta["source-layer"] ?? "").toLowerCase();
+      const isRoad = id.includes("road") || sourceLayer.includes("road") || id.includes("street");
+      if (!isRoad) continue;
+
+      if (layer.type === "line") {
+        map.setPaintProperty(layer.id, "line-color", mode === "satellite" ? "rgba(255,255,255,0.55)" : "#e8e0d6");
+        map.setPaintProperty(layer.id, "line-opacity", mode === "satellite" ? 0.18 : 0.28);
+        map.setPaintProperty(layer.id, "line-blur", 0.3);
+      }
+      if (layer.type === "fill") {
+        map.setPaintProperty(layer.id, "fill-color", mode === "satellite" ? "rgba(255,255,255,0.18)" : "#eee8df");
+        map.setPaintProperty(layer.id, "fill-opacity", mode === "satellite" ? 0.08 : 0.2);
       }
     }
   }
@@ -307,6 +350,9 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, onRe
 
   function applyStationFilters(map: mapboxgl.Map) {
     if (map.getLayer("metro-stations-3d")) map.setFilter("metro-stations-3d", stationFilter());
+    if (map.getLayer("metro-station-halo")) map.setFilter("metro-station-halo", stationFilter());
+    if (map.getLayer("metro-station-core")) map.setFilter("metro-station-core", stationFilter());
+    if (map.getLayer("metro-station-sign")) map.setFilter("metro-station-sign", stationFilter());
     if (map.getLayer("metro-stations-label")) map.setFilter("metro-stations-label", stationFilter());
   }
 
@@ -408,11 +454,31 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, onRe
         };
       }),
     );
+    const pointFeatures = ALL_RAIL_LINES.flatMap((line) =>
+      line.stations.map((s) => ({
+        type: "Feature" as const,
+        properties: {
+          id: s.id,
+          color: line.color,
+          name: s.name,
+          progress: STATION_PROGRESS[s.id] ?? 0,
+          network: metroIds.has(line.id) ? "metro" : "train",
+          interchange: !!s.interchange,
+        },
+        geometry: { type: "Point" as const, coordinates: s.coord },
+      })),
+    );
 
     if (!map.getSource("metro-stations")) {
       map.addSource("metro-stations", {
         type: "geojson",
         data: { type: "FeatureCollection", features },
+      });
+    }
+    if (!map.getSource("metro-station-points")) {
+      map.addSource("metro-station-points", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: pointFeatures },
       });
     }
     if (!map.getLayer("metro-stations-3d")) {
@@ -430,12 +496,63 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, onRe
         },
       });
     }
+    if (!map.getLayer("metro-station-halo")) {
+      addLayerSafe(map, {
+        id: "metro-station-halo",
+        type: "circle",
+        source: "metro-station-points",
+        minzoom: 10.5,
+        filter: stationFilter(),
+        paint: {
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 3, 13, ["case", ["get", "interchange"], 9, 6], 16, ["case", ["get", "interchange"], 14, 10]],
+          "circle-color": "#ffffff",
+          "circle-stroke-color": ["get", "color"],
+          "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 10, 1, 16, 3],
+          "circle-opacity": 0.96,
+          "circle-stroke-opacity": 1,
+        },
+      });
+    }
+    if (!map.getLayer("metro-station-core")) {
+      addLayerSafe(map, {
+        id: "metro-station-core",
+        type: "circle",
+        source: "metro-station-points",
+        minzoom: 11.2,
+        filter: stationFilter(),
+        paint: {
+          "circle-radius": ["interpolate", ["linear"], ["zoom"], 11, 1.6, 16, 4],
+          "circle-color": ["get", "color"],
+          "circle-opacity": 0.95,
+        },
+      });
+    }
+    if (!map.getLayer("metro-station-sign")) {
+      addLayerSafe(map, {
+        id: "metro-station-sign",
+        type: "symbol",
+        source: "metro-station-points",
+        minzoom: 12,
+        filter: stationFilter(),
+        layout: {
+          "text-field": "M",
+          "text-size": ["interpolate", ["linear"], ["zoom"], 12, 8, 16, 11],
+          "text-font": ["DIN Pro Bold", "Arial Unicode MS Bold"],
+          "text-allow-overlap": true,
+          "text-ignore-placement": true,
+        },
+        paint: {
+          "text-color": "#18211f",
+          "text-opacity": ["interpolate", ["linear"], ["zoom"], 12, 0.4, 13, 1],
+        },
+      });
+    }
     if (!map.getLayer("metro-stations-label")) {
       addLayerSafe(map, {
         id: "metro-stations-label",
         type: "symbol",
-        source: "metro-stations",
-        minzoom: 13,
+        source: "metro-station-points",
+        minzoom: 12.5,
         filter: stationFilter(),
         layout: {
           "text-field": ["get", "name"],
@@ -466,6 +583,7 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, onRe
       if (marker) {
         marker.remove();
         trainMarkersRef.current.delete(line.id);
+        trainMotionRef.current.delete(line.id);
       }
     }
     // Clear any pending stagger timeouts (shared; cheap to clear all).
@@ -580,6 +698,7 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, onRe
     el.innerHTML = TRAIN_MARKER_SVG.replace("#c9a84c", "#ffffff");
     const marker = new mapboxgl.Marker({ element: el }).setLngLat(line.path[0]).addTo(map);
     trainMarkersRef.current.set(line.id, marker);
+    trainMotionRef.current.set(line.id, { t: 0, dir: 1, last: performance.now(), pausedUntil: 0 });
     ensureTrainLoop();
   }
 
@@ -588,16 +707,60 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, onRe
   function ensureTrainLoop() {
     if (trainRafRef.current) return;
     const speeds: Record<string, number> = {};
-    ALL_RAIL_LINES.forEach((l, i) => (speeds[l.id] = 0.00004 + i * 0.000012));
-    const startT = performance.now();
+    ALL_RAIL_LINES.forEach((l, i) => (speeds[l.id] = 0.000035 + i * 0.000006));
+    const stationStops = Object.fromEntries(
+      ALL_RAIL_LINES.map((line) => [
+        line.id,
+        line.stations
+          .map((station) => ({ id: station.id, progress: STATION_PROGRESS[station.id] ?? 0 }))
+          .filter((station) => station.progress > 0.01 && station.progress < 0.99)
+          .sort((a, b) => a.progress - b.progress),
+      ]),
+    ) as Record<string, { id: string; progress: number }[]>;
+
     const tick = (now: number) => {
-      const elapsed = now - startT;
       for (const line of ALL_RAIL_LINES) {
         const marker = trainMarkersRef.current.get(line.id);
         if (!marker) continue;
-        const raw = (elapsed * (speeds[line.id] ?? 0.00005)) % 2;
-        const t = raw <= 1 ? raw : 2 - raw;
-        const { coord } = pointAlongPath(line.path, t);
+        const state = trainMotionRef.current.get(line.id) ?? { t: 0, dir: 1, last: now, pausedUntil: 0 };
+        if (!trainMotionRef.current.has(line.id)) trainMotionRef.current.set(line.id, state);
+
+        if (now < state.pausedUntil) {
+          marker.setLngLat(pointAlongPath(line.path, state.t).coord);
+          continue;
+        }
+
+        const dt = Math.min(80, now - state.last);
+        state.last = now;
+        const prev = state.t;
+        let next = prev + state.dir * (speeds[line.id] ?? 0.00005) * dt;
+
+        if (next >= 1) {
+          next = 1;
+          state.dir = -1;
+          state.pausedUntil = now + 1000;
+          state.lastStopId = `${line.id}-end`;
+        } else if (next <= 0) {
+          next = 0;
+          state.dir = 1;
+          state.pausedUntil = now + 1000;
+          state.lastStopId = `${line.id}-start`;
+        } else {
+          const from = Math.min(prev, next);
+          const to = Math.max(prev, next);
+          const stop = stationStops[line.id]?.find((station) => station.progress >= from && station.progress <= to && station.id !== state.lastStopId);
+          if (stop) {
+            next = stop.progress;
+            state.pausedUntil = now + 1000;
+            state.lastStopId = stop.id;
+          } else if (state.lastStopId && Math.abs(next - prev) > 0.00001) {
+            const lastStop = stationStops[line.id]?.find((station) => station.id === state.lastStopId);
+            if (!lastStop || Math.abs(next - lastStop.progress) > 0.018) state.lastStopId = undefined;
+          }
+        }
+
+        state.t = next;
+        const { coord } = pointAlongPath(line.path, state.t);
         marker.setLngLat(coord);
       }
       trainRafRef.current = requestAnimationFrame(tick);
@@ -763,7 +926,7 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, onRe
       if (existing.has(p.id)) continue;
       const el = document.createElement("div");
       el.className = "cursor-pointer";
-      el.innerHTML = `<div style="width:30px;height:30px;border-radius:9999px;border:2px solid rgba(201,168,76,0.9);background:rgba(6,78,59,0.92);box-shadow:0 4px 18px rgba(0,0,0,0.35);display:grid;place-items:center;">${TRAIN_MARKER_SVG}</div>`;
+      el.innerHTML = `<div style="width:34px;height:34px;border-radius:9999px;border:2px solid rgba(255,255,255,0.92);background:linear-gradient(135deg,#0d7a5f,#c9a84c);box-shadow:0 4px 18px rgba(0,0,0,0.35),0 0 0 2px rgba(201,168,76,0.35);display:grid;place-items:center;color:#ffffff;font:800 11px/1 Work Sans,Arial,sans-serif;letter-spacing:0;">SN</div>`;
       el.onclick = () => setSelectedProjectId(p.id);
       const m = new mapboxgl.Marker({ element: el }).setLngLat([p.lng, p.lat]).addTo(map);
       existing.set(p.id, m);

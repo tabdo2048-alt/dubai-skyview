@@ -23,6 +23,9 @@ const LIGHT_PRESETS: { value: LightPreset; label: string; Icon: typeof Sun }[] =
 const RAIL_GUIDE: { category: keyof typeof CATEGORY_COLORS; name: string; status: string }[] = [
   { category: "red", name: "Red Line", status: "Operational" },
   { category: "green", name: "Green Line", status: "Operational" },
+  { category: "blue", name: "Blue Line", status: "2029" },
+  { category: "yellow", name: "Yellow Line", status: "2030" },
+  { category: "pink", name: "Pink Line", status: "Future" },
   { category: "tram", name: "Dubai Tram", status: "Operational" },
   { category: "train", name: "Etihad Rail", status: "Future" },
 ];
