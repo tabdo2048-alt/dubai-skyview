@@ -119,7 +119,9 @@ const WATER_FRAGMENT = /* glsl */ `
 
 // Build the shimmer overlay material — additive, very low opacity, no solid
 // fill. `uTime` is advanced slowly each frame in render() (dt * 0.08).
-function makeWaterMaterial(): THREE.ShaderMaterial {
+// In satellite mode, increase opacity so shimmer is visible over photo tiles.
+function makeWaterMaterial(mode: "satellite" | "3d" = "3d"): THREE.ShaderMaterial {
+  const opacityValue = mode === "satellite" ? 0.35 : 0.22; // Stronger in satellite
   return new THREE.ShaderMaterial({
     vertexShader: WATER_VERTEX,
     fragmentShader: WATER_FRAGMENT,
@@ -133,8 +135,8 @@ function makeWaterMaterial(): THREE.ShaderMaterial {
       // Pale icy highlight (0xBEEFFF) — the shimmer/reflection tint only.
       uShimmer: { value: new THREE.Color(0xbeefff) },
       uDistortion: { value: 0.25 }, // 0.15 .. 0.35
-      // Increased opacity for better visibility in satellite mode (0.12-0.22 range)
-      uOpacity: { value: 0.22 },
+      // Higher opacity in satellite mode for visibility over photo tiles
+      uOpacity: { value: opacityValue },
     },
   });
 }
@@ -147,7 +149,7 @@ type Cloud = {
   bounds: number;
 };
 
-export function createWaterLayer(controller?: { shouldRender: () => boolean }): mapboxgl.CustomLayerInterface {
+export function createWaterLayer(controller?: { shouldRender: () => boolean }, mode: "satellite" | "3d" = "3d"): mapboxgl.CustomLayerInterface {
   let renderer: THREE.WebGLRenderer | null = null;
   let scene: THREE.Scene;
   let camera: THREE.Camera;
@@ -193,7 +195,7 @@ export function createWaterLayer(controller?: { shouldRender: () => boolean }): 
           else shape.lineTo(p.x, p.y);
         });
         const geo = new THREE.ShapeGeometry(shape);
-        const water = new THREE.Mesh(geo, makeWaterMaterial());
+        const water = new THREE.Mesh(geo, makeWaterMaterial(mode));
         // Sit right at the water surface; do not occlude terrain/buildings/metro.
         water.position.z = 1;
         water.renderOrder = 1;
@@ -237,7 +239,9 @@ export function createWaterLayer(controller?: { shouldRender: () => boolean }): 
     },
 
     render(_gl: WebGLRenderingContext, matrix: unknown) {
-      if (!renderer || (controller && !controller.shouldRender())) return;
+      if (!renderer || (controller && !controller.shouldRender())) {
+        return;
+      }
       const dt = Math.min(clock.getDelta(), 0.1); // guard against huge jumps on tab refocus
 
       // Advance the shimmer clock very slowly — the sea should look like real

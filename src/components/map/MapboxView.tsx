@@ -231,7 +231,8 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, acti
     };
     if (!map.getLayer("dubai-water-3d")) {
       try {
-        map.addLayer(createWaterLayer(renderController));
+        map.addLayer(createWaterLayer(renderController, mode));
+        console.log("[Water] Animated shimmer layer added to", mode, "mode (opacity:", mode === "satellite" ? "0.35" : "0.22", ")");
       } catch (err) {
         console.error("Failed to add water shimmer layer", err);
       }
