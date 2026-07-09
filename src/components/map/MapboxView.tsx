@@ -1,8 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import { DUBAI_BOUNDS, DEFAULT_PITCH, DEFAULT_BEARING } from "@/lib/dubai";
-import { METRO_LINES, TRAIN_LINES, ALL_RAIL_LINES, STATION_PROGRESS, pointAlongPath, type MetroLine } from "@/lib/metro";
-import { createWaterLayer } from "./WaterLayer";
+import {
+  METRO_LINES,
+  TRAIN_LINES,
+  ALL_RAIL_LINES,
+  STATION_PROGRESS,
+  pointAlongPath,
+  type MetroLine,
+} from "@/lib/metro";
 import { createModel3DLayer } from "@/lib/mapbox/Model3DLayer";
 import { MODEL_REGISTRY } from "@/lib/mapbox/modelRegistry";
 import type { ProjectWithRelations } from "@/lib/types";
@@ -10,7 +16,9 @@ import { useFiltersStore } from "@/store/filters";
 
 // mapbox-gl v3 style expression — an array that can nest to arbitrary depth.
 // We build these by hand, so TypeScript sees them as `any[]` but Mapbox knows better.
-type Expr = any;
+type Expr = [string, ...unknown[]];
+type MapboxFilter = Parameters<mapboxgl.Map["setFilter"]>[1];
+type MapboxExpression = mapboxgl.ExpressionSpecification;
 
 type TrainMotionState = {
   t: number;
@@ -52,7 +60,19 @@ const TRAIN_MARKER_SVG = `
 const DRAW_DURATION = 2400; // ms per line's draw animation
 const LINE_STAGGER = 350; // ms delay between each line starting to draw
 
-export function MapboxView({ accessToken, projects, camera, onCameraChange, onReady, active, metroMode, trainMode, lightPreset, mode = "3d", show3DModels = true }: Props) {
+export function MapboxView({
+  accessToken,
+  projects,
+  camera,
+  onCameraChange,
+  onReady,
+  active,
+  metroMode,
+  trainMode,
+  lightPreset,
+  mode = "3d",
+  show3DModels = true,
+}: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<Map<string, mapboxgl.Marker>>(new globalThis.Map());
@@ -85,12 +105,18 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, onRe
 
     // Set the container background to a soft fallback color (not black during loading)
     containerRef.current.style.backgroundColor = "#d9eef2";
+    const projectMarkers = markersRef.current;
+    const activeTrainMarkers = trainMarkersRef.current;
+    const trainMotion = trainMotionRef.current;
 
     const map = new mapboxgl.Map({
       container: containerRef.current,
       // Satellite mode → flat Mapbox satellite imagery; 3D mode → Standard style
       // (buildings, lighting) which the Three.js water/boats overlay sits atop.
-      style: mode === "3d" ? "mapbox://styles/mapbox/standard" : "mapbox://styles/mapbox/satellite-streets-v12",
+      style:
+        mode === "3d"
+          ? "mapbox://styles/mapbox/standard"
+          : "mapbox://styles/mapbox/satellite-streets-v12",
       center: [camera.lng, camera.lat],
       zoom: camera.zoom,
       pitch: 0, // both modes start flat; 3D pitches up in the fly-in effect below
@@ -195,9 +221,9 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, onRe
       styleLoadedRef.current = false;
       map.remove();
       mapRef.current = null;
-      markersRef.current.clear();
-      trainMarkersRef.current.clear();
-      trainMotionRef.current.clear();
+      projectMarkers.clear();
+      activeTrainMarkers.clear();
+      trainMotion.clear();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken]);
@@ -223,13 +249,21 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, onRe
       if (!isRoad) continue;
 
       if (layer.type === "line") {
-        map.setPaintProperty(layer.id, "line-color", mode === "satellite" ? "rgba(255,255,255,0.55)" : "#e8e0d6");
-        map.setPaintProperty(layer.id, "line-opacity", mode === "satellite" ? 0.18 : 0.28);
+        map.setPaintProperty(
+          layer.id,
+          "line-color",
+          mode === "satellite" ? "rgba(255,255,255,0)" : "#e8e0d6",
+        );
+        map.setPaintProperty(layer.id, "line-opacity", mode === "satellite" ? 0 : 0.28);
         map.setPaintProperty(layer.id, "line-blur", 0.3);
       }
       if (layer.type === "fill") {
-        map.setPaintProperty(layer.id, "fill-color", mode === "satellite" ? "rgba(255,255,255,0.18)" : "#eee8df");
-        map.setPaintProperty(layer.id, "fill-opacity", mode === "satellite" ? 0.08 : 0.2);
+        map.setPaintProperty(
+          layer.id,
+          "fill-color",
+          mode === "satellite" ? "rgba(255,255,255,0)" : "#eee8df",
+        );
+        map.setPaintProperty(layer.id, "fill-opacity", mode === "satellite" ? 0 : 0.2);
       }
     }
   }
@@ -240,14 +274,13 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, onRe
   function applyStandardConfig(map: mapboxgl.Map, preset: LightPreset) {
     // For custom styles, use paint properties to brighten
     const setColor = (id: string, prop: string, value: unknown) => {
-      if (map.getLayer(id)) (map.setPaintProperty as (id: string, prop: string, value: unknown) => void)(id, prop, value);
+      if (map.getLayer(id))
+        (map.setPaintProperty as (id: string, prop: string, value: unknown) => void)(
+          id,
+          prop,
+          value,
+        );
     };
-
-    // Mapbox native water is the REAL, main visible sea. The Three.js layer is
-    // only a faint additive shimmer on top, so let the base water read as a
-    // natural, calm sea tone (not muted, not neon).
-    setColor("water", "fill-color", "#9BD8E8");
-    setColor("water", "fill-opacity", 1);
 
     // Brighten land/background for premium look
     const layers = map.getStyle()?.layers ?? [];
@@ -270,23 +303,15 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, onRe
     (map.addLayer as (l: unknown, b?: string) => void)(layer, before);
   }
 
-  // Add the heavy Three.js custom layers once the map is idle. Water shimmer
-  // runs in both modes; the 3D GLB model layer (boats/yachts/ships) is 3D-only
-  // and gated behind show3DModels. Every add is guarded against duplicates.
+  // Add the heavy Three.js custom layers once the map is idle. The 3D GLB
+  // model layer (boats/yachts/ships) is 3D-only and gated behind show3DModels.
+  // Every add is guarded against duplicates.
   function addHeavyLayers(map: mapboxgl.Map) {
     // Controller object passed to custom layers so they can gate their render loops
     // based on whether this instance is active and the tab is visible.
     const renderController = {
       shouldRender: () => isActiveRef.current && isVisibleRef.current,
     };
-    if (!map.getLayer("dubai-water-3d")) {
-      try {
-        map.addLayer(createWaterLayer(renderController, mode));
-        console.log("[Water] Animated shimmer layer added to", mode, "mode (opacity:", mode === "satellite" ? "0.20" : "0.15", ", color:", mode === "satellite" ? "#6EC6FF" : "#BEEFFF", ")");
-      } catch (err) {
-        console.error("Failed to add water shimmer layer", err);
-      }
-    }
     if (show3DModelsRef.current && !map.getLayer("dubai-3d-models")) {
       try {
         map.addLayer(createModel3DLayer(MODEL_REGISTRY, renderController));
@@ -349,11 +374,12 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, onRe
   }
 
   function applyStationFilters(map: mapboxgl.Map) {
-    if (map.getLayer("metro-stations-3d")) map.setFilter("metro-stations-3d", stationFilter());
-    if (map.getLayer("metro-station-halo")) map.setFilter("metro-station-halo", stationFilter());
-    if (map.getLayer("metro-station-core")) map.setFilter("metro-station-core", stationFilter());
-    if (map.getLayer("metro-station-sign")) map.setFilter("metro-station-sign", stationFilter());
-    if (map.getLayer("metro-stations-label")) map.setFilter("metro-stations-label", stationFilter());
+    const filter = stationFilter() as MapboxFilter;
+    if (map.getLayer("metro-stations-3d")) map.setFilter("metro-stations-3d", filter);
+    if (map.getLayer("metro-station-halo")) map.setFilter("metro-station-halo", filter);
+    if (map.getLayer("metro-station-core")) map.setFilter("metro-station-core", filter);
+    if (map.getLayer("metro-station-sign")) map.setFilter("metro-station-sign", filter);
+    if (map.getLayer("metro-stations-label")) map.setFilter("metro-stations-label", filter);
   }
 
   // Build the line sources/layers once (hidden until metroMode plays them).
@@ -396,6 +422,20 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, onRe
           paint: {
             "line-width": ["interpolate", ["linear"], ["zoom"], 10, 3, 16, 8],
             "line-gradient": lineGradient(line.color, 0),
+          },
+        });
+      }
+      if (!map.getLayer(`${srcId}-guide`)) {
+        addLayerSafe(map, {
+          id: `${srcId}-guide`,
+          type: "line",
+          source: srcId,
+          layout: { "line-cap": "round", "line-join": "round", visibility: "none" },
+          paint: {
+            "line-color": "rgba(100,100,100,0.1)",
+            "line-width": 1.5,
+            "line-dasharray": [4, 4],
+            "line-opacity": 0.15,
           },
         });
       }
@@ -490,7 +530,15 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, onRe
         filter: stationFilter(),
         paint: {
           "fill-extrusion-color": ["get", "color"],
-          "fill-extrusion-height": ["interpolate", ["linear"], ["zoom"], 11, 0, 14, ["get", "height"]],
+          "fill-extrusion-height": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            11,
+            0,
+            14,
+            ["get", "height"],
+          ],
           "fill-extrusion-base": 0,
           "fill-extrusion-opacity": 0.9,
         },
@@ -504,7 +552,17 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, onRe
         minzoom: 10.5,
         filter: stationFilter(),
         paint: {
-          "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 3, 13, ["case", ["get", "interchange"], 9, 6], 16, ["case", ["get", "interchange"], 14, 10]],
+          "circle-radius": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            10,
+            3,
+            13,
+            ["case", ["get", "interchange"], 9, 6],
+            16,
+            ["case", ["get", "interchange"], 14, 10],
+          ],
           "circle-color": "#ffffff",
           "circle-stroke-color": ["get", "color"],
           "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 10, 1, 16, 3],
@@ -552,13 +610,15 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, onRe
         id: "metro-stations-label",
         type: "symbol",
         source: "metro-station-points",
-        minzoom: 12.5,
+        minzoom: 11,
         filter: stationFilter(),
         layout: {
           "text-field": ["get", "name"],
-          "text-size": 11,
+          "text-size": ["interpolate", ["linear"], ["zoom"], 11, 9, 14, 12],
           "text-offset": [0, -1.4],
           "text-anchor": "bottom",
+          "text-allow-overlap": false,
+          "text-optional": true,
         },
         paint: {
           "text-color": "#3b332a",
@@ -601,11 +661,22 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, onRe
       const srcId = `metro-${line.id}`;
       if (map.getLayer(`${srcId}-glow`)) {
         map.setLayoutProperty(`${srcId}-glow`, "visibility", "none");
-        map.setPaintProperty(`${srcId}-glow`, "line-gradient", lineGradient(line.color, 0));
+        map.setPaintProperty(
+          `${srcId}-glow`,
+          "line-gradient",
+          lineGradient(line.color, 0) as MapboxExpression,
+        );
       }
       if (map.getLayer(`${srcId}-reveal`)) {
         map.setLayoutProperty(`${srcId}-reveal`, "visibility", "none");
-        map.setPaintProperty(`${srcId}-reveal`, "line-gradient", lineGradient(line.color, 0));
+        map.setPaintProperty(
+          `${srcId}-reveal`,
+          "line-gradient",
+          lineGradient(line.color, 0) as MapboxExpression,
+        );
+      }
+      if (map.getLayer(`${srcId}-guide`)) {
+        map.setLayoutProperty(`${srcId}-guide`, "visibility", "none");
       }
     }
     revealThreshRef.current[network] = 0;
@@ -616,12 +687,8 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, onRe
   // reaches it — a glass dot with a colored outer glow that fades out.
   function spawnStationPulse(map: mapboxgl.Map, coord: [number, number], color: string) {
     const el = document.createElement("div");
-    el.style.width = "18px";
-    el.style.height = "18px";
-    el.style.borderRadius = "9999px";
-    el.style.background = "rgba(255,255,255,0.85)";
-    el.style.border = `2px solid ${color}`;
-    el.style.color = color;
+    el.className = "cursor-pointer";
+    el.innerHTML = `<div style="width:28px;height:28px;border-radius:9999px;border:2px solid rgba(201,168,76,0.9);background:rgba(6,78,59,0.92);box-shadow:0 4px 18px rgba(0,0,0,0.35);display:grid;place-items:center;font-family:system-ui;font-size:10px;font-weight:bold;color:#c9a84c;user-select:none;">SN</div>`;
     el.style.animation = "metro-station-pulse 800ms ease-out";
     const marker = new mapboxgl.Marker({ element: el }).setLngLat(coord).addTo(map);
     pulseMarkersRef.current.push(marker);
@@ -646,6 +713,8 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, onRe
         if (!map.getLayer(`${srcId}-glow`) || !map.getLayer(`${srcId}-reveal`)) return;
         map.setLayoutProperty(`${srcId}-glow`, "visibility", "visible");
         map.setLayoutProperty(`${srcId}-reveal`, "visibility", "visible");
+        if (map.getLayer(`${srcId}-guide`))
+          map.setLayoutProperty(`${srcId}-guide`, "visibility", "visible");
 
         const stationsForLine = line.stations
           .map((s) => ({ ...s, progress: STATION_PROGRESS[s.id] ?? 0 }))
@@ -655,8 +724,16 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, onRe
         const step = (now: number) => {
           const t = Math.min(1, (now - start) / DRAW_DURATION);
           const eased = t * (2 - t); // ease-out
-          map.setPaintProperty(`${srcId}-glow`, "line-gradient", lineGradient(line.color, eased));
-          map.setPaintProperty(`${srcId}-reveal`, "line-gradient", lineGradient(line.color, eased));
+          map.setPaintProperty(
+            `${srcId}-glow`,
+            "line-gradient",
+            lineGradient(line.color, eased) as MapboxExpression,
+          );
+          map.setPaintProperty(
+            `${srcId}-reveal`,
+            "line-gradient",
+            lineGradient(line.color, eased) as MapboxExpression,
+          );
 
           for (const s of stationsForLine) {
             if (s.progress <= eased && !revealedStations.has(s.id)) {
@@ -722,7 +799,12 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, onRe
       for (const line of ALL_RAIL_LINES) {
         const marker = trainMarkersRef.current.get(line.id);
         if (!marker) continue;
-        const state = trainMotionRef.current.get(line.id) ?? { t: 0, dir: 1, last: now, pausedUntil: 0 };
+        const state = trainMotionRef.current.get(line.id) ?? {
+          t: 0,
+          dir: 1,
+          last: now,
+          pausedUntil: 0,
+        };
         if (!trainMotionRef.current.has(line.id)) trainMotionRef.current.set(line.id, state);
 
         if (now < state.pausedUntil) {
@@ -748,14 +830,20 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, onRe
         } else {
           const from = Math.min(prev, next);
           const to = Math.max(prev, next);
-          const stop = stationStops[line.id]?.find((station) => station.progress >= from && station.progress <= to && station.id !== state.lastStopId);
+          const stop = stationStops[line.id]?.find(
+            (station) =>
+              station.progress >= from && station.progress <= to && station.id !== state.lastStopId,
+          );
           if (stop) {
             next = stop.progress;
             state.pausedUntil = now + 1000;
             state.lastStopId = stop.id;
           } else if (state.lastStopId && Math.abs(next - prev) > 0.00001) {
-            const lastStop = stationStops[line.id]?.find((station) => station.id === state.lastStopId);
-            if (!lastStop || Math.abs(next - lastStop.progress) > 0.018) state.lastStopId = undefined;
+            const lastStop = stationStops[line.id]?.find(
+              (station) => station.id === state.lastStopId,
+            );
+            if (!lastStop || Math.abs(next - lastStop.progress) > 0.018)
+              state.lastStopId = undefined;
           }
         }
 
@@ -822,7 +910,6 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, onRe
       }
     };
     if (styleLoadedRef.current) apply();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lightPreset]);
 
   // Track visibility state for gating render loops in custom layers.
@@ -946,7 +1033,9 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, onRe
       if (!el) continue;
       const selected = id === selectedProjectId;
       el.style.transform = selected ? "scale(1.35)" : "scale(1)";
-      el.style.boxShadow = selected ? "0 0 24px rgba(251,191,36,0.9)" : "0 4px 18px rgba(0,0,0,0.35)";
+      el.style.boxShadow = selected
+        ? "0 0 24px rgba(251,191,36,0.9)"
+        : "0 4px 18px rgba(0,0,0,0.35)";
       el.style.background = selected ? "#c9a84c" : "rgba(6,78,59,0.92)";
     }
   }, [selectedProjectId]);
@@ -957,7 +1046,8 @@ export function MapboxView({ accessToken, projects, camera, onCameraChange, onRe
         <div className="glass gold-hairline max-w-md rounded-2xl p-6 text-center">
           <div className="font-display text-xl text-cream">Mapbox access token required</div>
           <p className="mt-2 text-sm text-muted-foreground">
-            Add a Mapbox public token to <code>.env</code> as <code>MAPBOX_ACCESS_TOKEN</code> to enable the 3D metro view.
+            Add a Mapbox public token to <code>.env</code> as <code>MAPBOX_ACCESS_TOKEN</code> to
+            enable the 3D metro view.
           </p>
         </div>
       </div>
