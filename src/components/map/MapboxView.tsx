@@ -9,7 +9,7 @@ import {
   pointAlongPath,
   type MetroLine,
 } from "@/lib/metro";
-import { WATER_AREAS } from "@/lib/water";
+import { createWaterLayer } from "./WaterLayer";
 import { createModel3DLayer } from "@/lib/mapbox/Model3DLayer";
 import { MODEL_REGISTRY } from "@/lib/mapbox/modelRegistry";
 import type { ProjectWithRelations } from "@/lib/types";
@@ -60,8 +60,6 @@ const TRAIN_MARKER_SVG = `
 
 const DRAW_DURATION = 2400; // ms per line's draw animation
 const LINE_STAGGER = 350; // ms delay between each line starting to draw
-const SATELLITE_WATER_COLOR = "#65C7E8";
-const SATELLITE_WATER_OPACITY = 0.34;
 
 export function MapboxView({
   accessToken,
@@ -117,7 +115,7 @@ export function MapboxView({
       // Satellite mode → flat Mapbox satellite imagery; 3D mode → Standard style.
       style:
         mode === "3d"
-          ? "mapbox://styles/mapbox/standard"
+          ? "mapbox://styles/2shraf-tamer/cmrarm85z002x01shfp2680g9"
           : "mapbox://styles/mapbox/satellite-streets-v12",
       center: [camera.lng, camera.lat],
       zoom: camera.zoom,
@@ -175,12 +173,6 @@ export function MapboxView({
           neutralizeRoadColors(map);
         } catch (err) {
           console.warn("neutralizeRoadColors failed (non-fatal)", err);
-        }
-
-        try {
-          addSatelliteWaterTint(map);
-        } catch (err) {
-          console.warn("addSatelliteWaterTint failed (non-fatal)", err);
         }
       }
 
@@ -310,42 +302,23 @@ export function MapboxView({
     (map.addLayer as (l: unknown, b?: string) => void)(layer, before);
   }
 
-  function addSatelliteWaterTint(map: mapboxgl.Map) {
-    if (map.getSource("satellite-water-tint")) return;
-    map.addSource("satellite-water-tint", {
-      type: "geojson",
-      data: {
-        type: "FeatureCollection",
-        features: WATER_AREAS.map((area) => ({
-          type: "Feature",
-          properties: { id: area.id, name: area.name },
-          geometry: {
-            type: "Polygon",
-            coordinates: [area.polygon],
-          },
-        })),
-      },
-    });
-    addLayerSafe(map, {
-      id: "satellite-water-tint",
-      type: "fill",
-      source: "satellite-water-tint",
-      paint: {
-        "fill-color": SATELLITE_WATER_COLOR,
-        "fill-opacity": SATELLITE_WATER_OPACITY,
-      },
-    });
-  }
-
   // Add the heavy Three.js custom layers once the map is idle. The 3D GLB
-  // model layer (boats/yachts/ships) is 3D-only and gated behind show3DModels.
-  // Every add is guarded against duplicates.
+  // water wave layer is a white transparent crest overlay; the model layer
+  // (boats/yachts/ships) is 3D-only and gated behind show3DModels. Every add is
+  // guarded against duplicates.
   function addHeavyLayers(map: mapboxgl.Map) {
     // Controller object passed to custom layers so they can gate their render loops
     // based on whether this instance is active and the tab is visible.
     const renderController = {
       shouldRender: () => isActiveRef.current && isVisibleRef.current,
     };
+    if (!map.getLayer("dubai-water-3d")) {
+      try {
+        map.addLayer(createWaterLayer(renderController, mode));
+      } catch (err) {
+        console.error("Failed to add water wave layer", err);
+      }
+    }
     if (show3DModelsRef.current && !map.getLayer("dubai-3d-models")) {
       try {
         map.addLayer(createModel3DLayer(MODEL_REGISTRY, renderController));

@@ -5,11 +5,11 @@ type CloudLayerProps = {
 /**
  * Drifting aerial cloud layer: four real cloud images pinned near the
  * viewport corners and animated horizontally via CSS keyframes. Fully
- * visible through zoom 11, then gone at zoom 12 so
- * clouds read at a cinematic altitude but clear out as you zoom into the city.
+ * visible on the opening wide view, then gone after the first zoom-in so
+ * clouds clear out immediately as the user enters the city.
  */
 export function CloudLayer({ zoom }: CloudLayerProps) {
-  const opacity = zoom < 11 ? 1 : Math.max(0, Math.min(1, 12 - zoom));
+  const opacity = zoom <= 10.45 ? 1 : Math.max(0, Math.min(1, (10.75 - zoom) / 0.3));
 
   return (
     <div className="map-clouds-wrapper" style={{ opacity }} aria-hidden="true">
