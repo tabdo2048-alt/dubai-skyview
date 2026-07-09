@@ -103,6 +103,7 @@ export function createWaterLayer(
   let ref: MercatorRef;
   let clock: THREE.Clock;
   let onResize: (() => void) | null = null;
+  let waterMaterial: THREE.ShaderMaterial | null = null;
   let animationLogged = false;
   const localToMercator = new THREE.Matrix4();
   const projectionMatrix = new THREE.Matrix4();
@@ -129,6 +130,7 @@ export function createWaterLayer(
       };
 
       console.log("[Water] total areas", WATER_AREAS.length);
+      waterMaterial = makeWaterMaterial(mode);
       for (const area of WATER_AREAS) {
         const shape = new THREE.Shape();
         area.polygon.forEach(([lng, lat], i) => {
@@ -137,7 +139,7 @@ export function createWaterLayer(
           else shape.lineTo(p.x, p.y);
         });
 
-        const water = new THREE.Mesh(new THREE.ShapeGeometry(shape), makeWaterMaterial(mode));
+        const water = new THREE.Mesh(new THREE.ShapeGeometry(shape), waterMaterial);
         water.position.z = 1;
         water.renderOrder = 1;
         waters.push(water);
@@ -154,10 +156,7 @@ export function createWaterLayer(
       if (!renderer || (controller && !controller.shouldRender())) return;
       const dt = Math.min(clock.getDelta(), 0.1);
 
-      for (const w of waters) {
-        const mat = w.material as THREE.ShaderMaterial;
-        if (mat.uniforms.uTime) mat.uniforms.uTime.value += dt * 0.8;
-      }
+      if (waterMaterial?.uniforms.uTime) waterMaterial.uniforms.uTime.value += dt * 0.8;
       if (!animationLogged) {
         console.log("[Water] animation running");
         animationLogged = true;
@@ -182,8 +181,10 @@ export function createWaterLayer(
       if (onResize) map.off("resize", onResize);
       for (const w of waters) {
         w.geometry.dispose();
-        (w.material as THREE.Material).dispose();
       }
+      waters.length = 0;
+      waterMaterial?.dispose();
+      waterMaterial = null;
       releaseSharedRenderer();
       renderer = null;
     },

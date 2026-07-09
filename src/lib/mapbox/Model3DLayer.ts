@@ -28,7 +28,11 @@ const WAKE_RECORD_EVERY = 2; // frames between wake position samples
 
 function lngLatToLocal(lng: number, lat: number, ref: MercatorRef, altitude = 0): THREE.Vector3 {
   const m = mapboxgl.MercatorCoordinate.fromLngLat([lng, lat], altitude);
-  return new THREE.Vector3((m.x - ref.x) / ref.scale, (m.y - ref.y) / ref.scale, (m.z - ref.z) / ref.scale);
+  return new THREE.Vector3(
+    (m.x - ref.x) / ref.scale,
+    (m.y - ref.y) / ref.scale,
+    (m.z - ref.z) / ref.scale,
+  );
 }
 
 // --- Procedural placeholder models ----------------------------------------
@@ -61,7 +65,14 @@ function makeBox(w: number, d: number, h: number, color: number, z: number): THR
 
 // A tapered deck/superstructure block — a box whose front (bow, +X) face is
 // narrowed and slightly shortened so decks look sleek instead of brick-like.
-function makeTaperedDeck(len: number, beam: number, h: number, color: number, z: number, taper = 0.55): THREE.Mesh {
+function makeTaperedDeck(
+  len: number,
+  beam: number,
+  h: number,
+  color: number,
+  z: number,
+  taper = 0.55,
+): THREE.Mesh {
   const geo = new THREE.BoxGeometry(len, beam, h);
   const pos = geo.attributes.position;
   for (let i = 0; i < pos.count; i++) {
@@ -152,7 +163,13 @@ function makeLuxuryYacht(hullColor: number): THREE.Group {
   // Dark windshield wrap at the front of the upper deck.
   const windshield = new THREE.Mesh(
     new THREE.BoxGeometry(10, 24, 12),
-    new THREE.MeshStandardMaterial({ color: glass, metalness: 0.8, roughness: 0.2, transparent: true, opacity: 0.85 }),
+    new THREE.MeshStandardMaterial({
+      color: glass,
+      metalness: 0.8,
+      roughness: 0.2,
+      transparent: true,
+      opacity: 0.85,
+    }),
   );
   windshield.position.set(30, 0, 33);
   g.add(windshield);
@@ -253,7 +270,10 @@ class WakeTrail {
     }
     const indices: number[] = [];
     for (let i = 0; i < n - 1; i++) {
-      const a = i * 2, b = i * 2 + 1, c = i * 2 + 2, d = i * 2 + 3;
+      const a = i * 2,
+        b = i * 2 + 1,
+        c = i * 2 + 2,
+        d = i * 2 + 3;
       indices.push(a, b, c, b, d, c);
     }
     this.geometry.setIndex(indices);
@@ -270,7 +290,10 @@ class WakeTrail {
 
 // Interpolate along a route at fraction t (0..1) → position + heading so the
 // model can face its direction of travel.
-function routePointAt(path: [number, number][], t: number): { coord: [number, number]; heading: number } {
+function routePointAt(
+  path: [number, number][],
+  t: number,
+): { coord: [number, number]; heading: number } {
   if (path.length < 2) return { coord: path[0] ?? [0, 0], heading: 0 };
   const segLens: number[] = [];
   let total = 0;
@@ -313,7 +336,10 @@ type ModelInstance = {
 };
 
 // Build the Mapbox custom layer from a registry of model configs.
-export function createModel3DLayer(registry: ModelConfig[], controller?: { shouldRender: () => boolean }): mapboxgl.CustomLayerInterface {
+export function createModel3DLayer(
+  registry: ModelConfig[],
+  controller?: { shouldRender: () => boolean },
+): mapboxgl.CustomLayerInterface {
   let renderer: THREE.WebGLRenderer | null = null;
   let scene: THREE.Scene;
   let camera: THREE.Camera;
@@ -323,6 +349,10 @@ export function createModel3DLayer(registry: ModelConfig[], controller?: { shoul
   let disposed = false;
   let onResize: (() => void) | null = null;
   const instances: ModelInstance[] = [];
+  // Reused every frame to avoid per-frame allocations (60 FPS target).
+  const localToMercator = new THREE.Matrix4();
+  const projectionMatrix = new THREE.Matrix4();
+  const mercatorScale = new THREE.Vector3();
 
   return {
     id: "dubai-3d-models",
@@ -336,7 +366,12 @@ export function createModel3DLayer(registry: ModelConfig[], controller?: { shoul
       camera = new THREE.Camera();
 
       const origin = mapboxgl.MercatorCoordinate.fromLngLat([55.138, 25.1], 0);
-      ref = { x: origin.x, y: origin.y, z: origin.z, scale: origin.meterInMercatorCoordinateUnits() };
+      ref = {
+        x: origin.x,
+        y: origin.y,
+        z: origin.z,
+        scale: origin.meterInMercatorCoordinateUnits(),
+      };
 
       scene.add(new THREE.AmbientLight(0xffffff, 1.4));
       const sun = new THREE.DirectionalLight(0xfff2d6, 1.7);
@@ -352,7 +387,13 @@ export function createModel3DLayer(registry: ModelConfig[], controller?: { shoul
         const group = new THREE.Group();
         // Wake only for water craft that move.
         const wakeWidth =
-          config.type === "ship" ? 26 : config.type === "yacht" ? 14 : config.type === "boat" || config.type === "abra" ? 8 : 0;
+          config.type === "ship"
+            ? 26
+            : config.type === "yacht"
+              ? 14
+              : config.type === "boat" || config.type === "abra"
+                ? 8
+                : 0;
         const wants = config.animate && isValidRoute(config.route) && wakeWidth > 0;
         if (config.animate && !isValidRoute(config.route)) {
           console.warn(`[Model3DLayer] invalid/missing route for: ${config.id} — placing static`);
@@ -442,14 +483,13 @@ export function createModel3DLayer(registry: ModelConfig[], controller?: { shoul
 
       const mArr = Array.isArray(matrix)
         ? (matrix as number[])
-        : (matrix as { defaultProjectionData?: { mainMatrix: number[] } } | undefined)?.defaultProjectionData
-            ?.mainMatrix;
+        : (matrix as { defaultProjectionData?: { mainMatrix: number[] } } | undefined)
+            ?.defaultProjectionData?.mainMatrix;
       if (!mArr) return;
 
-      const l = new THREE.Matrix4()
-        .makeTranslation(ref.x, ref.y, ref.z)
-        .scale(new THREE.Vector3(ref.scale, -ref.scale, ref.scale));
-      camera.projectionMatrix = new THREE.Matrix4().fromArray(mArr).multiply(l);
+      mercatorScale.set(ref.scale, -ref.scale, ref.scale);
+      localToMercator.makeTranslation(ref.x, ref.y, ref.z).scale(mercatorScale);
+      camera.projectionMatrix = projectionMatrix.fromArray(mArr).multiply(localToMercator);
 
       renderer.resetState();
       renderer.render(scene, camera);
