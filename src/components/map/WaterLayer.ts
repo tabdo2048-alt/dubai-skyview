@@ -413,7 +413,7 @@ function makeWaterMaterial(mode: "satellite" | "3d" = "3d"): THREE.ShaderMateria
       uDeepColor: { value: new THREE.Color(satellite ? 0xc9f3ff : 0xbdeeff) },
       uFoamColor: { value: new THREE.Color(0xffffff) },
       uDistortion: { value: satellite ? 0.2 : 0.26 },
-      uOpacity: { value: satellite ? 0.1 : 0.08 },
+      uOpacity: { value: satellite ? 0.28 : 0.18 },
       uWaveHeight: { value: satellite ? 3.8 : 2.2 },
       uWaveScale: { value: 0.0035 },
     },
@@ -515,9 +515,6 @@ export function createWaterLayer(
 
       waterMaterial = makeWaterMaterial(mode);
       for (const area of WATER_AREAS) {
-        // Open-sea polygons are used as navigation bounds for boats only.
-        // Rendering them as filled cyan surfaces creates the "blue dome" look.
-        if (area.openSea) continue;
         // Skip malformed areas instead of letting one bad polygon break the
         // whole layer — a ring needs at least 3 finite coordinates.
         const valid =
