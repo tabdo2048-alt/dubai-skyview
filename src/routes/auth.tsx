@@ -37,7 +37,7 @@ function AuthPage() {
         if (error) throw error;
         toast.success("Welcome back.");
       }
-      navigate({ to: "/" });
+      navigate({ to: "/admin" });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Something went wrong");
     } finally {

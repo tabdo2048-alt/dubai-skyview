@@ -21,11 +21,23 @@ import {
   extractProjectionMatrix,
 } from "./sharedThreeRenderer";
 import { PLACEHOLDER_COLORS, type ModelConfig, type ModelType } from "./modelTypes";
+import { isWatercraft, modelStaysInDubaiWater } from "./waterRouteGuards";
 
 type MercatorRef = { x: number; y: number; z: number; scale: number };
 
 const WAKE_SAMPLES = 24;
 const WAKE_RECORD_EVERY = 2; // frames between wake position samples
+const WATERCRAFT_SCALE_MULTIPLIER: Partial<Record<ModelType, number>> = {
+  ship: 0.08,
+  yacht: 0.28,
+  boat: 0.32,
+  abra: 0.32,
+};
+const WATERCRAFT_WAKE_MULTIPLIER = 0.45;
+
+function displayScale(config: ModelConfig) {
+  return config.scale * (WATERCRAFT_SCALE_MULTIPLIER[config.type] ?? 1);
+}
 
 function lngLatToLocal(lng: number, lat: number, ref: MercatorRef, altitude = 0): THREE.Vector3 {
   const m = mapboxgl.MercatorCoordinate.fromLngLat([lng, lat], altitude);
@@ -380,14 +392,20 @@ export function createModel3DLayer(
       scene.add(sun);
       scene.add(new THREE.HemisphereLight(0x87ceeb, 0xf5f3f0, 1.1));
 
-      console.log(`[Boats] ${registry.length} boat configs loaded`);
+      const safeRegistry = registry.filter((config) => {
+        const allowed = modelStaysInDubaiWater(config);
+        if (!allowed) console.warn(`[Boats] skipped land-crossing route: ${config.id}`);
+        return allowed;
+      });
+
+      console.log(`[Boats] ${safeRegistry.length} water-bound boat configs loaded`);
       const loader = new GLTFLoader();
       let wakeCount = 0;
 
-      for (const config of registry) {
+      for (const config of safeRegistry) {
         const group = new THREE.Group();
         // Wake only for water craft that move.
-        const wakeWidth =
+        const baseWakeWidth =
           config.type === "ship"
             ? 26
             : config.type === "yacht"
@@ -395,6 +413,9 @@ export function createModel3DLayer(
               : config.type === "boat" || config.type === "abra"
                 ? 8
                 : 0;
+        const wakeWidth = isWatercraft(config.type)
+          ? baseWakeWidth * WATERCRAFT_WAKE_MULTIPLIER
+          : baseWakeWidth;
         const wants = config.animate && isValidRoute(config.route) && wakeWidth > 0;
         if (config.animate && !isValidRoute(config.route)) {
           console.warn(`[Model3DLayer] invalid/missing route for: ${config.id} — placing static`);
@@ -423,7 +444,7 @@ export function createModel3DLayer(
             if (disposed) return;
             console.log("[Boats] model loaded");
             const obj = gltf.scene;
-            obj.scale.setScalar(config.scale);
+            obj.scale.setScalar(displayScale(config));
             obj.rotation.set(config.rotation[0], config.rotation[1], config.rotation[2]);
             group.add(obj);
           },
@@ -432,7 +453,7 @@ export function createModel3DLayer(
             if (disposed) return;
             console.log("[Boats] placeholder used");
             const ph = makePlaceholder(config.type, color);
-            ph.scale.multiplyScalar(config.scale);
+            ph.scale.multiplyScalar(displayScale(config));
             group.add(ph);
           },
         );

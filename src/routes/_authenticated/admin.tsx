@@ -1,7 +1,7 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus, Trash2, Star, StarOff, Edit3 } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Star, StarOff, Edit3, Upload, ImagePlus, X } from "lucide-react";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { AdminLocationPicker } from "@/components/map/AdminLocationPicker";
 import { useAuth, useIsAdmin } from "@/hooks/use-auth";
@@ -14,6 +14,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { formatAed } from "@/lib/dubai";
+
+const PROJECT_MEDIA_BUCKET = "project-media";
 
 export const Route = createFileRoute("/_authenticated/admin")({
   component: AdminPage,
@@ -132,25 +134,136 @@ function ProjectForm({ id, onClose }: { id: string | null; onClose: () => void }
     category: existing?.category ?? "apartment",
     description: existing?.description ?? "",
     main_image_url: existing?.main_image_url ?? "",
+    brochure_url: existing?.brochure_url ?? "",
+    video_url: existing?.video_url ?? "",
+    tour_360_url: existing?.tour_360_url ?? "",
+    tags: existing?.tags?.join(", ") ?? "",
     featured: existing?.featured ?? false,
   });
+  const [gallery, setGallery] = useState(existing?.images ?? []);
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setGallery(existing?.images ?? []);
+  }, [existing?.id, existing?.images]);
+
+  const imagePreviews = useMemo(
+    () =>
+      imageFiles.map((file) => ({
+        file,
+        url: URL.createObjectURL(file),
+      })),
+    [imageFiles],
+  );
+
+  useEffect(() => {
+    return () => {
+      imagePreviews.forEach((preview) => URL.revokeObjectURL(preview.url));
+    };
+  }, [imagePreviews]);
+
+  const uploadProjectImages = async (projectId: string) => {
+    if (!imageFiles.length) return [] as string[];
+
+    const uploaded = await Promise.all(
+      imageFiles.map(async (file, index) => {
+        const extension = file.name.split(".").pop()?.toLowerCase() || "jpg";
+        const safeName = file.name
+          .replace(/\.[^/.]+$/, "")
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "")
+          .slice(0, 42);
+        const path = `${projectId}/${Date.now()}-${index}-${safeName || "project-image"}.${extension}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from(PROJECT_MEDIA_BUCKET)
+          .upload(path, file, {
+            cacheControl: "31536000",
+            contentType: file.type || "image/jpeg",
+            upsert: false,
+          });
+
+        if (uploadError) throw uploadError;
+
+        const { data } = supabase.storage.from(PROJECT_MEDIA_BUCKET).getPublicUrl(path);
+        return data.publicUrl;
+      }),
+    );
+
+    const firstSort = gallery.length;
+    const { error: imageError } = await supabase.from("project_images").insert(
+      uploaded.map((url, index) => ({
+        project_id: projectId,
+        url,
+        sort_order: firstSort + index,
+      })),
+    );
+
+    if (imageError) throw imageError;
+    return uploaded;
+  };
+
+  const removeExistingImage = async (imageId: string, url: string) => {
+    const { error } = await supabase.from("project_images").delete().eq("id", imageId);
+    if (error) return toast.error(error.message);
+
+    const path = getProjectMediaPath(url);
+    if (path) {
+      await supabase.storage.from(PROJECT_MEDIA_BUCKET).remove([path]);
+    }
+
+    setGallery((items) => items.filter((item) => item.id !== imageId));
+    if (f.main_image_url === url) {
+      const nextMain = gallery.find((item) => item.id !== imageId)?.url ?? "";
+      setF((current) => ({ ...current, main_image_url: nextMain }));
+      if (id) await supabase.from("projects").update({ main_image_url: nextMain || null }).eq("id", id);
+    }
+    toast.success("Image removed");
+  };
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     try {
+      const isEditing = Boolean(id);
       const payload = {
         ...f,
         slug: f.slug || f.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
         developer_id: f.developer_id || null,
         community_id: f.community_id || null,
+        main_image_url: f.main_image_url || null,
+        brochure_url: f.brochure_url || null,
+        video_url: f.video_url || null,
+        tour_360_url: f.tour_360_url || null,
+        tags: f.tags
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter(Boolean),
       };
-      const { error } = id
-        ? await supabase.from("projects").update(payload).eq("id", id)
-        : await supabase.from("projects").insert(payload);
-      if (error) throw error;
-      toast.success(id ? "Project updated" : "Project created");
+      let projectId = id ?? "";
+
+      if (id) {
+        const { error } = await supabase.from("projects").update(payload).eq("id", id);
+        if (error) throw error;
+      } else {
+        const { data, error } = await supabase.from("projects").insert(payload).select("id").single();
+        if (error) throw error;
+        if (!data?.id) throw new Error("Project was created without an id");
+        projectId = data.id;
+      }
+
+      const uploadedUrls = await uploadProjectImages(projectId);
+      if (uploadedUrls[0] && !payload.main_image_url) {
+        const { error } = await supabase
+          .from("projects")
+          .update({ main_image_url: uploadedUrls[0] })
+          .eq("id", projectId);
+        if (error) throw error;
+      }
+
+      toast.success(isEditing ? "Project updated" : "Project created");
       onClose();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Save failed");
@@ -190,12 +303,14 @@ function ProjectForm({ id, onClose }: { id: string | null; onClose: () => void }
             </div>
           </div>
         )}
+        <Field label="Address"><Input value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} /></Field>
         <Field label="Latitude"><Input type="number" step="0.0001" value={f.lat} onChange={(e) => setF({ ...f, lat: Number(e.target.value) })} required /></Field>
         <Field label="Longitude"><Input type="number" step="0.0001" value={f.lng} onChange={(e) => setF({ ...f, lng: Number(e.target.value) })} required /></Field>
         <Field label="Starting price (AED)"><Input type="number" value={f.starting_price_aed} onChange={(e) => setF({ ...f, starting_price_aed: Number(e.target.value) })} /></Field>
         <Field label="Completion"><Input value={f.completion_date} onChange={(e) => setF({ ...f, completion_date: e.target.value })} placeholder="Q4 2026" /></Field>
         <Field label="Bedrooms min"><Input type="number" value={f.bedrooms_min} onChange={(e) => setF({ ...f, bedrooms_min: Number(e.target.value) })} /></Field>
         <Field label="Bedrooms max"><Input type="number" value={f.bedrooms_max} onChange={(e) => setF({ ...f, bedrooms_max: Number(e.target.value) })} /></Field>
+        <Field label="Bathrooms"><Input type="number" value={f.bathrooms} onChange={(e) => setF({ ...f, bathrooms: Number(e.target.value) })} /></Field>
         <Field label="Category">
           <select value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} className="glass gold-hairline w-full rounded-md p-2 text-cream">
             {["apartment","villa","townhouse","penthouse","studio"].map((c) => <option key={c} value={c}>{c}</option>)}
@@ -208,6 +323,69 @@ function ProjectForm({ id, onClose }: { id: string | null; onClose: () => void }
         </Field>
         <Field label="Payment plan"><Input value={f.payment_plan} onChange={(e) => setF({ ...f, payment_plan: e.target.value })} /></Field>
         <Field label="Main image URL"><Input value={f.main_image_url} onChange={(e) => setF({ ...f, main_image_url: e.target.value })} /></Field>
+        <Field label="Brochure URL"><Input value={f.brochure_url} onChange={(e) => setF({ ...f, brochure_url: e.target.value })} /></Field>
+        <Field label="Video URL"><Input value={f.video_url} onChange={(e) => setF({ ...f, video_url: e.target.value })} /></Field>
+        <Field label="360 tour URL"><Input value={f.tour_360_url} onChange={(e) => setF({ ...f, tour_360_url: e.target.value })} /></Field>
+        <Field label="Tags"><Input value={f.tags} onChange={(e) => setF({ ...f, tags: e.target.value })} placeholder="waterfront, luxury, family" /></Field>
+      </div>
+      <div>
+        <Label className="text-xs uppercase tracking-widest text-muted-foreground">Project images from device</Label>
+        <label className="mt-1 flex min-h-32 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-gold/35 bg-black/20 px-4 py-6 text-center transition hover:border-gold/70 hover:bg-gold/5">
+          <ImagePlus className="h-8 w-8 text-gold" />
+          <span className="mt-2 text-sm font-medium text-cream">Upload project photos</span>
+          <span className="mt-1 text-xs text-muted-foreground">Select one or more images from your computer.</span>
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            className="sr-only"
+            onChange={(e) => {
+              const files = Array.from(e.target.files ?? []);
+              setImageFiles((current) => [...current, ...files]);
+              e.target.value = "";
+            }}
+          />
+        </label>
+        {(imagePreviews.length > 0 || gallery.length > 0) && (
+          <div className="mt-3 grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            {gallery.map((image) => (
+              <div key={image.id} className="group relative overflow-hidden rounded-xl border border-gold/20 bg-black/30">
+                <img src={image.url} alt="" className="aspect-video w-full object-cover" />
+                <div className="flex items-center justify-between gap-2 p-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={f.main_image_url === image.url ? "default" : "ghost"}
+                    className={f.main_image_url === image.url ? "h-8 bg-gold text-gold-foreground" : "h-8 text-cream"}
+                    onClick={() => setF({ ...f, main_image_url: image.url })}
+                  >
+                    Main
+                  </Button>
+                  <Button type="button" size="icon" variant="ghost" onClick={() => removeExistingImage(image.id, image.url)}>
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+            {imagePreviews.map((preview, index) => (
+              <div key={preview.url} className="relative overflow-hidden rounded-xl border border-gold/20 bg-black/30">
+                <img src={preview.url} alt="" className="aspect-video w-full object-cover" />
+                <button
+                  type="button"
+                  className="absolute right-2 top-2 rounded-full bg-black/70 p-1 text-cream hover:bg-black"
+                  onClick={() => setImageFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))}
+                  aria-label="Remove selected image"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+                <div className="flex items-center gap-2 p-2 text-xs text-muted-foreground">
+                  <Upload className="h-3.5 w-3.5 text-gold" />
+                  <span className="truncate">{preview.file.name}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       <Field label="Description">
         <Textarea rows={4} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} />
@@ -224,6 +402,13 @@ function ProjectForm({ id, onClose }: { id: string | null; onClose: () => void }
       </div>
     </form>
   );
+}
+
+function getProjectMediaPath(url: string) {
+  const marker = `/object/public/${PROJECT_MEDIA_BUCKET}/`;
+  const index = url.indexOf(marker);
+  if (index === -1) return null;
+  return decodeURIComponent(url.slice(index + marker.length));
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

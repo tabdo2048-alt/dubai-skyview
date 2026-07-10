@@ -17,6 +17,17 @@ export type WaterArea = {
   center: [number, number];
   // Hand-traced ring hugging the basin's coastline, ordered around the perimeter.
   polygon: [number, number][];
+  // --- Shoreline-wave tuning (optional) ------------------------------------
+  // When true, this basin is open sea (not a real coastline) so shoreline foam
+  // lines are NOT drawn around it. Defaults to false.
+  openSea?: boolean;
+  // Edge indexes (0-based, edge i = polygon[i]→polygon[i+1]) to skip when
+  // drawing shoreline waves — e.g. artificial closing edges that cut across
+  // open water rather than following the real coast.
+  shorelineExcludedEdges?: number[];
+  // Per-area multiplier for shoreline-wave strength (opacity). Creek is calmer
+  // than open-sea coast, so it uses a lower value. Defaults to 1.
+  shorelineIntensity?: number;
 };
 
 // Water polygons traced along the real basins so the water doesn't spill onto
@@ -26,6 +37,7 @@ export const WATER_AREAS: WaterArea[] = [
     id: "marina",
     name: "Dubai Marina & JBR",
     center: [55.138, 25.078],
+    shorelineIntensity: 0.85,
     polygon: [
       [55.142, 25.069],
       [55.1395, 25.07],
@@ -47,6 +59,7 @@ export const WATER_AREAS: WaterArea[] = [
     id: "palm",
     name: "Palm Jumeirah",
     center: [55.138, 25.116],
+    shorelineIntensity: 1,
     polygon: [
       [55.096, 25.126],
       [55.1, 25.136],
@@ -68,6 +81,7 @@ export const WATER_AREAS: WaterArea[] = [
     id: "creek",
     name: "Dubai Creek",
     center: [55.32, 25.235],
+    shorelineIntensity: 0.5,
     polygon: [
       [55.296, 25.266],
       [55.299, 25.26],
@@ -93,6 +107,8 @@ export const WATER_AREAS: WaterArea[] = [
     id: "jbr-palm-offshore",
     name: "JBR & Palm Offshore Sea",
     center: [55.12, 25.13],
+    // Open sea — its ring is not a real coastline, so no shoreline foam here.
+    openSea: true,
     polygon: [
       [55.07, 25.052],
       [55.052, 25.1],
