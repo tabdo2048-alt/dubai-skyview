@@ -10,6 +10,44 @@
 
 import type { ModelConfig } from "./modelTypes";
 
+type VesselOrientation = Pick<
+  ModelConfig,
+  "rotation" | "forwardAxis" | "headingOffset" | "sternOffset" | "turnSpeed"
+>;
+
+// Each GLB is exported with its own bow axis. These static corrections stay on
+// the child model; Model3DLayer rotates only the parent group along the route.
+const VESSEL_ORIENTATIONS: Record<string, VesselOrientation> = {
+  "/models/ship.glb": {
+    rotation: [Math.PI / 2, 0, 0],
+    forwardAxis: "-x",
+    headingOffset: 0,
+    sternOffset: 30,
+    turnSpeed: 2.2,
+  },
+  "/models/yacht.glb": {
+    rotation: [Math.PI / 2, 0, 0],
+    forwardAxis: "+x",
+    headingOffset: 0,
+    sternOffset: 22,
+    turnSpeed: 3.5,
+  },
+  "/models/boat.glb": {
+    rotation: [Math.PI / 2, 0, 0],
+    forwardAxis: "+x",
+    headingOffset: 0,
+    sternOffset: 16,
+    turnSpeed: 4.8,
+  },
+  "/models/abra.glb": {
+    rotation: [Math.PI / 2, 0, 0],
+    forwardAxis: "+x",
+    headingOffset: 0,
+    sternOffset: 14,
+    turnSpeed: 5.2,
+  },
+};
+
 // Routes hug the real basins (Marina, Palm, Gulf, Creek, Business Bay canal)
 // so boats stay on water and never cross land.
 export const MODEL_REGISTRY: ModelConfig[] = [
@@ -1021,4 +1059,7 @@ export const MODEL_REGISTRY: ModelConfig[] = [
     visibleFromZoom: 9,
     visibleToZoom: 20,
   },
-];
+].map((config) => ({
+  ...config,
+  ...(VESSEL_ORIENTATIONS[config.modelUrl] ?? {}),
+}));

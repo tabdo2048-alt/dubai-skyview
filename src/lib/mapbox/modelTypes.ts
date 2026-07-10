@@ -6,6 +6,7 @@
 // placeholder when the file is missing so the map never crashes.
 
 export type ModelType = "boat" | "yacht" | "ship" | "abra" | "train" | "cloud" | "custom";
+export type ModelForwardAxis = "+x" | "-x" | "+y" | "-y" | "+z" | "-z";
 
 export type ModelConfig = {
   /** Stable unique id, e.g. "marina-yacht-01". */
@@ -27,6 +28,14 @@ export type ModelConfig = {
   scale: number;
   /** Euler rotation in radians [x, y, z], applied before heading alignment. */
   rotation: [number, number, number];
+  /** Native GLB axis that points from stern to bow before its base rotation. */
+  forwardAxis?: ModelForwardAxis;
+  /** Fine-grained yaw correction after applying the native forward axis. */
+  headingOffset?: number;
+  /** Distance in metres from the model origin to its stern for wake placement. */
+  sternOffset?: number;
+  /** Radians-per-second response used to smooth route turns. */
+  turnSpeed?: number;
   /** Optional hull color override for the procedural placeholder (hex, e.g. 0xffffff). */
   color?: number;
 

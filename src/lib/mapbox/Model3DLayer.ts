@@ -20,28 +20,101 @@ import {
   syncSharedRendererSize,
   extractProjectionMatrix,
 } from "./sharedThreeRenderer";
-import { PLACEHOLDER_COLORS, type ModelConfig, type ModelType } from "./modelTypes";
-import { isWatercraft, modelStaysInDubaiWater } from "./waterRouteGuards";
+import {
+  PLACEHOLDER_COLORS,
+  type ModelConfig,
+  type ModelForwardAxis,
+  type ModelType,
+} from "./modelTypes";
+import { isWatercraft, modelHasWaterRoute, waterRouteForDisplay } from "./waterRouteGuards";
 
 type MercatorRef = { x: number; y: number; z: number; scale: number };
 
 const WAKE_SAMPLES = 24;
 const WAKE_RECORD_EVERY = 2; // frames between wake position samples
-const WATERCRAFT_SCALE_MULTIPLIER: Partial<Record<ModelType, number>> = {
-  ship: 0.08,
-  yacht: 0.28,
-  boat: 0.32,
-  abra: 0.32,
+const LOOK_AHEAD_T = 0.002;
+const BOAT_ORIENTATION_DEBUG = false;
+const WATERCRAFT_DISPLAY_LENGTH_METERS: Partial<Record<ModelType, number>> = {
+  ship: 50,
+  yacht: 78,
+  boat: 70,
+  abra: 62,
 };
 const WATERCRAFT_WAKE_MULTIPLIER = 0.45;
 
-function displayScale(config: ModelConfig) {
-  return config.scale * (WATERCRAFT_SCALE_MULTIPLIER[config.type] ?? 1);
+function normalizeAngle(angle: number) {
+  return Math.atan2(Math.sin(angle), Math.cos(angle));
 }
 
-function lngLatToLocal(lng: number, lat: number, ref: MercatorRef, altitude = 0): THREE.Vector3 {
+function lerpAngle(current: number, target: number, amount: number) {
+  return current + normalizeAngle(target - current) * amount;
+}
+
+function forwardAxisVector(axis: ModelForwardAxis) {
+  switch (axis) {
+    case "-x":
+      return new THREE.Vector3(-1, 0, 0);
+    case "+y":
+      return new THREE.Vector3(0, 1, 0);
+    case "-y":
+      return new THREE.Vector3(0, -1, 0);
+    case "+z":
+      return new THREE.Vector3(0, 0, 1);
+    case "-z":
+      return new THREE.Vector3(0, 0, -1);
+    case "+x":
+    default:
+      return new THREE.Vector3(1, 0, 0);
+  }
+}
+
+// Converts a GLB's native bow axis into the child model's horizontal heading
+// after its one-time pitch/roll correction has been applied.
+function forwardAxisHeading(axis: ModelForwardAxis, rotation: ModelConfig["rotation"]) {
+  const forward = forwardAxisVector(axis).applyEuler(new THREE.Euler(...rotation));
+  return forward.lengthSq() > 0 && Math.hypot(forward.x, forward.y) > 1e-6
+    ? Math.atan2(forward.y, forward.x)
+    : 0;
+}
+
+function fitModelToDisplaySize(object: THREE.Object3D, config: ModelConfig) {
+  if (!isWatercraft(config.type)) {
+    object.scale.setScalar(config.scale);
+    return;
+  }
+
+  object.updateMatrixWorld(true);
+  const size = new THREE.Box3().setFromObject(object).getSize(new THREE.Vector3());
+  const sourceLength = Math.max(size.x, size.y, size.z);
+  const targetLength = WATERCRAFT_DISPLAY_LENGTH_METERS[config.type] ?? 70;
+  const scale = Number.isFinite(sourceLength) && sourceLength > 0
+    ? targetLength / sourceLength
+    : config.scale;
+  object.scale.setScalar(scale);
+}
+
+function polishWatercraftMaterials(object: THREE.Object3D) {
+  object.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    for (const material of materials) {
+      if (!(material instanceof THREE.MeshStandardMaterial)) continue;
+      material.roughness = Math.min(material.roughness, 0.55);
+      material.metalness = Math.min(material.metalness, 0.2);
+      material.needsUpdate = true;
+    }
+  });
+}
+
+function setLocalPositionFromLngLat(
+  target: THREE.Vector3,
+  lng: number,
+  lat: number,
+  ref: MercatorRef,
+  altitude = 0,
+) {
   const m = mapboxgl.MercatorCoordinate.fromLngLat([lng, lat], altitude);
-  return new THREE.Vector3(
+  return target.set(
     (m.x - ref.x) / ref.scale,
     (m.y - ref.y) / ref.scale,
     (m.z - ref.z) / ref.scale,
@@ -203,9 +276,6 @@ function makePlaceholder(type: ModelType, color: number): THREE.Group {
     g.add(makeBox(42, 20, 12, deck, 12));
   } else if (type === "yacht") {
     g.add(makeLuxuryYacht(color));
-    // makeLuxuryYacht already returns a fully-assembled group; add and skip the
-    // shared bow-alignment rotation below (it applies its own orientation).
-    g.rotation.z = -Math.PI / 2;
     return g;
   } else if (type === "ship") {
     g.add(makeHull(330, 69, 42, color));
@@ -222,8 +292,9 @@ function makePlaceholder(type: ModelType, color: number): THREE.Group {
   } else {
     g.add(makeBox(40, 40, 40, color, 20));
   }
-  // Lathe axis (length) sits along local Z; rotate so +X becomes the bow heading.
-  g.rotation.z = -Math.PI / 2;
+  // Procedural decks are authored with their bow on +X. The cargo hull's bow
+  // points -X, matching the native ship GLB configuration.
+  if (type === "ship") g.rotation.z = Math.PI;
   return g;
 }
 
@@ -232,12 +303,27 @@ class WakeTrail {
   mesh: THREE.Mesh;
   private positions: Float32Array;
   private geometry: THREE.BufferGeometry;
-  private samples: THREE.Vector3[] = [];
+  private samples = Array.from({ length: WAKE_SAMPLES }, () => new THREE.Vector3());
+  private sampleCount = 0;
+  private readonly direction = new THREE.Vector3();
+  private readonly side = new THREE.Vector3();
 
   constructor(private maxWidth: number) {
     this.positions = new Float32Array(WAKE_SAMPLES * 2 * 3);
     this.geometry = new THREE.BufferGeometry();
     this.geometry.setAttribute("position", new THREE.BufferAttribute(this.positions, 3));
+    const indices = new Uint16Array((WAKE_SAMPLES - 1) * 6);
+    for (let i = 0; i < WAKE_SAMPLES - 1; i++) {
+      const base = i * 6;
+      const a = i * 2;
+      indices[base] = a;
+      indices[base + 1] = a + 1;
+      indices[base + 2] = a + 2;
+      indices[base + 3] = a + 1;
+      indices[base + 4] = a + 3;
+      indices[base + 5] = a + 2;
+    }
+    this.geometry.setIndex(new THREE.BufferAttribute(indices, 1));
     this.geometry.setDrawRange(0, 0);
     const mat = new THREE.MeshBasicMaterial({
       color: 0xffffff,
@@ -250,12 +336,14 @@ class WakeTrail {
   }
 
   push(pos: THREE.Vector3) {
-    this.samples.unshift(pos.clone());
-    if (this.samples.length > WAKE_SAMPLES) this.samples.pop();
+    const nextCount = Math.min(this.sampleCount + 1, WAKE_SAMPLES);
+    for (let i = nextCount - 1; i > 0; i--) this.samples[i].copy(this.samples[i - 1]);
+    this.samples[0].copy(pos);
+    this.sampleCount = nextCount;
   }
 
   update() {
-    const n = this.samples.length;
+    const n = this.sampleCount;
     if (n < 2) {
       this.geometry.setDrawRange(0, 0);
       return;
@@ -264,34 +352,22 @@ class WakeTrail {
       const t = i / (WAKE_SAMPLES - 1);
       const width = this.maxWidth * (1 - t);
       const p = this.samples[i];
-      let dir: THREE.Vector3;
-      if (i < n - 1) dir = this.samples[i].clone().sub(this.samples[i + 1]);
-      else dir = this.samples[i - 1].clone().sub(this.samples[i]);
-      dir.z = 0;
-      if (dir.lengthSq() < 1e-6) dir.set(1, 0, 0);
-      dir.normalize();
-      const side = new THREE.Vector3(-dir.y, dir.x, 0).multiplyScalar(width / 2);
-      const left = p.clone().add(side);
-      const right = p.clone().sub(side);
+      if (i < n - 1) this.direction.subVectors(this.samples[i], this.samples[i + 1]);
+      else this.direction.subVectors(this.samples[i - 1], this.samples[i]);
+      this.direction.z = 0;
+      if (this.direction.lengthSq() < 1e-6) this.direction.set(1, 0, 0);
+      this.direction.normalize();
+      this.side.set(-this.direction.y, this.direction.x, 0).multiplyScalar(width / 2);
       const base = i * 6;
-      this.positions[base] = left.x;
-      this.positions[base + 1] = left.y;
-      this.positions[base + 2] = left.z + 0.3;
-      this.positions[base + 3] = right.x;
-      this.positions[base + 4] = right.y;
-      this.positions[base + 5] = right.z + 0.3;
+      this.positions[base] = p.x + this.side.x;
+      this.positions[base + 1] = p.y + this.side.y;
+      this.positions[base + 2] = p.z + 0.3;
+      this.positions[base + 3] = p.x - this.side.x;
+      this.positions[base + 4] = p.y - this.side.y;
+      this.positions[base + 5] = p.z + 0.3;
     }
-    const indices: number[] = [];
-    for (let i = 0; i < n - 1; i++) {
-      const a = i * 2,
-        b = i * 2 + 1,
-        c = i * 2 + 2,
-        d = i * 2 + 3;
-      indices.push(a, b, c, b, d, c);
-    }
-    this.geometry.setIndex(indices);
     this.geometry.attributes.position.needsUpdate = true;
-    this.geometry.setDrawRange(0, indices.length);
+    this.geometry.setDrawRange(0, (n - 1) * 6);
     this.geometry.computeBoundingSphere();
   }
 
@@ -303,33 +379,46 @@ class WakeTrail {
 
 // Interpolate along a route at fraction t (0..1) → position + heading so the
 // model can face its direction of travel.
-function routePointAt(
-  path: [number, number][],
-  t: number,
-): { coord: [number, number]; heading: number } {
-  if (path.length < 2) return { coord: path[0] ?? [0, 0], heading: 0 };
-  const segLens: number[] = [];
-  let total = 0;
+type RouteMetrics = { segmentLengths: number[]; totalLength: number };
+
+function createRouteMetrics(path: [number, number][]): RouteMetrics {
+  const segmentLengths: number[] = [];
+  let totalLength = 0;
   for (let i = 1; i < path.length; i++) {
     const l = Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]);
-    segLens.push(l);
-    total += l;
+    segmentLengths.push(l);
+    totalLength += l;
   }
-  const target = Math.max(0, Math.min(1, t)) * total;
+  return { segmentLengths, totalLength };
+}
+
+function routePointAt(
+  path: [number, number][],
+  metrics: RouteMetrics,
+  t: number,
+  targetCoord: [number, number],
+) {
+  if (path.length < 2 || metrics.totalLength === 0) {
+    targetCoord[0] = path[0]?.[0] ?? 0;
+    targetCoord[1] = path[0]?.[1] ?? 0;
+    return;
+  }
+  const target = Math.max(0, Math.min(1, t)) * metrics.totalLength;
   let acc = 0;
   for (let i = 1; i < path.length; i++) {
-    const l = segLens[i - 1];
+    const l = metrics.segmentLengths[i - 1];
     if (acc + l >= target) {
       const localT = l === 0 ? 0 : (target - acc) / l;
       const [ax, ay] = path[i - 1];
       const [bx, by] = path[i];
-      const coord: [number, number] = [ax + (bx - ax) * localT, ay + (by - ay) * localT];
-      const heading = Math.atan2(bx - ax, by - ay);
-      return { coord, heading };
+      targetCoord[0] = ax + (bx - ax) * localT;
+      targetCoord[1] = ay + (by - ay) * localT;
+      return;
     }
     acc += l;
   }
-  return { coord: path[path.length - 1], heading: 0 };
+  targetCoord[0] = path[path.length - 1][0];
+  targetCoord[1] = path[path.length - 1][1];
 }
 
 function isValidRoute(route: [number, number][] | undefined): route is [number, number][] {
@@ -343,6 +432,21 @@ type ModelInstance = {
   config: ModelConfig;
   group: THREE.Group;
   wake: WakeTrail | null;
+  routeMetrics: RouteMetrics | null;
+  routeCoord: [number, number];
+  aheadRouteCoord: [number, number];
+  position: THREE.Vector3;
+  aheadPosition: THREE.Vector3;
+  sternPosition: THREE.Vector3;
+  routeDirection: THREE.Vector3;
+  bowDirection: THREE.Vector3;
+  headingCorrection: number;
+  yaw: number;
+  orientationInitialized: boolean;
+  routeYaw: number;
+  orientationLogged: boolean;
+  routeArrow: THREE.ArrowHelper | null;
+  bowArrow: THREE.ArrowHelper | null;
   t: number;
   frame: number;
   bobOffset: number;
@@ -392,10 +496,12 @@ export function createModel3DLayer(
       scene.add(sun);
       scene.add(new THREE.HemisphereLight(0x87ceeb, 0xf5f3f0, 1.1));
 
-      const safeRegistry = registry.filter((config) => {
-        const allowed = modelStaysInDubaiWater(config);
+      const safeRegistry = registry.flatMap((config) => {
+        const route = waterRouteForDisplay(config);
+        const allowed = modelHasWaterRoute(config);
         if (!allowed) console.warn(`[Boats] skipped land-crossing route: ${config.id}`);
-        return allowed;
+        if (!allowed) return [];
+        return route && route !== config.route ? [{ ...config, route }] : [config];
       });
 
       console.log(`[Boats] ${safeRegistry.length} water-bound boat configs loaded`);
@@ -424,6 +530,21 @@ export function createModel3DLayer(
           config,
           group,
           wake: wants ? new WakeTrail(wakeWidth) : null,
+          routeMetrics: isValidRoute(config.route) ? createRouteMetrics(config.route) : null,
+          routeCoord: [0, 0],
+          aheadRouteCoord: [0, 0],
+          position: new THREE.Vector3(),
+          aheadPosition: new THREE.Vector3(),
+          sternPosition: new THREE.Vector3(),
+          routeDirection: new THREE.Vector3(),
+          bowDirection: new THREE.Vector3(),
+          headingCorrection: forwardAxisHeading(config.forwardAxis ?? "+x", config.rotation),
+          yaw: 0,
+          orientationInitialized: false,
+          routeYaw: 0,
+          orientationLogged: false,
+          routeArrow: null,
+          bowArrow: null,
           t: Math.random() * 1, // stagger start along route
           frame: 0,
           bobOffset: instances.length * 1.3,
@@ -432,6 +553,11 @@ export function createModel3DLayer(
         if (inst.wake) {
           scene.add(inst.wake.mesh);
           wakeCount++;
+        }
+        if (BOAT_ORIENTATION_DEBUG && isWatercraft(config.type)) {
+          inst.routeArrow = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(), 36, 0xff3344);
+          inst.bowArrow = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(), 30, 0x32d583);
+          scene.add(inst.routeArrow, inst.bowArrow);
         }
         instances.push(inst);
 
@@ -444,7 +570,8 @@ export function createModel3DLayer(
             if (disposed) return;
             console.log("[Boats] model loaded");
             const obj = gltf.scene;
-            obj.scale.setScalar(displayScale(config));
+            fitModelToDisplaySize(obj, config);
+            if (isWatercraft(config.type)) polishWatercraftMaterials(obj);
             obj.rotation.set(config.rotation[0], config.rotation[1], config.rotation[2]);
             group.add(obj);
           },
@@ -453,7 +580,7 @@ export function createModel3DLayer(
             if (disposed) return;
             console.log("[Boats] placeholder used");
             const ph = makePlaceholder(config.type, color);
-            ph.scale.multiplyScalar(displayScale(config));
+            fitModelToDisplaySize(ph, config);
             group.add(ph);
           },
         );
@@ -480,26 +607,89 @@ export function createModel3DLayer(
         if (inst.wake) inst.wake.mesh.visible = visible;
         if (!visible) continue;
 
-        if (config.animate && isValidRoute(config.route)) {
+        if (config.animate && isValidRoute(config.route) && inst.routeMetrics) {
           inst.t = (inst.t + (config.speed ?? 0.03) * dt) % 1;
-          const { coord, heading } = routePointAt(config.route, inst.t);
-          const pos = lngLatToLocal(coord[0], coord[1], ref, config.altitude);
+          routePointAt(config.route, inst.routeMetrics, inst.t, inst.routeCoord);
+          routePointAt(
+            config.route,
+            inst.routeMetrics,
+            (inst.t + LOOK_AHEAD_T) % 1,
+            inst.aheadRouteCoord,
+          );
+          const pos = setLocalPositionFromLngLat(
+            inst.position,
+            inst.routeCoord[0],
+            inst.routeCoord[1],
+            ref,
+            config.altitude,
+          );
+          const ahead = setLocalPositionFromLngLat(
+            inst.aheadPosition,
+            inst.aheadRouteCoord[0],
+            inst.aheadRouteCoord[1],
+            ref,
+            config.altitude,
+          );
           // Gentle bob for water craft.
           pos.z += 1 + Math.sin(time * 1.5 + inst.bobOffset) * 0.4;
           inst.group.position.copy(pos);
-          // Rotate model to face direction of travel.
-          inst.group.rotation.z = -heading + Math.PI / 2;
+          const dx = ahead.x - pos.x;
+          const dy = ahead.y - pos.y;
+          inst.routeYaw = Math.atan2(dy, dx);
+          const targetYaw =
+            inst.routeYaw - inst.headingCorrection + (config.headingOffset ?? 0);
+
+          if (!inst.orientationInitialized) {
+            inst.yaw = targetYaw;
+            inst.group.rotation.z = targetYaw;
+            inst.orientationInitialized = true;
+          } else {
+            const turnSpeed = config.turnSpeed ?? 3.5;
+            const turnAmount = 1 - Math.exp(-turnSpeed * dt);
+            inst.yaw = lerpAngle(inst.yaw, targetYaw, turnAmount);
+            inst.group.rotation.z = inst.yaw;
+          }
+
+          if (BOAT_ORIENTATION_DEBUG) {
+            const bowYaw = inst.yaw + inst.headingCorrection;
+            inst.routeArrow?.position.copy(pos);
+            inst.routeDirection.set(Math.cos(inst.routeYaw), Math.sin(inst.routeYaw), 0);
+            inst.routeArrow?.setDirection(inst.routeDirection);
+            inst.bowArrow?.position.copy(pos);
+            inst.bowDirection.set(Math.cos(bowYaw), Math.sin(bowYaw), 0);
+            inst.bowArrow?.setDirection(inst.bowDirection);
+            if (!inst.orientationLogged) {
+              console.log("[BoatOrientation]", config.id, {
+                targetYaw,
+                currentYaw: inst.yaw,
+                forwardAxis: config.forwardAxis ?? "+x",
+                headingOffset: config.headingOffset ?? 0,
+              });
+              inst.orientationLogged = true;
+            }
+          }
 
           inst.frame++;
           if (inst.wake && inst.frame % WAKE_RECORD_EVERY === 0) {
-            inst.wake.push(pos);
+            const bowYaw = inst.yaw + inst.headingCorrection;
+            const sternOffset = config.sternOffset ?? 16;
+            inst.sternPosition.copy(pos);
+            inst.sternPosition.x -= Math.cos(bowYaw) * sternOffset;
+            inst.sternPosition.y -= Math.sin(bowYaw) * sternOffset;
+            inst.wake.push(inst.sternPosition);
             inst.wake.update();
           }
         } else {
           // Static placement.
-          const pos = lngLatToLocal(config.lng, config.lat, ref, config.altitude);
+          const pos = setLocalPositionFromLngLat(
+            inst.position,
+            config.lng,
+            config.lat,
+            ref,
+            config.altitude,
+          );
           inst.group.position.copy(pos);
-          inst.group.rotation.z = config.rotation[2];
+          inst.group.rotation.z = config.headingOffset ?? 0;
         }
       }
 
@@ -520,6 +710,8 @@ export function createModel3DLayer(
       if (onResize) map.off("resize", onResize);
       for (const inst of instances) {
         inst.wake?.dispose();
+        inst.routeArrow?.dispose();
+        inst.bowArrow?.dispose();
         inst.group.traverse((obj) => {
           const mesh = obj as THREE.Mesh;
           if (mesh.geometry) mesh.geometry.dispose();

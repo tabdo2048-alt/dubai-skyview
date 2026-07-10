@@ -12,7 +12,7 @@ import {
 import { createWaterLayer } from "./WaterLayer";
 import { createModel3DLayer } from "@/lib/mapbox/Model3DLayer";
 import { MODEL_REGISTRY } from "@/lib/mapbox/modelRegistry";
-import { modelStaysInDubaiWater } from "@/lib/mapbox/waterRouteGuards";
+import { waterRouteForDisplay } from "@/lib/mapbox/waterRouteGuards";
 import type { ProjectWithRelations } from "@/lib/types";
 import { useFiltersStore } from "@/store/filters";
 
@@ -374,8 +374,8 @@ export function MapboxView({
   function addBoatRouteLayers(map: mapboxgl.Map) {
     let added = 0;
     for (const cfg of MODEL_REGISTRY) {
-      if (!cfg.route || cfg.route.length < 2) continue;
-      if (!modelStaysInDubaiWater(cfg)) continue;
+      const route = waterRouteForDisplay(cfg);
+      if (!route || route.length < 2) continue;
       const srcId = `boat-route-${cfg.id}`;
       const layerId = `${srcId}-line`;
       if (!map.getSource(srcId)) {
@@ -384,7 +384,7 @@ export function MapboxView({
           data: {
             type: "Feature",
             properties: {},
-            geometry: { type: "LineString", coordinates: cfg.route },
+            geometry: { type: "LineString", coordinates: route },
           },
         });
       }
