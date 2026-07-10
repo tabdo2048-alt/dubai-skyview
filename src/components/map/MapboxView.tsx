@@ -246,6 +246,14 @@ export function MapboxView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken]);
 
+  // When this map instance becomes active again (after being hidden), reset the
+  // ready flag so it can signal ready again. Allows mode switching to work correctly.
+  useEffect(() => {
+    if (active) {
+      readySignaledRef.current = false;
+    }
+  }, [active]);
+
   // Hide every symbol layer in the base style — this removes place/street/POI
   // text labels and POI icons, giving a clean uncluttered surface.
   function hideLabelsAndPois(map: mapboxgl.Map) {
