@@ -48,6 +48,13 @@ const VESSEL_ORIENTATIONS: Record<string, VesselOrientation> = {
   },
 };
 
+function routeIsClosed(route?: [number, number][]) {
+  if (!route || route.length < 2) return false;
+  const first = route[0];
+  const last = route[route.length - 1];
+  return Math.hypot(first[0] - last[0], first[1] - last[1]) < 0.000001;
+}
+
 // Routes hug the real basins (Marina, Palm, Gulf, Creek, Business Bay canal)
 // so boats stay on water and never cross land.
 export const MODEL_REGISTRY: ModelConfig[] = [
@@ -1060,6 +1067,7 @@ export const MODEL_REGISTRY: ModelConfig[] = [
     visibleToZoom: 20,
   },
 ].map((config) => ({
-  ...config,
   ...(VESSEL_ORIENTATIONS[config.modelUrl] ?? {}),
+  routeMode: routeIsClosed(config.route) ? "loop" : "pingpong",
+  ...config,
 }));

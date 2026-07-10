@@ -115,6 +115,9 @@ export function MapboxView({
     const projectMarkers = markersRef.current;
     const activeTrainMarkers = trainMarkersRef.current;
     const trainMotion = trainMotionRef.current;
+    const isMobile = window.innerWidth < 768;
+    const mobilePitch = mode === "3d" ? 42 : 0;
+    const mobileZoom = mode === "3d" ? Math.min(camera.zoom, 11.5) : Math.min(camera.zoom, 10.5);
 
     const map = new mapboxgl.Map({
       container: containerRef.current,
@@ -124,8 +127,8 @@ export function MapboxView({
           ? "mapbox://styles/2shraf-tamer/cmrarm85z002x01shfp2680g9"
           : "mapbox://styles/mapbox/satellite-streets-v12",
       center: [camera.lng, camera.lat],
-      zoom: camera.zoom,
-      pitch: 0, // both modes start flat; 3D pitches up in the fly-in effect below
+      zoom: isMobile ? mobileZoom : camera.zoom,
+      pitch: isMobile ? mobilePitch : 0,
       bearing: 0,
       maxBounds: [
         [DUBAI_BOUNDS.west, DUBAI_BOUNDS.south],
@@ -136,7 +139,16 @@ export function MapboxView({
 
     map.on("style.load", () => {
       // Trigger a resize to ensure the map renders properly after style loads
-      setTimeout(() => map.resize(), 50);
+      setTimeout(() => {
+        map.resize();
+        if (isMobile) {
+          map.easeTo({
+            pitch: mode === "3d" ? 42 : 0,
+            zoom: mode === "3d" ? 11.5 : 10.5,
+            duration: 600,
+          });
+        }
+      }, 50);
 
       // 3D-only scene setup: Standard-style recoloring, decluttered labels, and
       // exaggerated terrain. Flat satellite imagery has no vector fills/symbols to
@@ -192,12 +204,6 @@ export function MapboxView({
       }
 
       // Subtle boat route guide lines — available in both modes if boats are enabled.
-      try {
-        addBoatRouteLayers(map);
-      } catch (err) {
-        console.error("Failed to add boat route layers", err);
-      }
-
       styleLoadedRef.current = true;
 
       // If a network toggle was flipped on before the style finished loading,
@@ -357,6 +363,11 @@ export function MapboxView({
         console.error("Failed to add water wave layer", err);
       }
     }
+    try {
+      addBoatRouteLayers(map);
+    } catch (err) {
+      console.error("Failed to add boat route layers", err);
+    }
     if (show3DModelsRef.current && !map.getLayer("dubai-3d-models")) {
       try {
         map.addLayer(createModel3DLayer(MODEL_REGISTRY, renderController));
@@ -366,6 +377,13 @@ export function MapboxView({
         console.error("Failed to add 3D model layer", err);
       }
     }
+    console.log(
+      "[MapLayers] custom layer order",
+      map
+        .getStyle()
+        .layers?.filter((layer) => ["dubai-water-3d", "dubai-3d-models"].includes(layer.id))
+        .map((layer) => layer.id),
+    );
   }
 
   // Thin, subtle transparent guide lines tracing each boat's route (3D only).
@@ -1050,17 +1068,41 @@ export function MapboxView({
     const map = mapRef.current;
 
     if (active) {
+      const isMobile = window.innerWidth < 768;
+      const mobilePitch = mode === "3d" ? 42 : 0;
+      const mobileZoom = mode === "3d" ? 11.5 : 10.5;
       // The container was hidden (0-size) while inactive; Mapbox must recompute
       // its dimensions now that it's visible or nothing renders / tiles are wrong.
       map.resize();
-      map.jumpTo({ center: [camera.lng, camera.lat], zoom: camera.zoom, pitch: 0, bearing: 0 });
+      map.jumpTo({
+        center: [camera.lng, camera.lat],
+        zoom: isMobile ? Math.min(camera.zoom, mobileZoom) : camera.zoom,
+        pitch: isMobile ? mobilePitch : 0,
+        bearing: 0,
+      });
       // Extra resizes after the mode-switch transition settles, so the canvas
       // never ends up sized to the old (hidden/zero) container → no black bands.
-      const r0 = setTimeout(() => map.resize(), 100);
+      const r0 = setTimeout(() => {
+        map.resize();
+        if (isMobile) {
+          map.easeTo({
+            pitch: mode === "3d" ? 42 : 0,
+            zoom: mode === "3d" ? 11.5 : 10.5,
+            duration: 600,
+          });
+        }
+      }, 100);
       const r1 = setTimeout(() => map.resize(), 400);
       const r2 = setTimeout(() => map.resize(), 900);
       // Kick the custom layers' render loops back on (they were paused while inactive).
       map.triggerRepaint();
+      if (isMobile) {
+        return () => {
+          clearTimeout(r0);
+          clearTimeout(r1);
+          clearTimeout(r2);
+        };
+      }
       // Satellite mode stays a flat top-down view — no pitch/bearing animation.
       if (mode === "3d") {
         // 3D mode: two-stage cinematic fly up into pitch/bearing.

@@ -1,33 +1,23 @@
-// Mapbox custom layer for a transparent animated water surface.
-// It renders cyan/deep-blue moving water clipped to Dubai's real marine basins.
+// Mapbox custom layer for transparent animated water surfaces and shoreline foam.
+// It uses the shared Three.js renderer owned by Mapbox's WebGL context.
 
 import * as THREE from "three";
 import mapboxgl from "mapbox-gl";
-import { WATER_AREAS, type WaterArea } from "@/lib/water";
+import { WATER_AREAS } from "@/lib/water";
+import { SHORELINE_PATHS, type ShorelinePath } from "@/lib/shorelines";
 import {
   acquireSharedRenderer,
+  extractProjectionMatrix,
   releaseSharedRenderer,
   syncSharedRendererSize,
-  extractProjectionMatrix,
 } from "@/lib/mapbox/sharedThreeRenderer";
 
-// --- Shoreline-wave tuning -------------------------------------------------
-// Thin white foam lines that hug the coast just inside the water, regenerated
-// with fresh noise every few seconds and animated continuously. Easy to tune.
 const SHORE_WAVES_ENABLED = true;
-const SHORE_WAVE_REGEN_MS = 5000; // rebuild the broken foam lines this often
-const SHORE_WAVE_FADE_MS = 900; // crossfade old→new so it never flashes
-const SHORE_WAVE_MIN_OFFSET_M = 15; // nearest a foam line sits to the shore
-const SHORE_WAVE_MAX_OFFSET_M = 35; // farthest a foam line sits from the shore
-const SHORE_WAVE_SPEED = 0.5; // foam flow speed along the line
-const SHORE_WAVE_WIDTH_M = 11; // ribbon width (world meters ≈ thin line at city zoom)
-const SHORE_SEG_MIN_M = 18; // broken-segment length range…
-const SHORE_SEG_MAX_M = 50;
-const SHORE_GAP_MIN_M = 8; // …and the gaps between them
-const SHORE_GAP_MAX_M = 20;
-const SHORE_SAMPLE_STEP_M = 10; // centerline sample spacing
-const SHORE_MAX_EDGE_M = 3200; // skip suspiciously long (artificial) edges
-const SHORE_Z = 0.6; // just above the water surface (z≈0.2), below boats (z≈1+)
+const SHORE_WAVE_CYCLE_SECONDS = 5;
+const SHORE_RIBBON_OFFSETS = [24, 16, 8] as const;
+const BASE_SHORE_HALF_WIDTH_M = 9;
+const SHORE_SAMPLE_STEP_M = 10;
+const SHORE_Z = 0.6;
 
 type MercatorRef = {
   x: number;
@@ -35,6 +25,29 @@ type MercatorRef = {
   z: number;
   scale: number;
 };
+
+type ShorelineGeometryBundle = {
+  mesh: THREE.Mesh;
+  material: THREE.ShaderMaterial;
+};
+
+function getShoreWaveWidthMeters(zoom: number): number {
+  if (zoom <= 10) return 18;
+  if (zoom <= 12) return 14;
+  if (zoom <= 14) return 10;
+  return 7;
+}
+
+function hash01(value: number): number {
+  const x = Math.sin(value * 12.9898) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+function idHash(id: string): number {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) % 100000;
+  return h;
+}
 
 function lngLatToLocal(lng: number, lat: number, ref: MercatorRef, altitude = 0): THREE.Vector3 {
   const m = mapboxgl.MercatorCoordinate.fromLngLat([lng, lat], altitude);
@@ -45,11 +58,6 @@ function lngLatToLocal(lng: number, lat: number, ref: MercatorRef, altitude = 0)
   );
 }
 
-// ShapeGeometry triangulates a ring into a flat fan with NO interior vertices,
-// so a vertex-shader Z-displacement would only nudge the boundary and leave the
-// interior flat. Subdividing every triangle (midpoint split, 4x per level) seeds
-// interior vertices so the animated wave surface actually ripples. Two levels
-// (16x triangles) is plenty for these basins and stays cheap (few hundred tris).
 function subdivide(geometry: THREE.BufferGeometry, levels: number): THREE.BufferGeometry {
   const nonIndexed = geometry.toNonIndexed();
   let verts = Array.from((nonIndexed.getAttribute("position") as THREE.BufferAttribute).array);
@@ -123,57 +131,77 @@ function subdivide(geometry: THREE.BufferGeometry, levels: number): THREE.Buffer
   return result;
 }
 
-// --- Shoreline foam lines --------------------------------------------------
-// White broken lines running parallel to the coast, just INSIDE the water.
-// Regenerated with fresh noise every few seconds and crossfaded so the change
-// is never a hard flash. The flow (moving brightness + gaps + pulse) is done in
-// the fragment shader from per-vertex distance/phase attributes.
-
 const SHORE_VERTEX = /* glsl */ `
-  attribute float aDist;
-  attribute float aEdge;
+  attribute float aAlong;
+  attribute float aAcross;
+  attribute float aRibbon;
   attribute float aPhase;
   attribute float aIntensity;
-  varying float vDist;
-  varying float vEdge;
+  attribute float aSegmentMask;
+  attribute float aWidthX;
+  attribute float aWidthY;
+  varying float vAlong;
+  varying float vAcross;
+  varying float vRibbon;
   varying float vPhase;
   varying float vIntensity;
+  varying float vSegmentMask;
+  uniform float uWidthScale;
+
   void main() {
-    vDist = aDist;
-    vEdge = aEdge;
+    vec3 p = position;
+    p.xy += vec2(aWidthX, aWidthY) * (uWidthScale - 1.0);
+    vAlong = aAlong;
+    vAcross = aAcross;
+    vRibbon = aRibbon;
     vPhase = aPhase;
     vIntensity = aIntensity;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    vSegmentMask = aSegmentMask;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
   }
 `;
 
 const SHORE_FRAGMENT = /* glsl */ `
   precision highp float;
-  varying float vDist;
-  varying float vEdge;
+  varying float vAlong;
+  varying float vAcross;
+  varying float vRibbon;
   varying float vPhase;
   varying float vIntensity;
+  varying float vSegmentMask;
   uniform float uTime;
+  uniform float uGeneration;
   uniform float uOpacity;
-  uniform float uFlowSpeed;
-  uniform float uWaveScale;
-  uniform float uFade;
   uniform vec3 uColor;
 
+  float hash01(float value) {
+    float x = sin(value * 12.9898) * 43758.5453;
+    return x - floor(x);
+  }
+
   void main() {
-    // Soft perpendicular falloff — bright centre, transparent ribbon edges.
-    float across = 1.0 - vEdge;
-    across = across * across;
+    float cycle = mod(uTime, 5.0) / 5.0;
+    float ribbonPhase = vRibbon / 3.0;
+    float localPhase = fract(cycle - ribbonPhase + 1.0);
+    float arrival =
+      smoothstep(0.05, 0.18, localPhase) *
+      (1.0 - smoothstep(0.45, 0.68, localPhase));
 
-    // Brightness that travels along the line (foam crests moving to shore).
-    float flow = fract(vDist * uWaveScale - uTime * uFlowSpeed + vPhase);
-    float crest = smoothstep(0.0, 0.35, flow) * smoothstep(1.0, 0.55, flow);
+    float generationJitter = hash01(vPhase * 97.0 + uGeneration * 13.0);
+    float generationMask = smoothstep(0.18, 0.42, generationJitter);
+    float alongVariation =
+      0.8 + 0.2 * sin(vAlong * 0.035 + vPhase * 6.2831 + uGeneration * 0.37);
+    float edgeFade = pow(1.0 - vAcross, 2.0);
+    float alpha =
+      uOpacity *
+      vIntensity *
+      vSegmentMask *
+      generationMask *
+      arrival *
+      alongVariation *
+      edgeFade;
 
-    // Gentle, non-synchronised pulsing per segment.
-    float pulse = 0.7 + 0.3 * sin(uTime * 1.5 + vPhase * 6.2831);
-
-    float a = uOpacity * uFade * vIntensity * across * (0.32 + crest * 0.9) * pulse;
-    gl_FragColor = vec4(uColor, a);
+    gl_FragColor = vec4(uColor, alpha);
   }
 `;
 
@@ -188,151 +216,166 @@ function makeShoreMaterial(): THREE.ShaderMaterial {
     side: THREE.DoubleSide,
     uniforms: {
       uTime: { value: 0 },
-      uOpacity: { value: 0.8 },
-      uFlowSpeed: { value: SHORE_WAVE_SPEED },
-      uWaveScale: { value: 0.02 },
-      uFade: { value: 0 },
+      uGeneration: { value: 0 },
+      uOpacity: { value: 0.85 },
+      uWidthScale: { value: 1 },
       uColor: { value: new THREE.Color(0xffffff) },
     },
   });
 }
 
-// Signed area of a ring in LOCAL xy (>0 => CCW => interior is left of each
-// directed edge). Computed in local space so the inward offset matches the
-// space the ribbon is built and rendered in.
-function localSignedArea(pts: THREE.Vector3[]): number {
-  let a = 0;
-  for (let i = 0; i < pts.length; i++) {
-    const p = pts[i];
-    const q = pts[(i + 1) % pts.length];
-    a += p.x * q.y - q.x * p.y;
-  }
-  return a / 2;
-}
-
-type ShoreLog = { initialized: boolean; areasLogged: Set<string> };
-
-// Build one merged BufferGeometry of all shoreline foam ribbons. `rand` lets
-// each regeneration use fresh noise. Only real coastline is drawn: open-sea
-// areas and excluded/over-long edges are skipped.
-function buildShoreGeometry(ref: MercatorRef, rand: () => number, log?: ShoreLog): THREE.BufferGeometry {
+function buildShoreGeometry(ref: MercatorRef): THREE.BufferGeometry {
   const positions: number[] = [];
-  const dists: number[] = [];
-  const edges: number[] = [];
+  const alongs: number[] = [];
+  const acrosses: number[] = [];
+  const ribbons: number[] = [];
   const phases: number[] = [];
   const intensities: number[] = [];
+  const segmentMasks: number[] = [];
+  const widthXs: number[] = [];
+  const widthYs: number[] = [];
 
-  const half = SHORE_WAVE_WIDTH_M / 2;
-  let intensity = 1; // set per area below
-
-  const pushVert = (x: number, y: number, d: number, e: number, ph: number) => {
+  const pushVert = (
+    x: number,
+    y: number,
+    along: number,
+    across: number,
+    ribbon: number,
+    phase: number,
+    intensity: number,
+    segmentMask: number,
+    widthX: number,
+    widthY: number,
+  ) => {
     positions.push(x, y, SHORE_Z);
-    dists.push(d);
-    edges.push(e);
-    phases.push(ph);
+    alongs.push(along);
+    acrosses.push(across);
+    ribbons.push(ribbon);
+    phases.push(phase);
     intensities.push(intensity);
+    segmentMasks.push(segmentMask);
+    widthXs.push(widthX);
+    widthYs.push(widthY);
   };
 
-  for (const area of WATER_AREAS as WaterArea[]) {
-    if (area.openSea) continue;
-    intensity = area.shorelineIntensity ?? 1;
-    const excluded = new Set(area.shorelineExcludedEdges ?? []);
-    const pts = area.polygon.map(([lng, lat]) => lngLatToLocal(lng, lat, ref, 0));
-    if (pts.length < 3) {
-      console.warn("[ShoreWaves] invalid polygon", area.id);
-      continue;
-    }
-    const ccw = localSignedArea(pts) > 0;
-    let anySegment = false;
+  const pushRibbonTri = (
+    cx0: number,
+    cy0: number,
+    a0: number,
+    cx1: number,
+    cy1: number,
+    a1: number,
+    nx: number,
+    ny: number,
+    ribbon: number,
+    phase: number,
+    intensity: number,
+    segmentMask: number,
+  ) => {
+    const wx = nx * BASE_SHORE_HALF_WIDTH_M;
+    const wy = ny * BASE_SHORE_HALF_WIDTH_M;
+    pushVert(cx0 - wx, cy0 - wy, a0, 1, ribbon, phase, intensity, segmentMask, -wx, -wy);
+    pushVert(cx0, cy0, a0, 0, ribbon, phase, intensity, segmentMask, 0, 0);
+    pushVert(cx1 - wx, cy1 - wy, a1, 1, ribbon, phase, intensity, segmentMask, -wx, -wy);
+    pushVert(cx0, cy0, a0, 0, ribbon, phase, intensity, segmentMask, 0, 0);
+    pushVert(cx1, cy1, a1, 0, ribbon, phase, intensity, segmentMask, 0, 0);
+    pushVert(cx1 - wx, cy1 - wy, a1, 1, ribbon, phase, intensity, segmentMask, -wx, -wy);
 
-    for (let i = 0; i < pts.length; i++) {
-      if (excluded.has(i)) continue;
-      const a = pts[i];
-      const b = pts[(i + 1) % pts.length];
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
-      const edgeLen = Math.hypot(dx, dy); // local units ≈ metres
-      if (edgeLen < 1) continue;
-      if (edgeLen > SHORE_MAX_EDGE_M) {
-        console.warn("[ShoreWaves] skipped artificial edge", area.id, i);
-        continue;
-      }
-      // Unit direction + inward normal (points into the water polygon).
-      const tx = dx / edgeLen;
-      const ty = dy / edgeLen;
-      const nx = ccw ? -ty : ty;
-      const ny = ccw ? tx : -tx;
+    pushVert(cx0, cy0, a0, 0, ribbon, phase, intensity, segmentMask, 0, 0);
+    pushVert(cx0 + wx, cy0 + wy, a0, 1, ribbon, phase, intensity, segmentMask, wx, wy);
+    pushVert(cx1, cy1, a1, 0, ribbon, phase, intensity, segmentMask, 0, 0);
+    pushVert(cx0 + wx, cy0 + wy, a0, 1, ribbon, phase, intensity, segmentMask, wx, wy);
+    pushVert(cx1 + wx, cy1 + wy, a1, 1, ribbon, phase, intensity, segmentMask, wx, wy);
+    pushVert(cx1, cy1, a1, 0, ribbon, phase, intensity, segmentMask, 0, 0);
+  };
 
-      // Walk the edge laying down broken segments with gaps.
-      let pos = rand() * SHORE_GAP_MAX_M; // random start so lines don't align across regens
-      while (pos < edgeLen) {
-        const segLen = SHORE_SEG_MIN_M + rand() * (SHORE_SEG_MAX_M - SHORE_SEG_MIN_M);
-        const end = Math.min(pos + segLen, edgeLen);
-        const phase = rand();
-        const offset = SHORE_WAVE_MIN_OFFSET_M + rand() * (SHORE_WAVE_MAX_OFFSET_M - SHORE_WAVE_MIN_OFFSET_M);
-
-        // Sample the segment centreline, offset inward + a little wobble.
-        const samples: { x: number; y: number; d: number }[] = [];
-        let s = pos;
-        let acc = 0;
-        let prevX = 0;
-        let prevY = 0;
-        let first = true;
-        while (s <= end + 0.001) {
-          const wobble = (rand() - 0.5) * 6; // ±3 m natural noise
-          const cx = a.x + tx * s + nx * (offset + wobble);
-          const cy = a.y + ty * s + ny * (offset + wobble);
-          if (!first) acc += Math.hypot(cx - prevX, cy - prevY);
-          samples.push({ x: cx, y: cy, d: acc });
-          prevX = cx;
-          prevY = cy;
-          first = false;
-          s += SHORE_SAMPLE_STEP_M;
-        }
-        if (samples.length >= 2) {
-          // Emit a 3-wide ribbon (left/centre/right) as two triangle rows,
-          // using the inward normal as the ribbon's perpendicular.
-          for (let k = 0; k < samples.length - 1; k++) {
-            const p0 = samples[k];
-            const p1 = samples[k + 1];
-            const l0x = p0.x + nx * half, l0y = p0.y + ny * half;
-            const r0x = p0.x - nx * half, r0y = p0.y - ny * half;
-            const l1x = p1.x + nx * half, l1y = p1.y + ny * half;
-            const r1x = p1.x - nx * half, r1y = p1.y - ny * half;
-            // left→centre strip
-            pushVert(l0x, l0y, p0.d, 1, phase);
-            pushVert(p0.x, p0.y, p0.d, 0, phase);
-            pushVert(l1x, l1y, p1.d, 1, phase);
-            pushVert(p0.x, p0.y, p0.d, 0, phase);
-            pushVert(p1.x, p1.y, p1.d, 0, phase);
-            pushVert(l1x, l1y, p1.d, 1, phase);
-            // centre→right strip
-            pushVert(p0.x, p0.y, p0.d, 0, phase);
-            pushVert(r0x, r0y, p0.d, 1, phase);
-            pushVert(p1.x, p1.y, p1.d, 0, phase);
-            pushVert(r0x, r0y, p0.d, 1, phase);
-            pushVert(r1x, r1y, p1.d, 1, phase);
-            pushVert(p1.x, p1.y, p1.d, 0, phase);
-          }
-          anySegment = true;
-        }
-        pos = end + SHORE_GAP_MIN_M + rand() * (SHORE_GAP_MAX_M - SHORE_GAP_MIN_M);
-      }
-    }
-    if (log && !log.areasLogged.has(area.id)) {
-      if (anySegment) console.log("[ShoreWaves] area generated", area.id);
-      else console.warn("[ShoreWaves] empty shoreline geometry", area.id);
-      log.areasLogged.add(area.id);
-    }
+  for (const shoreline of SHORELINE_PATHS) {
+    addShorelinePath(shoreline, ref, pushRibbonTri);
   }
 
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(positions), 3));
-  geo.setAttribute("aDist", new THREE.BufferAttribute(new Float32Array(dists), 1));
-  geo.setAttribute("aEdge", new THREE.BufferAttribute(new Float32Array(edges), 1));
+  geo.setAttribute("aAlong", new THREE.BufferAttribute(new Float32Array(alongs), 1));
+  geo.setAttribute("aAcross", new THREE.BufferAttribute(new Float32Array(acrosses), 1));
+  geo.setAttribute("aRibbon", new THREE.BufferAttribute(new Float32Array(ribbons), 1));
   geo.setAttribute("aPhase", new THREE.BufferAttribute(new Float32Array(phases), 1));
   geo.setAttribute("aIntensity", new THREE.BufferAttribute(new Float32Array(intensities), 1));
+  geo.setAttribute("aSegmentMask", new THREE.BufferAttribute(new Float32Array(segmentMasks), 1));
+  geo.setAttribute("aWidthX", new THREE.BufferAttribute(new Float32Array(widthXs), 1));
+  geo.setAttribute("aWidthY", new THREE.BufferAttribute(new Float32Array(widthYs), 1));
   return geo;
+}
+
+function addShorelinePath(
+  shoreline: ShorelinePath,
+  ref: MercatorRef,
+  pushRibbonTri: (
+    cx0: number,
+    cy0: number,
+    a0: number,
+    cx1: number,
+    cy1: number,
+    a1: number,
+    nx: number,
+    ny: number,
+    ribbon: number,
+    phase: number,
+    intensity: number,
+    segmentMask: number,
+  ) => void,
+) {
+  const pts = shoreline.points.map(([lng, lat]) => lngLatToLocal(lng, lat, ref, 0));
+  const baseHash = idHash(shoreline.id);
+  let accumulated = 0;
+
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i];
+    const b = pts[i + 1];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const segmentLength = Math.hypot(dx, dy);
+    if (segmentLength < 1) continue;
+
+    const tx = dx / segmentLength;
+    const ty = dy / segmentLength;
+    const nx = -ty * shoreline.waterSide;
+    const ny = tx * shoreline.waterSide;
+    const steps = Math.max(1, Math.ceil(segmentLength / SHORE_SAMPLE_STEP_M));
+
+    for (let step = 0; step < steps; step++) {
+      const s0 = (step / steps) * segmentLength;
+      const s1 = ((step + 1) / steps) * segmentLength;
+      const along0 = accumulated + s0;
+      const along1 = accumulated + s1;
+      const segmentSeed = baseHash + i * 97 + step * 13;
+      const phase = hash01(segmentSeed);
+      const segmentMask = hash01(segmentSeed + 41) > 0.26 ? 1 : 0;
+
+      for (let ribbonIndex = 0; ribbonIndex < SHORE_RIBBON_OFFSETS.length; ribbonIndex++) {
+        const finalOffset = shoreline.offsetMeters + SHORE_RIBBON_OFFSETS[ribbonIndex];
+        const cx0 = a.x + tx * s0 + nx * finalOffset;
+        const cy0 = a.y + ty * s0 + ny * finalOffset;
+        const cx1 = a.x + tx * s1 + nx * finalOffset;
+        const cy1 = a.y + ty * s1 + ny * finalOffset;
+        pushRibbonTri(
+          cx0,
+          cy0,
+          along0,
+          cx1,
+          cy1,
+          along1,
+          nx,
+          ny,
+          ribbonIndex,
+          phase,
+          shoreline.intensity,
+          segmentMask,
+        );
+      }
+    }
+
+    accumulated += segmentLength;
+  }
 }
 
 const WATER_VERTEX = /* glsl */ `
@@ -352,7 +395,6 @@ const WATER_VERTEX = /* glsl */ `
     h += wave(p, vec2(-0.25, 1.0), 10.0, 0.82) * 0.30;
     h += wave(p, vec2(0.75, -0.55), 15.0, 1.45) * 0.15;
     displaced.z += h * uWaveHeight;
-
     vWorld = displaced;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
   }
@@ -375,24 +417,20 @@ const WATER_FRAGMENT = /* glsl */ `
   void main() {
     float t = uTime;
     vec2 p = vWorld.xy * 0.010;
-
     float w1 = wave(p * 1.0, 1.25, t);
     float w2 = wave(p * 1.7 + 3.7, -0.9, t);
     float w3 = wave(p * vec2(3.8, 1.4) + 1.6, 0.55, t);
     float swell = w1 * 0.6 + w2 * 0.4;
-
     float lines = wave(p * vec2(2.2, 5.0), 1.05, t);
     float fineLines = wave(p * vec2(-4.2, 2.8) + 1.2, -1.35, t);
     float glint = smoothstep(1.0 - uDistortion, 1.0, lines);
     float fineGlint = smoothstep(0.82, 1.0, fineLines) * 0.18;
     float whitecap = smoothstep(0.76, 1.0, swell) * 0.5;
     float depthMix = clamp(swell * 0.65 + w3 * 0.35, 0.0, 1.0);
-    float highlight = glint * 0.2 + fineGlint + whitecap;
-
+    float highlight = glint * 0.10 + fineGlint * 0.08 + whitecap * 0.18;
     vec3 water = mix(uDeepColor, uWaterColor, depthMix);
     vec3 color = mix(water, uFoamColor, highlight);
-    float alpha = uOpacity * (0.72 + swell * 0.18 + glint * 0.10);
-
+    float alpha = uOpacity * (0.82 + swell * 0.10 + glint * 0.08);
     gl_FragColor = vec4(color, alpha);
   }
 `;
@@ -409,12 +447,12 @@ function makeWaterMaterial(mode: "satellite" | "3d" = "3d"): THREE.ShaderMateria
     side: THREE.DoubleSide,
     uniforms: {
       uTime: { value: 0 },
-      uWaterColor: { value: new THREE.Color(satellite ? 0xeafcff : 0xdff7ff) },
-      uDeepColor: { value: new THREE.Color(satellite ? 0xc9f3ff : 0xbdeeff) },
+      uWaterColor: { value: new THREE.Color(satellite ? 0x4fa9bd : 0x56b5ca) },
+      uDeepColor: { value: new THREE.Color(satellite ? 0x145e73 : 0x1c7187) },
       uFoamColor: { value: new THREE.Color(0xffffff) },
       uDistortion: { value: satellite ? 0.2 : 0.26 },
-      uOpacity: { value: satellite ? 0.28 : 0.18 },
-      uWaveHeight: { value: satellite ? 3.8 : 2.2 },
+      uOpacity: { value: satellite ? 0.16 : 0.13 },
+      uWaveHeight: { value: satellite ? 1.4 : 1.1 },
       uWaveScale: { value: 0.0035 },
     },
   });
@@ -433,62 +471,20 @@ export function createWaterLayer(
   let clock: THREE.Clock;
   let onResize: (() => void) | null = null;
   let waterMaterial: THREE.ShaderMaterial | null = null;
+  let shoreMesh: THREE.Mesh | null = null;
+  let shoreMaterial: THREE.ShaderMaterial | null = null;
   let firstFrameLogged = false;
   let projectionWarned = false;
   const localToMercator = new THREE.Matrix4();
   const projectionMatrix = new THREE.Matrix4();
   const mercatorScale = new THREE.Vector3();
 
-  // Shoreline-wave state: a current (fading-in) generation and an optional
-  // previous (fading-out) generation, crossfaded on each 5s regeneration.
-  type ShoreGen = { mesh: THREE.Mesh; mat: THREE.ShaderMaterial };
-  let shoreCurrent: ShoreGen | null = null;
-  let shorePrev: ShoreGen | null = null;
-  let shoreLastRegen = -Infinity;
-  let shoreFadeStart = 0;
-  const shoreLog: ShoreLog = { initialized: false, areasLogged: new Set() };
-
-  const disposeShoreGen = (g: ShoreGen | null) => {
-    if (!g) return;
-    scene.remove(g.mesh);
-    g.mesh.geometry.dispose();
-    g.mat.dispose();
-  };
-
-  const regenShore = (now: number) => {
-    // Retire whatever was still fading out, promote current → previous, and
-    // build a fresh generation that fades in.
-    disposeShoreGen(shorePrev);
-    shorePrev = shoreCurrent;
-    const geo = buildShoreGeometry(ref, Math.random, shoreLog);
-    const mat = makeShoreMaterial();
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.renderOrder = 2; // above the water surface (1), below boats (own layer)
+  const createShorelineBundle = (): ShorelineGeometryBundle => {
+    const material = makeShoreMaterial();
+    const mesh = new THREE.Mesh(buildShoreGeometry(ref), material);
+    mesh.renderOrder = 2;
     mesh.frustumCulled = false;
-    scene.add(mesh);
-    shoreCurrent = { mesh, mat };
-    shoreFadeStart = now;
-    shoreLastRegen = now;
-    if (shoreLog.initialized) console.log("[ShoreWaves] regeneration complete");
-  };
-
-  const updateShore = (now: number) => {
-    if (!SHORE_WAVES_ENABLED) return;
-    if (now - shoreLastRegen >= SHORE_WAVE_REGEN_MS / 1000) regenShore(now);
-    const fadeSecs = SHORE_WAVE_FADE_MS / 1000;
-    if (shoreCurrent) {
-      const ft = Math.min(1, (now - shoreFadeStart) / fadeSecs);
-      shoreCurrent.mat.uniforms.uFade.value = ft;
-      shoreCurrent.mat.uniforms.uTime.value = now;
-      if (shorePrev) {
-        shorePrev.mat.uniforms.uFade.value = 1 - ft;
-        shorePrev.mat.uniforms.uTime.value = now;
-        if (ft >= 1) {
-          disposeShoreGen(shorePrev);
-          shorePrev = null;
-        }
-      }
-    }
+    return { mesh, material };
   };
 
   return {
@@ -515,8 +511,11 @@ export function createWaterLayer(
 
       waterMaterial = makeWaterMaterial(mode);
       for (const area of WATER_AREAS) {
-        // Skip malformed areas instead of letting one bad polygon break the
-        // whole layer — a ring needs at least 3 finite coordinates.
+        if (!area.renderSurface) {
+          console.log("[Water] surface skipped", area.id);
+          continue;
+        }
+
         const valid =
           Array.isArray(area.polygon) &&
           area.polygon.length >= 3 &&
@@ -537,17 +536,30 @@ export function createWaterLayer(
         });
         shape.closePath();
 
-        // Subdivide so the vertex-shader wave displacement has interior vertices
-        // to ripple (ShapeGeometry alone is a flat, boundary-only fan).
         const geometry = subdivide(new THREE.ShapeGeometry(shape), 2);
-        // Keep the surface just above the basemap water but well below boats
-        // (which sit ~1m+ up), avoiding z-fighting with the imagery.
         const water = new THREE.Mesh(geometry, waterMaterial);
         water.position.z = 0.2;
         water.renderOrder = 1;
         waters.push(water);
         scene.add(water);
-        console.log("[Water] area created", area.id);
+      }
+
+      console.log(
+        "[Water] rendered surface ids:",
+        WATER_AREAS.filter((area) => area.renderSurface).map((area) => area.id),
+      );
+
+      if (SHORE_WAVES_ENABLED) {
+        console.log("[ShoreWaves] using dedicated shoreline paths");
+        console.log(
+          "[ShoreWaves] active paths:",
+          SHORELINE_PATHS.map((shoreline) => shoreline.id),
+        );
+        const bundle = createShorelineBundle();
+        shoreMesh = bundle.mesh;
+        shoreMaterial = bundle.material;
+        scene.add(shoreMesh);
+        console.log("[ShoreWaves] geometry created once");
       }
 
       renderer = acquireSharedRenderer(map.getCanvas(), gl);
@@ -555,36 +567,25 @@ export function createWaterLayer(
       onResize = () => syncSharedRendererSize(map.getCanvas());
       map.on("resize", onResize);
       console.log("[Water] total areas:", waters.length);
-
-      // Build the first shoreline-wave generation (subsequent ones regenerate
-      // on the 5s timer inside render()). shoreLastRegen = -Infinity forces the
-      // first render frame to generate immediately.
-      if (SHORE_WAVES_ENABLED) {
-        regenShore(0);
-        shoreLog.initialized = true;
-        console.log("[ShoreWaves] initialized");
-      }
     },
 
     render(_gl: WebGLRenderingContext, matrix: unknown) {
       if (!renderer || (controller && !controller.shouldRender())) return;
       const dt = Math.min(clock.getDelta(), 0.1);
+      const elapsed = clock.elapsedTime;
 
       if (waterMaterial?.uniforms.uTime) waterMaterial.uniforms.uTime.value += dt * 0.8;
-
-      // Drive shoreline-wave animation, regeneration and crossfade. clock's
-      // elapsedTime only advances while we render (tab visible + active), so
-      // both the flow and the 5s timer pause and resume cleanly.
-      updateShore(clock.elapsedTime);
+      if (shoreMaterial) {
+        shoreMaterial.uniforms.uTime.value = elapsed;
+        shoreMaterial.uniforms.uGeneration.value = Math.floor(elapsed / SHORE_WAVE_CYCLE_SECONDS);
+        shoreMaterial.uniforms.uWidthScale.value = getShoreWaveWidthMeters(map.getZoom()) / 18;
+      }
 
       const mArr = extractProjectionMatrix(matrix);
       if (!mArr) {
-        // No projection this frame — skip cleanly and ask for another so the
-        // surface never freezes waiting on a matrix. Log the shape once so an
-        // unexpected Mapbox matrix format is diagnosable.
         if (!projectionWarned) {
           console.warn(
-            "[Water] Mapbox projection matrix unavailable — shape:",
+            "[Water] Mapbox projection matrix unavailable - shape:",
             matrix && typeof matrix === "object" ? Object.keys(matrix as object) : typeof matrix,
           );
           projectionWarned = true;
@@ -609,17 +610,20 @@ export function createWaterLayer(
 
     onRemove() {
       if (onResize) map.off("resize", onResize);
-      for (const w of waters) {
-        w.geometry.dispose();
+      onResize = null;
+      for (const water of waters) {
+        water.geometry.dispose();
       }
       waters.length = 0;
       waterMaterial?.dispose();
       waterMaterial = null;
-      // Dispose both shoreline-wave generations (geometry + material).
-      disposeShoreGen(shoreCurrent);
-      disposeShoreGen(shorePrev);
-      shoreCurrent = null;
-      shorePrev = null;
+      if (shoreMesh) {
+        scene.remove(shoreMesh);
+        shoreMesh.geometry.dispose();
+        shoreMesh = null;
+      }
+      shoreMaterial?.dispose();
+      shoreMaterial = null;
       releaseSharedRenderer();
       renderer = null;
     },

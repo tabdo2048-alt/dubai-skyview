@@ -88,9 +88,8 @@ function fitModelToDisplaySize(object: THREE.Object3D, config: ModelConfig) {
   const size = new THREE.Box3().setFromObject(object).getSize(new THREE.Vector3());
   const sourceLength = Math.max(size.x, size.y, size.z);
   const targetLength = WATERCRAFT_DISPLAY_LENGTH_METERS[config.type] ?? 70;
-  const scale = Number.isFinite(sourceLength) && sourceLength > 0
-    ? targetLength / sourceLength
-    : config.scale;
+  const scale =
+    Number.isFinite(sourceLength) && sourceLength > 0 ? targetLength / sourceLength : config.scale;
   object.scale.setScalar(scale);
 }
 
@@ -293,9 +292,7 @@ function makePlaceholder(type: ModelType, color: number): THREE.Group {
   } else {
     g.add(makeBox(40, 40, 40, color, 20));
   }
-  // Procedural decks are authored with their bow on +X. The cargo hull's bow
-  // points -X, matching the native ship GLB configuration.
-  if (type === "ship") g.rotation.z = Math.PI;
+  // Procedural placeholders are authored with their bow on +X.
   return g;
 }
 
@@ -429,6 +426,26 @@ function isValidRoute(route: [number, number][] | undefined): route is [number, 
   );
 }
 
+function isClosedRoute(route: [number, number][]) {
+  const first = route[0];
+  const last = route[route.length - 1];
+  return Math.hypot(first[0] - last[0], first[1] - last[1]) < 0.000001;
+}
+
+function resolveRouteMode(config: ModelConfig): "loop" | "pingpong" {
+  if (!isValidRoute(config.route)) return "pingpong";
+  const closed = isClosedRoute(config.route);
+  if (!config.routeMode) {
+    console.warn("[BoatRoute] routeMode missing", config.id);
+    return closed ? "loop" : "pingpong";
+  }
+  if (config.routeMode === "loop" && !closed) {
+    console.warn("[BoatRoute] loop route is not closed", config.id);
+    return "pingpong";
+  }
+  return config.routeMode;
+}
+
 type ModelInstance = {
   config: ModelConfig;
   group: THREE.Group;
@@ -448,6 +465,7 @@ type ModelInstance = {
   orientationLogged: boolean;
   routeArrow: THREE.ArrowHelper | null;
   bowArrow: THREE.ArrowHelper | null;
+  direction: 1 | -1;
   t: number;
   frame: number;
   bobOffset: number;
@@ -502,7 +520,13 @@ export function createModel3DLayer(
         const allowed = modelHasWaterRoute(config);
         if (!allowed) console.warn(`[Boats] skipped land-crossing route: ${config.id}`);
         if (!allowed) return [];
-        return route && route !== config.route ? [{ ...config, route }] : [config];
+        if (route && route !== config.route) {
+          return [{ ...config, route, routeMode: isClosedRoute(route) ? "loop" : "pingpong" }];
+        }
+        if (route && !config.routeMode) {
+          return [{ ...config, routeMode: isClosedRoute(route) ? "loop" : "pingpong" }];
+        }
+        return [config];
       });
 
       console.log(`[Boats] ${safeRegistry.length} water-bound boat configs loaded`);
@@ -546,6 +570,7 @@ export function createModel3DLayer(
           orientationLogged: false,
           routeArrow: null,
           bowArrow: null,
+          direction: 1,
           t: Math.random() * 1, // stagger start along route
           frame: 0,
           bobOffset: instances.length * 1.3,
@@ -556,8 +581,18 @@ export function createModel3DLayer(
           wakeCount++;
         }
         if (BOAT_ORIENTATION_DEBUG && isWatercraft(config.type)) {
-          inst.routeArrow = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(), 36, 0xff3344);
-          inst.bowArrow = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(), 30, 0x32d583);
+          inst.routeArrow = new THREE.ArrowHelper(
+            new THREE.Vector3(1, 0, 0),
+            new THREE.Vector3(),
+            36,
+            0xff3344,
+          );
+          inst.bowArrow = new THREE.ArrowHelper(
+            new THREE.Vector3(1, 0, 0),
+            new THREE.Vector3(),
+            30,
+            0x32d583,
+          );
           scene.add(inst.routeArrow, inst.bowArrow);
         }
         instances.push(inst);
@@ -581,6 +616,9 @@ export function createModel3DLayer(
             if (disposed) return;
             console.log("[Boats] placeholder used");
             const ph = makePlaceholder(config.type, color);
+            ph.rotation.set(0, 0, 0);
+            inst.headingCorrection = 0;
+            console.warn("[BoatOrientation] placeholder orientation fallback", config.id);
             fitModelToDisplaySize(ph, config);
             group.add(ph);
           },
@@ -609,14 +647,35 @@ export function createModel3DLayer(
         if (!visible) continue;
 
         if (config.animate && isValidRoute(config.route) && inst.routeMetrics) {
-          inst.t = (inst.t + (config.speed ?? 0.03) * WATERCRAFT_SPEED_FACTOR * dt) % 1;
+          const routeMode = resolveRouteMode(config);
+          const speed = (config.speed ?? 0.03) * WATERCRAFT_SPEED_FACTOR;
+          if (routeMode === "loop") {
+            inst.t = (inst.t + speed * dt) % 1;
+          } else {
+            inst.t += inst.direction * speed * dt;
+            if (inst.t >= 1) {
+              inst.t = 1;
+              inst.direction = -1;
+            }
+            if (inst.t <= 0) {
+              inst.t = 0;
+              inst.direction = 1;
+            }
+          }
+          const lookAheadDirection = routeMode === "loop" ? 1 : inst.direction;
+          let aheadT =
+            routeMode === "loop"
+              ? (inst.t + LOOK_AHEAD_T) % 1
+              : inst.t + lookAheadDirection * LOOK_AHEAD_T;
+          if (routeMode === "pingpong") {
+            aheadT = Math.max(0, Math.min(1, aheadT));
+            if (Math.abs(aheadT - inst.t) < 0.000001) {
+              aheadT = inst.t - lookAheadDirection * LOOK_AHEAD_T;
+              aheadT = Math.max(0, Math.min(1, aheadT));
+            }
+          }
           routePointAt(config.route, inst.routeMetrics, inst.t, inst.routeCoord);
-          routePointAt(
-            config.route,
-            inst.routeMetrics,
-            (inst.t + LOOK_AHEAD_T) % 1,
-            inst.aheadRouteCoord,
-          );
+          routePointAt(config.route, inst.routeMetrics, aheadT, inst.aheadRouteCoord);
           const pos = setLocalPositionFromLngLat(
             inst.position,
             inst.routeCoord[0],
@@ -637,17 +696,20 @@ export function createModel3DLayer(
           const dx = ahead.x - pos.x;
           const dy = ahead.y - pos.y;
           inst.routeYaw = Math.atan2(dy, dx);
-          const targetYaw =
-            inst.routeYaw - inst.headingCorrection + (config.headingOffset ?? 0);
+          const targetYaw = inst.routeYaw - inst.headingCorrection + (config.headingOffset ?? 0);
 
           if (!inst.orientationInitialized) {
             inst.yaw = targetYaw;
+            inst.group.rotation.x = 0;
+            inst.group.rotation.y = 0;
             inst.group.rotation.z = targetYaw;
             inst.orientationInitialized = true;
           } else {
             const turnSpeed = config.turnSpeed ?? 3.5;
             const turnAmount = 1 - Math.exp(-turnSpeed * dt);
             inst.yaw = lerpAngle(inst.yaw, targetYaw, turnAmount);
+            inst.group.rotation.x = 0;
+            inst.group.rotation.y = 0;
             inst.group.rotation.z = inst.yaw;
           }
 
@@ -661,10 +723,10 @@ export function createModel3DLayer(
             inst.bowArrow?.setDirection(inst.bowDirection);
             if (!inst.orientationLogged) {
               console.log("[BoatOrientation]", config.id, {
-                targetYaw,
-                currentYaw: inst.yaw,
+                routeMode,
                 forwardAxis: config.forwardAxis ?? "+x",
                 headingOffset: config.headingOffset ?? 0,
+                headingCorrection: inst.headingCorrection,
               });
               inst.orientationLogged = true;
             }
@@ -690,6 +752,8 @@ export function createModel3DLayer(
             config.altitude,
           );
           inst.group.position.copy(pos);
+          inst.group.rotation.x = 0;
+          inst.group.rotation.y = 0;
           inst.group.rotation.z = config.headingOffset ?? 0;
         }
       }

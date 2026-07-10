@@ -221,7 +221,7 @@ export function compactWaterRoute(route: [number, number][], factor = 0.58): [nu
   center[0] /= route.length;
   center[1] /= route.length;
 
-  return route.map(([lng, lat]) => [
+  return route.map(([lng, lat]): [number, number] => [
     center[0] + (lng - center[0]) * factor,
     center[1] + (lat - center[1]) * factor,
   ]);

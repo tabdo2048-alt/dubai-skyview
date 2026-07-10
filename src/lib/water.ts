@@ -20,14 +20,13 @@ export type WaterArea = {
   // --- Shoreline-wave tuning (optional) ------------------------------------
   // When true, this basin is open sea (not a real coastline) so shoreline foam
   // lines are NOT drawn around it. Defaults to false.
+  renderSurface: boolean;
   openSea?: boolean;
   // Edge indexes (0-based, edge i = polygon[i]→polygon[i+1]) to skip when
   // drawing shoreline waves — e.g. artificial closing edges that cut across
   // open water rather than following the real coast.
-  shorelineExcludedEdges?: number[];
   // Per-area multiplier for shoreline-wave strength (opacity). Creek is calmer
   // than open-sea coast, so it uses a lower value. Defaults to 1.
-  shorelineIntensity?: number;
 };
 
 // Water polygons traced along the real basins so the water doesn't spill onto
@@ -37,7 +36,7 @@ export const WATER_AREAS: WaterArea[] = [
     id: "marina",
     name: "Dubai Marina & JBR",
     center: [55.138, 25.078],
-    shorelineIntensity: 0.85,
+    renderSurface: true,
     // High-fidelity basin boundary traced from satellite — includes all inlets,
     // piers, and the full crescent arc of JBR beachfront and Marina channels.
     polygon: [
@@ -111,7 +110,7 @@ export const WATER_AREAS: WaterArea[] = [
     id: "palm",
     name: "Palm Jumeirah",
     center: [55.138, 25.116],
-    shorelineIntensity: 1,
+    renderSurface: false,
     // High-fidelity crescent tracing the actual palm shape — outer crescent arc
     // + inner lagoon boundary. Dense points follow the real estate layout.
     polygon: [
@@ -168,7 +167,7 @@ export const WATER_AREAS: WaterArea[] = [
     id: "creek",
     name: "Dubai Creek",
     center: [55.32, 25.235],
-    shorelineIntensity: 0.5,
+    renderSurface: true,
     // Narrow, winding tidal estuary — densely sampled for natural curves.
     // Both banks (west and east) traced in fine detail.
     polygon: [
@@ -202,7 +201,7 @@ export const WATER_AREAS: WaterArea[] = [
       [55.3372, 25.2221],
       [55.3375, 25.2198],
       [55.3378, 25.2175],
-      [55.3380, 25.2152],
+      [55.338, 25.2152],
       [55.3382, 25.2129],
     ],
   },
@@ -210,6 +209,7 @@ export const WATER_AREAS: WaterArea[] = [
     id: "jbr-palm-offshore",
     name: "JBR & Palm Offshore Sea",
     center: [55.12, 25.13],
+    renderSurface: false,
     // Open sea — its ring is not a real coastline, so no shoreline foam here.
     openSea: true,
     polygon: [

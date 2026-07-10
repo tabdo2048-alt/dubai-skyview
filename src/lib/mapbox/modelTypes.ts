@@ -26,6 +26,16 @@ export type ModelConfig = {
 
   /** Uniform scale multiplier applied on top of the model's own size. */
   scale: number;
+  /**
+   * Optional per-model visual target length in metres. Overrides the per-type
+   * default in WATERCRAFT_DISPLAY_LENGTH_METERS when fitting the model on the map.
+   */
+  displayLengthMeters?: number;
+  /**
+   * Optional per-model multiplier on the zoom-based visibility scale so a single
+   * vessel can be nudged larger/smaller without touching the whole type.
+   */
+  zoomScaleMultiplier?: number;
   /** Euler rotation in radians [x, y, z], applied before heading alignment. */
   rotation: [number, number, number];
   /** Native GLB axis that points from stern to bow before its base rotation. */
@@ -43,6 +53,8 @@ export type ModelConfig = {
   animate: boolean;
   /** Ordered [lng, lat] waypoints the model loops along (water routes only). */
   route?: [number, number][];
+  /** Closed routes loop; open routes move end-to-end and return. */
+  routeMode?: "loop" | "pingpong";
   /** Fraction of the route travelled per second (e.g. 0.03). */
   speed?: number;
 
