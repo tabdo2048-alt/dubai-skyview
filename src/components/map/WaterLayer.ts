@@ -152,6 +152,7 @@ const SHORE_FRAGMENT = /* glsl */ `
   varying float vDist;
   varying float vEdge;
   varying float vPhase;
+  varying float vIntensity;
   uniform float uTime;
   uniform float uOpacity;
   uniform float uFlowSpeed;
@@ -171,7 +172,7 @@ const SHORE_FRAGMENT = /* glsl */ `
     // Gentle, non-synchronised pulsing per segment.
     float pulse = 0.7 + 0.3 * sin(uTime * 1.5 + vPhase * 6.2831);
 
-    float a = uOpacity * uFade * across * (0.32 + crest * 0.9) * pulse;
+    float a = uOpacity * uFade * vIntensity * across * (0.32 + crest * 0.9) * pulse;
     gl_FragColor = vec4(uColor, a);
   }
 `;
@@ -219,18 +220,22 @@ function buildShoreGeometry(ref: MercatorRef, rand: () => number, log?: ShoreLog
   const dists: number[] = [];
   const edges: number[] = [];
   const phases: number[] = [];
+  const intensities: number[] = [];
 
   const half = SHORE_WAVE_WIDTH_M / 2;
+  let intensity = 1; // set per area below
 
   const pushVert = (x: number, y: number, d: number, e: number, ph: number) => {
     positions.push(x, y, SHORE_Z);
     dists.push(d);
     edges.push(e);
     phases.push(ph);
+    intensities.push(intensity);
   };
 
   for (const area of WATER_AREAS as WaterArea[]) {
     if (area.openSea) continue;
+    intensity = area.shorelineIntensity ?? 1;
     const excluded = new Set(area.shorelineExcludedEdges ?? []);
     const pts = area.polygon.map(([lng, lat]) => lngLatToLocal(lng, lat, ref, 0));
     if (pts.length < 3) {
@@ -326,6 +331,7 @@ function buildShoreGeometry(ref: MercatorRef, rand: () => number, log?: ShoreLog
   geo.setAttribute("aDist", new THREE.BufferAttribute(new Float32Array(dists), 1));
   geo.setAttribute("aEdge", new THREE.BufferAttribute(new Float32Array(edges), 1));
   geo.setAttribute("aPhase", new THREE.BufferAttribute(new Float32Array(phases), 1));
+  geo.setAttribute("aIntensity", new THREE.BufferAttribute(new Float32Array(intensities), 1));
   return geo;
 }
 
