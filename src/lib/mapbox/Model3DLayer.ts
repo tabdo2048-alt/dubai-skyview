@@ -34,11 +34,12 @@ const WAKE_SAMPLES = 24;
 const WAKE_RECORD_EVERY = 2; // frames between wake position samples
 const LOOK_AHEAD_T = 0.002;
 const BOAT_ORIENTATION_DEBUG = false;
+const WATERCRAFT_SPEED_FACTOR = 0.9;
 const WATERCRAFT_DISPLAY_LENGTH_METERS: Partial<Record<ModelType, number>> = {
-  ship: 50,
-  yacht: 78,
-  boat: 70,
-  abra: 62,
+  ship: 64,
+  yacht: 92,
+  boat: 84,
+  abra: 74,
 };
 const WATERCRAFT_WAKE_MULTIPLIER = 0.45;
 
@@ -608,7 +609,7 @@ export function createModel3DLayer(
         if (!visible) continue;
 
         if (config.animate && isValidRoute(config.route) && inst.routeMetrics) {
-          inst.t = (inst.t + (config.speed ?? 0.03) * dt) % 1;
+          inst.t = (inst.t + (config.speed ?? 0.03) * WATERCRAFT_SPEED_FACTOR * dt) % 1;
           routePointAt(config.route, inst.routeMetrics, inst.t, inst.routeCoord);
           routePointAt(
             config.route,

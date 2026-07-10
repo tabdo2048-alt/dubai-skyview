@@ -34,7 +34,7 @@ export const CATEGORY_COLORS: Record<LineCategory, string> = {
   pink: "#D85B8C",
   tram: "#F2994A",
   future: "#B66DFF",
-  train: "#283C86",
+  train: "#F7F7F2",
 };
 
 // Decide a line's category from its id/name/status. Regional/rail lines are
@@ -79,7 +79,7 @@ function applyCategory(lines: MetroLine[], isTrain: boolean): MetroLine[] {
 // (station names in real travel order — see metroAccurate.ts). This replaces
 // the old auto-generated KML import, which had scrambled order + placeholders.
 import { ACCURATE_METRO_LINES } from "./metroAccurate";
-import { IMPORTED_METRO_LINES, IMPORTED_TRAIN_LINES } from "./metroNetwork.generated";
+import { IMPORTED_METRO_LINES } from "./metroNetwork.generated";
 
 const FUTURE_METRO_LINES = IMPORTED_METRO_LINES.filter(
   (line) => !["red", "green"].includes(line.id),
@@ -91,8 +91,35 @@ export const METRO_LINES: MetroLine[] = applyCategory(
   false,
 );
 
-// Separate regional train network, driven by its own "Train" toggle.
-export const TRAIN_LINES: MetroLine[] = applyCategory(IMPORTED_TRAIN_LINES, true);
+// One regional passenger rail approach, inspired by the UAE network: it enters
+// Dubai from the Abu Dhabi side and stops at a single Dubai interchange. The
+// previous generated regional routes are intentionally not rendered.
+const DUBAI_REGIONAL_TRAIN: MetroLine = {
+  id: "etihad-rail-dubai-approach",
+  name: "Etihad Rail - Dubai Approach",
+  color: CATEGORY_COLORS.train,
+  status: "planned-2030",
+  path: [
+    [54.985, 24.79], // outside Dubai, approaching from Abu Dhabi
+    [55.035, 24.825],
+    [55.078, 24.862],
+    [55.115, 24.902],
+    [55.148, 24.947],
+    [55.176, 24.992],
+    [55.19, 25.035],
+  ],
+  stations: [
+    {
+      id: "etihad-dubai-jge",
+      name: "Dubai Jumeirah Golf Estates",
+      coord: [55.19, 25.035],
+      interchange: true,
+    },
+  ],
+};
+
+// The Train toggle intentionally renders this one Dubai-bound approach only.
+export const TRAIN_LINES: MetroLine[] = applyCategory([DUBAI_REGIONAL_TRAIN], true);
 
 // Both networks combined — used for animation/progress bookkeeping.
 export const ALL_RAIL_LINES: MetroLine[] = [...METRO_LINES, ...TRAIN_LINES];

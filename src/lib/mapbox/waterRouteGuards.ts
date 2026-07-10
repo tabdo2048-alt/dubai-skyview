@@ -5,43 +5,58 @@ const WATERCRAFT_TYPES = new Set<ModelType>(["boat", "yacht", "ship", "abra"]);
 const METERS_PER_LATITUDE_DEGREE = 111_320;
 const PALM_LAND_CENTER: [number, number] = [55.138, 25.118];
 const PALM_LAND_RADIUS_METERS = 1_450;
+const MAINLAND_SHORE_CLEARANCE_METERS = 500;
 const SHORE_CLEARANCE_METERS: Partial<Record<ModelType, number>> = {
-  ship: 260,
-  yacht: 110,
-  boat: 85,
-  abra: 45,
+  ship: 540,
+  yacht: 280,
+  boat: 220,
+  abra: 120,
 };
+
+const DUBAI_MAINLAND_SHORELINE: [number, number][] = [
+  [55.082, 25.059],
+  [55.102, 25.064],
+  [55.122, 25.07],
+  [55.142, 25.083],
+  [55.157, 25.101],
+  [55.168, 25.121],
+  [55.185, 25.14],
+  [55.204, 25.153],
+];
 
 // Cargo and cruise ships use short offshore loops. Keeping these lanes west of
 // JBR and Palm prevents the broad Palm water mask from accepting paths that cut
 // across the island or the Dubai shoreline.
 const OFFSHORE_SHIP_ROUTES: [number, number][][] = [
   [
-    [55.073, 25.075],
-    [55.066, 25.088],
-    [55.064, 25.104],
-    [55.071, 25.115],
-    [55.077, 25.099],
-    [55.08, 25.084],
-    [55.073, 25.075],
+    [55.071, 25.083],
+    [55.061, 25.101],
+    [55.062, 25.122],
+    [55.074, 25.139],
+    [55.089, 25.129],
+    [55.086, 25.105],
+    [55.071, 25.083],
   ],
   [
-    [55.066, 25.118],
-    [55.065, 25.132],
-    [55.072, 25.146],
-    [55.086, 25.157],
-    [55.091, 25.145],
-    [55.08, 25.134],
-    [55.066, 25.118],
+    [55.067, 25.132],
+    [55.078, 25.151],
+    [55.098, 25.165],
+    [55.122, 25.171],
+    [55.144, 25.166],
+    [55.123, 25.157],
+    [55.098, 25.153],
+    [55.078, 25.142],
+    [55.067, 25.132],
   ],
   [
-    [55.095, 25.158],
-    [55.111, 25.166],
-    [55.13, 25.17],
-    [55.148, 25.165],
-    [55.135, 25.158],
-    [55.116, 25.155],
-    [55.095, 25.158],
+    [55.058, 25.109],
+    [55.054, 25.128],
+    [55.064, 25.148],
+    [55.083, 25.161],
+    [55.104, 25.165],
+    [55.088, 25.148],
+    [55.071, 25.128],
+    [55.058, 25.109],
   ],
 ];
 
@@ -122,8 +137,25 @@ function distanceToRingMeters(point: [number, number], ring: [number, number][])
   return nearest;
 }
 
+function distanceToPolylineMeters(point: [number, number], line: [number, number][]) {
+  let nearest = Number.POSITIVE_INFINITY;
+  for (let i = 1; i < line.length; i++) {
+    nearest = Math.min(nearest, distanceToSegmentMeters(point, line[i - 1], line[i]));
+  }
+  return nearest;
+}
+
 function isInsidePalmLandBuffer(point: [number, number], clearanceMeters: number) {
   return distanceMeters(point, PALM_LAND_CENTER) < PALM_LAND_RADIUS_METERS + clearanceMeters;
+}
+
+function isNearMainlandShore(point: [number, number], clearanceMeters: number) {
+  const openSea = WATER_AREAS.some((area) => area.openSea && pointInRing(point, area.polygon));
+  if (!openSea) return false;
+  return (
+    distanceToPolylineMeters(point, DUBAI_MAINLAND_SHORELINE) <
+    Math.max(clearanceMeters, MAINLAND_SHORE_CLEARANCE_METERS)
+  );
 }
 
 export function isPointInDubaiWater(point: [number, number]) {
@@ -132,6 +164,7 @@ export function isPointInDubaiWater(point: [number, number]) {
 
 function isPointInSafeDubaiWater(point: [number, number], clearanceMeters: number) {
   if (isInsidePalmLandBuffer(point, clearanceMeters)) return false;
+  if (isNearMainlandShore(point, clearanceMeters)) return false;
   return WATER_AREAS.some(
     (area) =>
       pointInRing(point, area.polygon) &&

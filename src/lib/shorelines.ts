@@ -5,21 +5,27 @@
 //
 // Coordinates are [lng, lat], densely sampled for smooth curves.
 
-export type Shoreline = {
+export type ShorelinePath = {
   id: string;
   name: string;
-  // Ordered polyline following the real coast (never backtracks).
-  path: [number, number][];
-  // Intensity multiplier for foam brightness (1 = normal, 0.5 = subtle).
-  intensity?: number;
+  // Ordered real coastline polyline. It never includes an artificial closing edge.
+  points: [number, number][];
+  // Direction from the shoreline toward water in local map coordinates.
+  waterSide: 1 | -1;
+  // Metres from the traced coast to the innermost foam ribbon.
+  offsetMeters: number;
+  // Intensity multiplier for foam brightness (1 = exposed coast, lower = protected water).
+  intensity: number;
 };
 
 // Marina walls and JBR beachfront — the northern arc facing open water.
-export const MARINA_BEACH_SHORELINE: Shoreline = {
+export const MARINA_BEACH_SHORELINE: ShorelinePath = {
   id: "marina-beach",
   name: "Marina Beach & JBR Waterfront",
-  intensity: 0.9,
-  path: [
+  intensity: 1.08,
+  waterSide: 1,
+  offsetMeters: 8,
+  points: [
     [55.1565, 25.0685], // JBR north (Nakheel Harbour)
     [55.1548, 25.0693],
     [55.1531, 25.0701],
@@ -44,11 +50,13 @@ export const MARINA_BEACH_SHORELINE: Shoreline = {
 };
 
 // Palm Jumeirah outer crescent — exposed to open Gulf.
-export const PALM_OUTER_SHORELINE: Shoreline = {
+export const PALM_OUTER_SHORELINE: ShorelinePath = {
   id: "palm-outer",
   name: "Palm Jumeirah Outer Crescent",
-  intensity: 1.0,
-  path: [
+  intensity: 1.2,
+  waterSide: 1,
+  offsetMeters: 8,
+  points: [
     [55.1048, 25.1278], // North tip
     [55.1078, 25.1289],
     [55.1109, 25.1298],
@@ -76,11 +84,13 @@ export const PALM_OUTER_SHORELINE: Shoreline = {
 };
 
 // Palm fronds — the radial canals with inner-lagoon shorelines (calmer water).
-export const PALM_FRONDS_SHORELINE: Shoreline = {
+export const PALM_FRONDS_SHORELINE: ShorelinePath = {
   id: "palm-fronds",
   name: "Palm Jumeirah Inner Fronds",
   intensity: 0.6,
-  path: [
+  waterSide: 1,
+  offsetMeters: 7,
+  points: [
     [55.1185, 25.108], // West frond inner
     [55.1205, 25.1095],
     [55.1225, 25.1109],
@@ -100,11 +110,13 @@ export const PALM_FRONDS_SHORELINE: Shoreline = {
 };
 
 // Dubai Creek — narrow tidal estuary, subtle waves.
-export const CREEK_SHORELINE: Shoreline = {
+export const CREEK_SHORELINE: ShorelinePath = {
   id: "creek",
   name: "Dubai Creek Banks",
-  intensity: 0.4,
-  path: [
+  intensity: 0.52,
+  waterSide: -1,
+  offsetMeters: 7,
+  points: [
     [55.3388, 25.2138], // Creek mouth (south)
     [55.3385, 25.2161],
     [55.3382, 25.2184],
@@ -124,9 +136,11 @@ export const CREEK_SHORELINE: Shoreline = {
 };
 
 // All active shorelines — only real coastlines, no artificial boundaries.
-export const ALL_SHORELINES: Shoreline[] = [
+export const SHORELINE_PATHS: ShorelinePath[] = [
   MARINA_BEACH_SHORELINE,
   PALM_OUTER_SHORELINE,
-  PALM_FRONDS_SHORELINE,
   CREEK_SHORELINE,
 ];
+
+// Kept as a backwards-compatible name for any map tooling that imports it.
+export const ALL_SHORELINES = SHORELINE_PATHS;
