@@ -39,17 +39,61 @@ function subdivide(geometry: THREE.BufferGeometry, levels: number): THREE.Buffer
   for (let level = 0; level < levels; level++) {
     const out: number[] = [];
     for (let i = 0; i < verts.length; i += 9) {
-      const ax = verts[i], ay = verts[i + 1], az = verts[i + 2];
-      const bx = verts[i + 3], by = verts[i + 4], bz = verts[i + 5];
-      const cx = verts[i + 6], cy = verts[i + 7], cz = verts[i + 8];
-      const abx = (ax + bx) / 2, aby = (ay + by) / 2, abz = (az + bz) / 2;
-      const bcx = (bx + cx) / 2, bcy = (by + cy) / 2, bcz = (bz + cz) / 2;
-      const cax = (cx + ax) / 2, cay = (cy + ay) / 2, caz = (cz + az) / 2;
+      const ax = verts[i],
+        ay = verts[i + 1],
+        az = verts[i + 2];
+      const bx = verts[i + 3],
+        by = verts[i + 4],
+        bz = verts[i + 5];
+      const cx = verts[i + 6],
+        cy = verts[i + 7],
+        cz = verts[i + 8];
+      const abx = (ax + bx) / 2,
+        aby = (ay + by) / 2,
+        abz = (az + bz) / 2;
+      const bcx = (bx + cx) / 2,
+        bcy = (by + cy) / 2,
+        bcz = (bz + cz) / 2;
+      const cax = (cx + ax) / 2,
+        cay = (cy + ay) / 2,
+        caz = (cz + az) / 2;
       out.push(
-        ax, ay, az, abx, aby, abz, cax, cay, caz,
-        abx, aby, abz, bx, by, bz, bcx, bcy, bcz,
-        cax, cay, caz, bcx, bcy, bcz, cx, cy, cz,
-        abx, aby, abz, bcx, bcy, bcz, cax, cay, caz,
+        ax,
+        ay,
+        az,
+        abx,
+        aby,
+        abz,
+        cax,
+        cay,
+        caz,
+        abx,
+        aby,
+        abz,
+        bx,
+        by,
+        bz,
+        bcx,
+        bcy,
+        bcz,
+        cax,
+        cay,
+        caz,
+        bcx,
+        bcy,
+        bcz,
+        cx,
+        cy,
+        cz,
+        abx,
+        aby,
+        abz,
+        bcx,
+        bcy,
+        bcz,
+        cax,
+        cay,
+        caz,
       );
     }
     verts = out;
@@ -64,6 +108,7 @@ const WATER_VERTEX = /* glsl */ `
   varying vec3 vWorld;
   uniform float uTime;
   uniform float uWaveHeight;
+  uniform float uWaveScale;
 
   float wave(vec2 p, vec2 dir, float freq, float speed) {
     return sin(dot(p, normalize(dir)) * freq + uTime * speed);
@@ -71,7 +116,7 @@ const WATER_VERTEX = /* glsl */ `
 
   void main() {
     vec3 displaced = position;
-    vec2 p = position.xy * 0.0035;
+    vec2 p = position.xy * uWaveScale;
     float h = wave(p, vec2(1.0, 0.35), 7.0, 1.15) * 0.55;
     h += wave(p, vec2(-0.25, 1.0), 10.0, 0.82) * 0.30;
     h += wave(p, vec2(0.75, -0.55), 15.0, 1.45) * 0.15;
@@ -88,7 +133,7 @@ const WATER_FRAGMENT = /* glsl */ `
   uniform float uTime;
   uniform vec3 uWaterColor;
   uniform vec3 uDeepColor;
-  uniform vec3 uWhitecap;
+  uniform vec3 uFoamColor;
   uniform float uDistortion;
   uniform float uOpacity;
 
@@ -114,7 +159,7 @@ const WATER_FRAGMENT = /* glsl */ `
     float highlight = glint * 0.2 + fineGlint + whitecap;
 
     vec3 water = mix(uDeepColor, uWaterColor, depthMix);
-    vec3 color = mix(water, uWhitecap, highlight);
+    vec3 color = mix(water, uFoamColor, highlight);
     float alpha = uOpacity * (0.72 + swell * 0.18 + glint * 0.10);
 
     gl_FragColor = vec4(color, alpha);
@@ -135,10 +180,11 @@ function makeWaterMaterial(mode: "satellite" | "3d" = "3d"): THREE.ShaderMateria
       uTime: { value: 0 },
       uWaterColor: { value: new THREE.Color(satellite ? 0x8eefff : 0x66d9ff) },
       uDeepColor: { value: new THREE.Color(satellite ? 0x118fbd : 0x0b6f8f) },
-      uWhitecap: { value: new THREE.Color(0xffffff) },
+      uFoamColor: { value: new THREE.Color(0xffffff) },
       uDistortion: { value: satellite ? 0.2 : 0.26 },
-      uOpacity: { value: satellite ? 0.5 : 0.24 },
+      uOpacity: { value: satellite ? 0.45 : 0.22 },
       uWaveHeight: { value: satellite ? 3.8 : 2.2 },
+      uWaveScale: { value: 0.0035 },
     },
   });
 }
@@ -156,7 +202,8 @@ export function createWaterLayer(
   let clock: THREE.Clock;
   let onResize: (() => void) | null = null;
   let waterMaterial: THREE.ShaderMaterial | null = null;
-  let animationLogged = false;
+  let firstFrameLogged = false;
+  let projectionWarned = false;
   const localToMercator = new THREE.Matrix4();
   const projectionMatrix = new THREE.Matrix4();
   const mercatorScale = new THREE.Vector3();
@@ -172,6 +219,8 @@ export function createWaterLayer(
       scene = new THREE.Scene();
       camera = new THREE.Camera();
 
+      console.log("[Water] creating layer", { mode });
+
       const originLngLat: [number, number] = [55.138, 25.1];
       const origin = mapboxgl.MercatorCoordinate.fromLngLat(originLngLat, 0);
       ref = {
@@ -181,30 +230,48 @@ export function createWaterLayer(
         scale: origin.meterInMercatorCoordinateUnits(),
       };
 
-      console.log("[Water] total areas", WATER_AREAS.length);
       waterMaterial = makeWaterMaterial(mode);
       for (const area of WATER_AREAS) {
+        // Skip malformed areas instead of letting one bad polygon break the
+        // whole layer — a ring needs at least 3 finite coordinates.
+        const valid =
+          Array.isArray(area.polygon) &&
+          area.polygon.length >= 3 &&
+          area.polygon.every(
+            (c) =>
+              Array.isArray(c) && c.length === 2 && Number.isFinite(c[0]) && Number.isFinite(c[1]),
+          );
+        if (!valid) {
+          console.warn("[Water] invalid polygon skipped", area.id);
+          continue;
+        }
+
         const shape = new THREE.Shape();
         area.polygon.forEach(([lng, lat], i) => {
           const p = lngLatToLocal(lng, lat, ref, 0);
           if (i === 0) shape.moveTo(p.x, p.y);
           else shape.lineTo(p.x, p.y);
         });
+        shape.closePath();
 
         // Subdivide so the vertex-shader wave displacement has interior vertices
         // to ripple (ShapeGeometry alone is a flat, boundary-only fan).
         const geometry = subdivide(new THREE.ShapeGeometry(shape), 2);
+        // Keep the surface just above the basemap water but well below boats
+        // (which sit ~1m+ up), avoiding z-fighting with the imagery.
         const water = new THREE.Mesh(geometry, waterMaterial);
-        water.position.z = 1;
+        water.position.z = 0.2;
         water.renderOrder = 1;
         waters.push(water);
         scene.add(water);
+        console.log("[Water] area created", area.id);
       }
 
       renderer = acquireSharedRenderer(map.getCanvas(), gl);
+      console.log("[Water] shared renderer acquired");
       onResize = () => syncSharedRendererSize(map.getCanvas());
       map.on("resize", onResize);
-      console.log("[Water] layer added");
+      console.log("[Water] total areas:", waters.length);
     },
 
     render(_gl: WebGLRenderingContext, matrix: unknown) {
@@ -212,16 +279,21 @@ export function createWaterLayer(
       const dt = Math.min(clock.getDelta(), 0.1);
 
       if (waterMaterial?.uniforms.uTime) waterMaterial.uniforms.uTime.value += dt * 0.8;
-      if (!animationLogged) {
-        console.log("[Water] animation running");
-        animationLogged = true;
-      }
 
       const mArr = Array.isArray(matrix)
         ? (matrix as number[])
         : (matrix as { defaultProjectionData?: { mainMatrix: number[] } } | undefined)
             ?.defaultProjectionData?.mainMatrix;
-      if (!mArr) return;
+      if (!mArr) {
+        // No projection this frame — skip cleanly and ask for another so the
+        // surface never freezes waiting on a matrix.
+        if (!projectionWarned) {
+          console.warn("[Water] Mapbox projection matrix unavailable");
+          projectionWarned = true;
+        }
+        map.triggerRepaint();
+        return;
+      }
 
       mercatorScale.set(ref.scale, -ref.scale, ref.scale);
       localToMercator.makeTranslation(ref.x, ref.y, ref.z).scale(mercatorScale);
@@ -229,6 +301,12 @@ export function createWaterLayer(
 
       renderer.resetState();
       renderer.render(scene, camera);
+
+      if (!firstFrameLogged) {
+        console.log("[Water] animation running");
+        console.log("[Water] first frame rendered");
+        firstFrameLogged = true;
+      }
       map.triggerRepaint();
     },
 

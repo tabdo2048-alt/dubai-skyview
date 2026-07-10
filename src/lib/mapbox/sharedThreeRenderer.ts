@@ -17,7 +17,10 @@ let boundCanvas: HTMLCanvasElement | null = null;
  * first use. Every custom layer that renders three.js should call this in its
  * `onAdd` and release it in `onRemove`.
  */
-export function acquireSharedRenderer(canvas: HTMLCanvasElement, gl: WebGLRenderingContext): THREE.WebGLRenderer {
+export function acquireSharedRenderer(
+  canvas: HTMLCanvasElement,
+  gl: WebGLRenderingContext,
+): THREE.WebGLRenderer {
   if (!renderer || boundCanvas !== canvas) {
     renderer = new THREE.WebGLRenderer({ canvas, context: gl, antialias: true });
     renderer.autoClear = false;
