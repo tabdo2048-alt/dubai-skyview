@@ -8,6 +8,13 @@
 export type ModelType = "boat" | "yacht" | "ship" | "abra" | "train" | "cloud" | "custom";
 export type ModelForwardAxis = "+x" | "-x" | "+y" | "-y" | "+z" | "-z";
 
+export const WATERCRAFT_DISPLAY_LENGTH_METERS: Partial<Record<ModelType, number>> = {
+  ship: 180,
+  yacht: 110,
+  boat: 55,
+  abra: 32,
+};
+
 export type ModelConfig = {
   /** Stable unique id, e.g. "marina-yacht-01". */
   id: string;

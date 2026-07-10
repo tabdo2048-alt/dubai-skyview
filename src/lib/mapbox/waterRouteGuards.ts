@@ -1,97 +1,153 @@
-import { WATER_AREAS } from "@/lib/water";
-import type { ModelConfig, ModelType } from "./modelTypes";
+import {
+  LAND_EXCLUSION_POLYGONS,
+  NAVIGATION_WATER_POLYGONS,
+  type NavigationPolygon,
+} from "@/lib/navigationWater";
+import { WATERCRAFT_DISPLAY_LENGTH_METERS, type ModelConfig, type ModelType } from "./modelTypes";
 
+const BOAT_ROUTE_DEBUG = false;
 const WATERCRAFT_TYPES = new Set<ModelType>(["boat", "yacht", "ship", "abra"]);
 const METERS_PER_LATITUDE_DEGREE = 111_320;
-const PALM_LAND_CENTER: [number, number] = [55.138, 25.118];
-const PALM_LAND_RADIUS_METERS = 1_450;
-const MAINLAND_SHORE_CLEARANCE_METERS = 500;
-const SHORE_CLEARANCE_METERS: Partial<Record<ModelType, number>> = {
-  ship: 540,
-  yacht: 280,
-  boat: 220,
-  abra: 120,
+const ROUTE_SAMPLE_STEP_METERS = 25;
+const loggedRoutes = new Set<string>();
+
+const BASE_SAFETY_CLEARANCE_METERS: Partial<Record<ModelType, number>> = {
+  ship: 110,
+  yacht: 55,
+  boat: 30,
+  abra: 20,
 };
 
-const DUBAI_MAINLAND_SHORELINE: [number, number][] = [
-  [55.082, 25.059],
-  [55.102, 25.064],
-  [55.122, 25.07],
-  [55.142, 25.083],
-  [55.157, 25.101],
-  [55.168, 25.121],
-  [55.185, 25.14],
-  [55.204, 25.153],
-];
-
-// Cargo and cruise ships use short offshore loops. Keeping these lanes west of
-// JBR and Palm prevents the broad Palm water mask from accepting paths that cut
-// across the island or the Dubai shoreline.
-const OFFSHORE_SHIP_ROUTES: [number, number][][] = [
+const SAFE_OFFSHORE_SHIP_ROUTES: [number, number][][] = [
   [
-    [55.071, 25.083],
-    [55.061, 25.101],
-    [55.062, 25.122],
-    [55.074, 25.139],
-    [55.089, 25.129],
-    [55.086, 25.105],
-    [55.071, 25.083],
+    [55.055, 25.118],
+    [55.065, 25.148],
+    [55.095, 25.17],
+    [55.13, 25.177],
+    [55.155, 25.162],
+    [55.125, 25.152],
+    [55.088, 25.142],
+    [55.055, 25.118],
   ],
   [
-    [55.067, 25.132],
-    [55.078, 25.151],
-    [55.098, 25.165],
-    [55.122, 25.171],
-    [55.144, 25.166],
-    [55.123, 25.157],
-    [55.098, 25.153],
-    [55.078, 25.142],
-    [55.067, 25.132],
+    [55.06, 25.09],
+    [55.055, 25.125],
+    [55.08, 25.155],
+    [55.11, 25.166],
+    [55.095, 25.14],
+    [55.072, 25.116],
+    [55.06, 25.09],
   ],
   [
-    [55.058, 25.109],
-    [55.054, 25.128],
-    [55.064, 25.148],
-    [55.083, 25.161],
-    [55.104, 25.165],
-    [55.088, 25.148],
-    [55.071, 25.128],
-    [55.058, 25.109],
+    [55.07, 25.158],
+    [55.105, 25.174],
+    [55.145, 25.172],
+    [55.17, 25.152],
+    [55.145, 25.157],
+    [55.105, 25.158],
+    [55.07, 25.158],
   ],
 ];
 
-const PALM_OFFSHORE_ROUTES: [number, number][][] = [
+const SAFE_PALM_YACHT_ROUTES: [number, number][][] = [
   [
-    [55.083, 25.108],
-    [55.078, 25.12],
-    [55.079, 25.134],
-    [55.087, 25.144],
-    [55.094, 25.135],
-    [55.09, 25.12],
-    [55.083, 25.108],
+    [55.075, 25.103],
+    [55.078, 25.13],
+    [55.095, 25.154],
+    [55.122, 25.164],
+    [55.145, 25.158],
+    [55.13, 25.146],
+    [55.1, 25.14],
+    [55.083, 25.12],
+    [55.075, 25.103],
   ],
   [
-    [55.098, 25.158],
-    [55.112, 25.165],
-    [55.128, 25.168],
-    [55.142, 25.164],
-    [55.13, 25.157],
-    [55.112, 25.154],
-    [55.098, 25.158],
+    [55.087, 25.091],
+    [55.079, 25.115],
+    [55.09, 25.144],
+    [55.112, 25.158],
+    [55.137, 25.158],
+    [55.158, 25.144],
+    [55.143, 25.14],
+    [55.11, 25.13],
+    [55.087, 25.091],
   ],
   [
-    [55.082, 25.145],
-    [55.093, 25.157],
-    [55.108, 25.163],
-    [55.116, 25.155],
-    [55.104, 25.148],
-    [55.091, 25.14],
-    [55.082, 25.145],
+    [55.106, 25.149],
+    [55.126, 25.162],
+    [55.151, 25.154],
+    [55.167, 25.136],
+    [55.153, 25.129],
+    [55.127, 25.14],
+    [55.106, 25.149],
   ],
 ];
+
+const SAFE_MARINA_BOAT_ROUTES: [number, number][][] = [
+  [
+    [55.118, 25.078],
+    [55.128, 25.095],
+    [55.145, 25.098],
+    [55.154, 25.087],
+    [55.146, 25.075],
+    [55.131, 25.074],
+    [55.118, 25.078],
+  ],
+  [
+    [55.121, 25.086],
+    [55.132, 25.101],
+    [55.151, 25.097],
+    [55.156, 25.083],
+    [55.143, 25.072],
+    [55.127, 25.073],
+    [55.121, 25.086],
+  ],
+];
+
+const SAFE_CREEK_ABRA_ROUTES: [number, number][][] = [
+  [
+    [55.301, 25.262],
+    [55.309, 25.249],
+    [55.318, 25.237],
+    [55.327, 25.226],
+    [55.334, 25.217],
+  ],
+  [
+    [55.334, 25.218],
+    [55.326, 25.229],
+    [55.317, 25.24],
+    [55.308, 25.252],
+    [55.301, 25.262],
+  ],
+];
+
+const SAFE_BUSINESS_BAY_ROUTES: [number, number][][] = [
+  [
+    [55.2675, 25.187],
+    [55.2665, 25.18],
+    [55.2675, 25.173],
+    [55.2715, 25.1665],
+  ],
+  [
+    [55.2715, 25.1665],
+    [55.269, 25.174],
+    [55.2675, 25.182],
+    [55.268, 25.188],
+  ],
+];
+
+console.log("[BoatRoute] navigation polygons loaded", NAVIGATION_WATER_POLYGONS.length);
+console.log("[BoatRoute] land masks loaded", LAND_EXCLUSION_POLYGONS.length);
 
 export function isWatercraft(type: ModelType) {
   return WATERCRAFT_TYPES.has(type);
+}
+
+function logRouteOnce(message: string, id: string) {
+  const key = `${message}:${id}`;
+  if (loggedRoutes.has(key)) return;
+  loggedRoutes.add(key);
+  console.log(message, id);
 }
 
 function pointInRing(point: [number, number], ring: [number, number][]) {
@@ -137,115 +193,130 @@ function distanceToRingMeters(point: [number, number], ring: [number, number][])
   return nearest;
 }
 
-function distanceToPolylineMeters(point: [number, number], line: [number, number][]) {
+function isPointInAnyPolygon(point: [number, number], polygons: NavigationPolygon[]) {
+  return polygons.some((area) => pointInRing(point, area.polygon));
+}
+
+function distanceToNearestPolygonBoundaryMeters(
+  point: [number, number],
+  polygons: NavigationPolygon[],
+) {
   let nearest = Number.POSITIVE_INFINITY;
-  for (let i = 1; i < line.length; i++) {
-    nearest = Math.min(nearest, distanceToSegmentMeters(point, line[i - 1], line[i]));
+  for (const polygon of polygons) {
+    nearest = Math.min(nearest, distanceToRingMeters(point, polygon.polygon));
   }
   return nearest;
 }
 
-function isInsidePalmLandBuffer(point: [number, number], clearanceMeters: number) {
-  return distanceMeters(point, PALM_LAND_CENTER) < PALM_LAND_RADIUS_METERS + clearanceMeters;
+export function isPointInsideAnyLandMask(point: [number, number]) {
+  return isPointInAnyPolygon(point, LAND_EXCLUSION_POLYGONS);
 }
 
-function isNearMainlandShore(point: [number, number], clearanceMeters: number) {
-  const openSea = WATER_AREAS.some((area) => area.openSea && pointInRing(point, area.polygon));
-  if (!openSea) return false;
-  return (
-    distanceToPolylineMeters(point, DUBAI_MAINLAND_SHORELINE) <
-    Math.max(clearanceMeters, MAINLAND_SHORE_CLEARANCE_METERS)
-  );
+export function distanceToLandBoundaryMeters(point: [number, number]) {
+  return distanceToNearestPolygonBoundaryMeters(point, LAND_EXCLUSION_POLYGONS);
+}
+
+export function isPointInSafeNavigationWater(point: [number, number], clearanceMeters = 0) {
+  if (!isPointInAnyPolygon(point, NAVIGATION_WATER_POLYGONS)) return false;
+  if (isPointInsideAnyLandMask(point)) return false;
+  if (distanceToLandBoundaryMeters(point) < clearanceMeters) return false;
+  return true;
 }
 
 export function isPointInDubaiWater(point: [number, number]) {
-  return WATER_AREAS.some((area) => pointInRing(point, area.polygon));
+  return isPointInAnyPolygon(point, NAVIGATION_WATER_POLYGONS);
 }
 
-function isPointInSafeDubaiWater(point: [number, number], clearanceMeters: number) {
-  if (isInsidePalmLandBuffer(point, clearanceMeters)) return false;
-  if (isNearMainlandShore(point, clearanceMeters)) return false;
-  return WATER_AREAS.some(
-    (area) =>
-      pointInRing(point, area.polygon) &&
-      distanceToRingMeters(point, area.polygon) >= clearanceMeters,
-  );
-}
-
-export function routeStaysInDubaiWater(
-  route: [number, number][],
-  samplesPerSegment = 16,
-  clearanceMeters = 0,
+export function getVesselSafetyClearance(
+  config: Pick<ModelConfig, "type" | "displayLengthMeters">,
 ) {
+  const displayLength =
+    config.displayLengthMeters ?? WATERCRAFT_DISPLAY_LENGTH_METERS[config.type] ?? 50;
+  return (BASE_SAFETY_CLEARANCE_METERS[config.type] ?? 25) + displayLength / 2;
+}
+
+export function routeStaysInDubaiWater(route: [number, number][], clearanceMeters = 0) {
   if (route.length < 2) return false;
 
   for (let i = 1; i < route.length; i++) {
-    const [ax, ay] = route[i - 1];
-    const [bx, by] = route[i];
-    for (let step = 0; step <= samplesPerSegment; step++) {
-      const t = step / samplesPerSegment;
-      const point: [number, number] = [ax + (bx - ax) * t, ay + (by - ay) * t];
-      if (!isPointInSafeDubaiWater(point, clearanceMeters)) return false;
+    const start = route[i - 1];
+    const end = route[i];
+    const segmentLength = distanceMeters(start, end);
+    const samples = Math.max(1, Math.ceil(segmentLength / ROUTE_SAMPLE_STEP_METERS));
+    for (let step = 0; step <= samples; step++) {
+      const t = step / samples;
+      const point: [number, number] = [
+        start[0] + (end[0] - start[0]) * t,
+        start[1] + (end[1] - start[1]) * t,
+      ];
+      if (!isPointInSafeNavigationWater(point, clearanceMeters)) {
+        if (BOAT_ROUTE_DEBUG) console.warn("[BoatRoute] rejected sample", point, clearanceMeters);
+        return false;
+      }
     }
   }
 
   return true;
 }
 
-function offshoreShipRoute(id: string) {
-  const routeIndex = [...id].reduce((sum, character) => sum + character.charCodeAt(0), 0);
-  return OFFSHORE_SHIP_ROUTES[routeIndex % OFFSHORE_SHIP_ROUTES.length];
+function routeIndexForId(id: string, routeCount: number) {
+  return [...id].reduce((sum, character) => sum + character.charCodeAt(0), 0) % routeCount;
 }
 
-function palmOffshoreRoute(id: string) {
-  const routeIndex = [...id].reduce((sum, character) => sum + character.charCodeAt(0), 0);
-  return PALM_OFFSHORE_ROUTES[routeIndex % PALM_OFFSHORE_ROUTES.length];
+function safeFallbackGroupsFor(config: ModelConfig): [number, number][][] {
+  const id = config.id.toLowerCase();
+  if (config.type === "ship") return SAFE_OFFSHORE_SHIP_ROUTES;
+  if (id.includes("creek") || config.type === "abra") return SAFE_CREEK_ABRA_ROUTES;
+  if (id.includes("business")) return SAFE_BUSINESS_BAY_ROUTES;
+  if (id.includes("marina")) return SAFE_MARINA_BOAT_ROUTES;
+  if (id.includes("palm") || id.includes("gulf") || id.includes("harbour") || id.includes("jbr")) {
+    return SAFE_PALM_YACHT_ROUTES;
+  }
+  return SAFE_MARINA_BOAT_ROUTES;
+}
+
+function selectSafeFallbackRoute(config: ModelConfig, clearanceMeters: number) {
+  const routes = safeFallbackGroupsFor(config);
+  const firstIndex = routeIndexForId(config.id, routes.length);
+
+  for (let offset = 0; offset < routes.length; offset++) {
+    const route = routes[(firstIndex + offset) % routes.length];
+    if (routeStaysInDubaiWater(route, clearanceMeters)) return route;
+  }
+
+  return undefined;
 }
 
 export function modelStaysInDubaiWater(config: ModelConfig) {
   if (!isWatercraft(config.type)) return true;
-  if (config.route && config.route.length > 1) return routeStaysInDubaiWater(config.route);
-  return isPointInDubaiWater([config.lng, config.lat]);
-}
-
-export function compactWaterRoute(route: [number, number][], factor = 0.58): [number, number][] {
-  if (route.length < 2) return route;
-  const center = route.reduce(
-    (acc, point) => {
-      acc[0] += point[0];
-      acc[1] += point[1];
-      return acc;
-    },
-    [0, 0] as [number, number],
-  );
-  center[0] /= route.length;
-  center[1] /= route.length;
-
-  return route.map(([lng, lat]): [number, number] => [
-    center[0] + (lng - center[0]) * factor,
-    center[1] + (lat - center[1]) * factor,
-  ]);
+  const clearance = getVesselSafetyClearance(config);
+  if (config.route && config.route.length > 1)
+    return routeStaysInDubaiWater(config.route, clearance);
+  return isPointInSafeNavigationWater([config.lng, config.lat], clearance);
 }
 
 export function waterRouteForDisplay(config: ModelConfig): [number, number][] | undefined {
-  if (!isWatercraft(config.type) || !config.route || config.route.length < 2) return config.route;
+  if (!isWatercraft(config.type)) return config.route;
+  if (!config.route || config.route.length < 2) return config.route;
 
-  if (config.type === "ship") return offshoreShipRoute(config.id);
+  const clearance = getVesselSafetyClearance(config);
+  if (routeStaysInDubaiWater(config.route, clearance)) {
+    logRouteOnce("[BoatRoute] safe route accepted", config.id);
+    return config.route;
+  }
 
-  const clearance = SHORE_CLEARANCE_METERS[config.type] ?? 80;
+  const fallbackRoute = selectSafeFallbackRoute(config, clearance);
+  if (fallbackRoute) {
+    logRouteOnce("[BoatRoute] fallback route used", config.id);
+    return fallbackRoute;
+  }
 
-  const compacted = compactWaterRoute(config.route);
-  if (routeStaysInDubaiWater(compacted, 16, clearance)) return compacted;
-  if (routeStaysInDubaiWater(config.route, 16, clearance)) return config.route;
-  if (config.id.includes("palm")) return palmOffshoreRoute(config.id);
+  logRouteOnce("[BoatRoute] vessel skipped: no safe route", config.id);
   return undefined;
 }
 
 export function modelHasWaterRoute(config: ModelConfig) {
   if (!isWatercraft(config.type)) return true;
   if (config.route && config.route.length > 1) return Boolean(waterRouteForDisplay(config));
-  return isPointInSafeDubaiWater(
-    [config.lng, config.lat],
-    SHORE_CLEARANCE_METERS[config.type] ?? 80,
-  );
+  return isPointInSafeNavigationWater([config.lng, config.lat], getVesselSafetyClearance(config));
 }

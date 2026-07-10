@@ -22,11 +22,18 @@ import {
 } from "./sharedThreeRenderer";
 import {
   PLACEHOLDER_COLORS,
+  WATERCRAFT_DISPLAY_LENGTH_METERS,
   type ModelConfig,
   type ModelForwardAxis,
   type ModelType,
 } from "./modelTypes";
-import { isWatercraft, modelHasWaterRoute, waterRouteForDisplay } from "./waterRouteGuards";
+import {
+  getVesselSafetyClearance,
+  isPointInSafeNavigationWater,
+  isWatercraft,
+  modelHasWaterRoute,
+  waterRouteForDisplay,
+} from "./waterRouteGuards";
 
 type MercatorRef = { x: number; y: number; z: number; scale: number };
 
@@ -34,13 +41,8 @@ const WAKE_SAMPLES = 24;
 const WAKE_RECORD_EVERY = 2; // frames between wake position samples
 const LOOK_AHEAD_T = 0.002;
 const BOAT_ORIENTATION_DEBUG = false;
+const BOAT_ROUTE_DEBUG = false;
 const WATERCRAFT_SPEED_FACTOR = 0.9;
-const WATERCRAFT_DISPLAY_LENGTH_METERS: Partial<Record<ModelType, number>> = {
-  ship: 64,
-  yacht: 92,
-  boat: 84,
-  abra: 74,
-};
 const WATERCRAFT_WAKE_MULTIPLIER = 0.45;
 
 function normalizeAngle(angle: number) {
@@ -78,6 +80,21 @@ function forwardAxisHeading(axis: ModelForwardAxis, rotation: ModelConfig["rotat
     : 0;
 }
 
+function sourceLengthForForwardAxis(size: THREE.Vector3, axis: ModelForwardAxis) {
+  switch (axis) {
+    case "+y":
+    case "-y":
+      return size.y;
+    case "+z":
+    case "-z":
+      return size.z;
+    case "+x":
+    case "-x":
+    default:
+      return size.x;
+  }
+}
+
 function fitModelToDisplaySize(object: THREE.Object3D, config: ModelConfig) {
   if (!isWatercraft(config.type)) {
     object.scale.setScalar(config.scale);
@@ -86,11 +103,22 @@ function fitModelToDisplaySize(object: THREE.Object3D, config: ModelConfig) {
 
   object.updateMatrixWorld(true);
   const size = new THREE.Box3().setFromObject(object).getSize(new THREE.Vector3());
-  const sourceLength = Math.max(size.x, size.y, size.z);
-  const targetLength = WATERCRAFT_DISPLAY_LENGTH_METERS[config.type] ?? 70;
+  const sourceLength =
+    sourceLengthForForwardAxis(size, config.forwardAxis ?? "+x") ||
+    Math.max(size.x, size.y, size.z);
+  const targetLength =
+    config.displayLengthMeters ?? WATERCRAFT_DISPLAY_LENGTH_METERS[config.type] ?? 70;
   const scale =
     Number.isFinite(sourceLength) && sourceLength > 0 ? targetLength / sourceLength : config.scale;
   object.scale.setScalar(scale);
+  return scale;
+}
+
+function getVesselZoomScale(zoom: number) {
+  if (zoom < 10) return 0.82;
+  if (zoom < 13) return 1;
+  if (zoom < 15) return 1.08;
+  return 1.16;
 }
 
 function polishWatercraftMaterials(object: THREE.Object3D) {
@@ -467,6 +495,11 @@ type ModelInstance = {
   bowArrow: THREE.ArrowHelper | null;
   direction: 1 | -1;
   t: number;
+  lastSafeT: number;
+  safetyClearance: number;
+  unsafeBlockedLogged: boolean;
+  blockedUntil: number;
+  baseModelScale: number;
   frame: number;
   bobOffset: number;
 };
@@ -535,6 +568,7 @@ export function createModel3DLayer(
 
       for (const config of safeRegistry) {
         const group = new THREE.Group();
+        const initialT = Math.random();
         // Wake only for water craft that move.
         const baseWakeWidth =
           config.type === "ship"
@@ -571,7 +605,12 @@ export function createModel3DLayer(
           routeArrow: null,
           bowArrow: null,
           direction: 1,
-          t: Math.random() * 1, // stagger start along route
+          t: initialT, // stagger start along route
+          lastSafeT: initialT,
+          safetyClearance: isWatercraft(config.type) ? getVesselSafetyClearance(config) : 0,
+          unsafeBlockedLogged: false,
+          blockedUntil: 0,
+          baseModelScale: 1,
           frame: 0,
           bobOffset: instances.length * 1.3,
         };
@@ -606,9 +645,10 @@ export function createModel3DLayer(
             if (disposed) return;
             console.log("[Boats] model loaded");
             const obj = gltf.scene;
-            fitModelToDisplaySize(obj, config);
-            if (isWatercraft(config.type)) polishWatercraftMaterials(obj);
             obj.rotation.set(config.rotation[0], config.rotation[1], config.rotation[2]);
+            obj.updateMatrixWorld(true);
+            inst.baseModelScale = fitModelToDisplaySize(obj, config) ?? config.scale;
+            if (isWatercraft(config.type)) polishWatercraftMaterials(obj);
             group.add(obj);
           },
           undefined,
@@ -619,13 +659,14 @@ export function createModel3DLayer(
             ph.rotation.set(0, 0, 0);
             inst.headingCorrection = 0;
             console.warn("[BoatOrientation] placeholder orientation fallback", config.id);
-            fitModelToDisplaySize(ph, config);
+            inst.baseModelScale = fitModelToDisplaySize(ph, config) ?? config.scale;
             group.add(ph);
           },
         );
       }
 
       if (wakeCount > 0) console.log("[Boats] wake trails active");
+      console.log("[VesselScale] target lengths", WATERCRAFT_DISPLAY_LENGTH_METERS);
 
       renderer = acquireSharedRenderer(map.getCanvas(), gl);
       onResize = () => syncSharedRendererSize(map.getCanvas());
@@ -645,10 +686,15 @@ export function createModel3DLayer(
         inst.group.visible = visible;
         if (inst.wake) inst.wake.mesh.visible = visible;
         if (!visible) continue;
+        const vesselVisualScale = isWatercraft(config.type)
+          ? getVesselZoomScale(zoom) * (config.zoomScaleMultiplier ?? 1)
+          : 1;
+        inst.group.scale.setScalar(vesselVisualScale);
 
         if (config.animate && isValidRoute(config.route) && inst.routeMetrics) {
           const routeMode = resolveRouteMode(config);
           const speed = (config.speed ?? 0.03) * WATERCRAFT_SPEED_FACTOR;
+          if (inst.blockedUntil > time) continue;
           if (routeMode === "loop") {
             inst.t = (inst.t + speed * dt) % 1;
           } else {
@@ -676,6 +722,21 @@ export function createModel3DLayer(
           }
           routePointAt(config.route, inst.routeMetrics, inst.t, inst.routeCoord);
           routePointAt(config.route, inst.routeMetrics, aheadT, inst.aheadRouteCoord);
+          if (
+            isWatercraft(config.type) &&
+            !isPointInSafeNavigationWater(inst.routeCoord, inst.safetyClearance)
+          ) {
+            if (!inst.unsafeBlockedLogged || BOAT_ROUTE_DEBUG) {
+              console.warn("[BoatRoute] runtime land guard blocked", config.id, inst.routeCoord);
+              inst.unsafeBlockedLogged = true;
+            }
+            inst.t = inst.lastSafeT;
+            if (routeMode === "pingpong") inst.direction = inst.direction === 1 ? -1 : 1;
+            inst.blockedUntil = time + 0.35;
+            continue;
+          }
+          inst.lastSafeT = inst.t;
+          inst.unsafeBlockedLogged = false;
           const pos = setLocalPositionFromLngLat(
             inst.position,
             inst.routeCoord[0],
