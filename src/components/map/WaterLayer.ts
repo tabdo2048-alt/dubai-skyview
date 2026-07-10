@@ -133,13 +133,16 @@ const SHORE_VERTEX = /* glsl */ `
   attribute float aDist;
   attribute float aEdge;
   attribute float aPhase;
+  attribute float aIntensity;
   varying float vDist;
   varying float vEdge;
   varying float vPhase;
+  varying float vIntensity;
   void main() {
     vDist = aDist;
     vEdge = aEdge;
     vPhase = aPhase;
+    vIntensity = aIntensity;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
@@ -606,6 +609,11 @@ export function createWaterLayer(
       waters.length = 0;
       waterMaterial?.dispose();
       waterMaterial = null;
+      // Dispose both shoreline-wave generations (geometry + material).
+      disposeShoreGen(shoreCurrent);
+      disposeShoreGen(shorePrev);
+      shoreCurrent = null;
+      shorePrev = null;
       releaseSharedRenderer();
       renderer = null;
     },
