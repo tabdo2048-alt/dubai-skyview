@@ -18,6 +18,7 @@ import {
   acquireSharedRenderer,
   releaseSharedRenderer,
   syncSharedRendererSize,
+  extractProjectionMatrix,
 } from "./sharedThreeRenderer";
 import { PLACEHOLDER_COLORS, type ModelConfig, type ModelType } from "./modelTypes";
 
@@ -481,10 +482,7 @@ export function createModel3DLayer(
         }
       }
 
-      const mArr = Array.isArray(matrix)
-        ? (matrix as number[])
-        : (matrix as { defaultProjectionData?: { mainMatrix: number[] } } | undefined)
-            ?.defaultProjectionData?.mainMatrix;
+      const mArr = extractProjectionMatrix(matrix);
       if (!mArr) return;
 
       mercatorScale.set(ref.scale, -ref.scale, ref.scale);

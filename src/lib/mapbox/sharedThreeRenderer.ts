@@ -48,3 +48,31 @@ export function releaseSharedRenderer(): void {
 export function syncSharedRendererSize(canvas: HTMLCanvasElement): void {
   renderer?.setSize(canvas.width, canvas.height, false);
 }
+
+// Mapbox hands a custom layer's render(gl, matrix) a projection matrix whose
+// SHAPE varies by version/projection:
+//  - Mapbox GL v2 (mercator): `matrix` is a plain number[] (length 16).
+//  - Mapbox GL v3 (globe/mercator): `matrix` is an object; the 16-float
+//    view-projection lives at `.defaultProjectionData.mainMatrix`.
+//  - Some builds pass a Float32Array/Float64Array (fails Array.isArray!).
+// Extract the 16-length array from any of these; return null if none found.
+export function extractProjectionMatrix(matrix: unknown): number[] | null {
+  const isMat16 = (v: unknown): v is ArrayLike<number> =>
+    !!v && typeof v === "object" && typeof (v as ArrayLike<number>).length === "number" && (v as ArrayLike<number>).length === 16;
+
+  // Plain array or typed array handed directly.
+  if (isMat16(matrix)) return Array.from(matrix as ArrayLike<number>);
+
+  const obj = matrix as
+    | {
+        defaultProjectionData?: { mainMatrix?: ArrayLike<number> };
+        mainMatrix?: ArrayLike<number>;
+        projMatrix?: ArrayLike<number>;
+      }
+    | undefined;
+  const candidate =
+    obj?.defaultProjectionData?.mainMatrix ?? obj?.mainMatrix ?? obj?.projMatrix;
+  if (isMat16(candidate)) return Array.from(candidate as ArrayLike<number>);
+
+  return null;
+}

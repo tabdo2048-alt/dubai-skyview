@@ -8,6 +8,7 @@ import {
   acquireSharedRenderer,
   releaseSharedRenderer,
   syncSharedRendererSize,
+  extractProjectionMatrix,
 } from "@/lib/mapbox/sharedThreeRenderer";
 
 type MercatorRef = {
@@ -280,15 +281,16 @@ export function createWaterLayer(
 
       if (waterMaterial?.uniforms.uTime) waterMaterial.uniforms.uTime.value += dt * 0.8;
 
-      const mArr = Array.isArray(matrix)
-        ? (matrix as number[])
-        : (matrix as { defaultProjectionData?: { mainMatrix: number[] } } | undefined)
-            ?.defaultProjectionData?.mainMatrix;
+      const mArr = extractProjectionMatrix(matrix);
       if (!mArr) {
         // No projection this frame — skip cleanly and ask for another so the
-        // surface never freezes waiting on a matrix.
+        // surface never freezes waiting on a matrix. Log the shape once so an
+        // unexpected Mapbox matrix format is diagnosable.
         if (!projectionWarned) {
-          console.warn("[Water] Mapbox projection matrix unavailable");
+          console.warn(
+            "[Water] Mapbox projection matrix unavailable — shape:",
+            matrix && typeof matrix === "object" ? Object.keys(matrix as object) : typeof matrix,
+          );
           projectionWarned = true;
         }
         map.triggerRepaint();
@@ -303,7 +305,6 @@ export function createWaterLayer(
       renderer.render(scene, camera);
 
       if (!firstFrameLogged) {
-        console.log("[Water] animation running");
         console.log("[Water] first frame rendered");
         firstFrameLogged = true;
       }
