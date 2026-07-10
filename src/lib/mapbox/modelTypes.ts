@@ -8,13 +8,6 @@
 export type ModelType = "boat" | "yacht" | "ship" | "abra" | "train" | "cloud" | "custom";
 export type ModelForwardAxis = "+x" | "-x" | "+y" | "-y" | "+z" | "-z";
 
-export const WATERCRAFT_DISPLAY_LENGTH_METERS: Partial<Record<ModelType, number>> = {
-  ship: 180,
-  yacht: 110,
-  boat: 55,
-  abra: 32,
-};
-
 export type ModelConfig = {
   /** Stable unique id, e.g. "marina-yacht-01". */
   id: string;
@@ -79,4 +72,16 @@ export const PLACEHOLDER_COLORS: Record<ModelType, number> = {
   train: 0xc9a84c,
   cloud: 0xffffff,
   custom: 0xcccccc,
+};
+
+/**
+ * Visual target LENGTH (bow→stern) in metres for each watercraft type on the
+ * map. These are display sizes tuned for readability at city zoom, not exact
+ * legal vessel dimensions. Ordering is enforced here: ship > yacht > boat > abra.
+ */
+export const WATERCRAFT_DISPLAY_LENGTH_METERS: Partial<Record<ModelType, number>> = {
+  ship: 180,
+  yacht: 110,
+  boat: 55,
+  abra: 32,
 };

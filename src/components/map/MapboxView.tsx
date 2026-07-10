@@ -372,7 +372,7 @@ export function MapboxView({
       try {
         map.addLayer(createModel3DLayer(MODEL_REGISTRY, renderController));
         modelsAddedRef.current = true;
-        console.log("[Boats] 20 boat models loaded in", mode, "mode");
+        console.log("[Boats]", MODEL_REGISTRY.length, "boat models loaded in", mode, "mode");
       } catch (err) {
         console.error("Failed to add 3D model layer", err);
       }

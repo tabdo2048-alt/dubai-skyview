@@ -1,6 +1,15 @@
+// Route safety for the animated 3D vessels.
+//
+// The rule is simple and strict: a vessel may only ever occupy DEEP OPEN GULF
+// water. We validate against navigationWater.ts (the open-sea polygon + hard
+// land masks), NOT the visual coastal WATER_AREAS. Every vessel is assigned a
+// pre-verified offshore lane; anything that cannot be validated is skipped
+// rather than rendered onto land.
+
 import {
   LAND_EXCLUSION_POLYGONS,
   NAVIGATION_WATER_POLYGONS,
+  OPEN_SEA_LANES,
   type NavigationPolygon,
 } from "@/lib/navigationWater";
 import { WATERCRAFT_DISPLAY_LENGTH_METERS, type ModelConfig, type ModelType } from "./modelTypes";
@@ -11,130 +20,14 @@ const METERS_PER_LATITUDE_DEGREE = 111_320;
 const ROUTE_SAMPLE_STEP_METERS = 25;
 const loggedRoutes = new Set<string>();
 
+// Base clearance from any land boundary; the vessel's own half-length is added
+// on top in getVesselSafetyClearance().
 const BASE_SAFETY_CLEARANCE_METERS: Partial<Record<ModelType, number>> = {
   ship: 110,
   yacht: 55,
   boat: 30,
   abra: 20,
 };
-
-const SAFE_OFFSHORE_SHIP_ROUTES: [number, number][][] = [
-  [
-    [55.055, 25.118],
-    [55.065, 25.148],
-    [55.095, 25.17],
-    [55.13, 25.177],
-    [55.155, 25.162],
-    [55.125, 25.152],
-    [55.088, 25.142],
-    [55.055, 25.118],
-  ],
-  [
-    [55.06, 25.09],
-    [55.055, 25.125],
-    [55.08, 25.155],
-    [55.11, 25.166],
-    [55.095, 25.14],
-    [55.072, 25.116],
-    [55.06, 25.09],
-  ],
-  [
-    [55.07, 25.158],
-    [55.105, 25.174],
-    [55.145, 25.172],
-    [55.17, 25.152],
-    [55.145, 25.157],
-    [55.105, 25.158],
-    [55.07, 25.158],
-  ],
-];
-
-const SAFE_PALM_YACHT_ROUTES: [number, number][][] = [
-  [
-    [55.075, 25.103],
-    [55.078, 25.13],
-    [55.095, 25.154],
-    [55.122, 25.164],
-    [55.145, 25.158],
-    [55.13, 25.146],
-    [55.1, 25.14],
-    [55.083, 25.12],
-    [55.075, 25.103],
-  ],
-  [
-    [55.087, 25.091],
-    [55.079, 25.115],
-    [55.09, 25.144],
-    [55.112, 25.158],
-    [55.137, 25.158],
-    [55.158, 25.144],
-    [55.143, 25.14],
-    [55.11, 25.13],
-    [55.087, 25.091],
-  ],
-  [
-    [55.106, 25.149],
-    [55.126, 25.162],
-    [55.151, 25.154],
-    [55.167, 25.136],
-    [55.153, 25.129],
-    [55.127, 25.14],
-    [55.106, 25.149],
-  ],
-];
-
-const SAFE_MARINA_BOAT_ROUTES: [number, number][][] = [
-  [
-    [55.118, 25.078],
-    [55.128, 25.095],
-    [55.145, 25.098],
-    [55.154, 25.087],
-    [55.146, 25.075],
-    [55.131, 25.074],
-    [55.118, 25.078],
-  ],
-  [
-    [55.121, 25.086],
-    [55.132, 25.101],
-    [55.151, 25.097],
-    [55.156, 25.083],
-    [55.143, 25.072],
-    [55.127, 25.073],
-    [55.121, 25.086],
-  ],
-];
-
-const SAFE_CREEK_ABRA_ROUTES: [number, number][][] = [
-  [
-    [55.301, 25.262],
-    [55.309, 25.249],
-    [55.318, 25.237],
-    [55.327, 25.226],
-    [55.334, 25.217],
-  ],
-  [
-    [55.334, 25.218],
-    [55.326, 25.229],
-    [55.317, 25.24],
-    [55.308, 25.252],
-    [55.301, 25.262],
-  ],
-];
-
-const SAFE_BUSINESS_BAY_ROUTES: [number, number][][] = [
-  [
-    [55.2675, 25.187],
-    [55.2665, 25.18],
-    [55.2675, 25.173],
-    [55.2715, 25.1665],
-  ],
-  [
-    [55.2715, 25.1665],
-    [55.269, 25.174],
-    [55.2675, 25.182],
-    [55.268, 25.188],
-  ],
-];
 
 console.log("[BoatRoute] navigation polygons loaded", NAVIGATION_WATER_POLYGONS.length);
 console.log("[BoatRoute] land masks loaded", LAND_EXCLUSION_POLYGONS.length);
@@ -150,6 +43,7 @@ function logRouteOnce(message: string, id: string) {
   console.log(message, id);
 }
 
+// --- Geometry helpers -------------------------------------------------------
 function pointInRing(point: [number, number], ring: [number, number][]) {
   const [x, y] = point;
   let inside = false;
@@ -208,6 +102,7 @@ function distanceToNearestPolygonBoundaryMeters(
   return nearest;
 }
 
+// --- Land / water tests -----------------------------------------------------
 export function isPointInsideAnyLandMask(point: [number, number]) {
   return isPointInAnyPolygon(point, LAND_EXCLUSION_POLYGONS);
 }
@@ -216,6 +111,8 @@ export function distanceToLandBoundaryMeters(point: [number, number]) {
   return distanceToNearestPolygonBoundaryMeters(point, LAND_EXCLUSION_POLYGONS);
 }
 
+// Safe only if: inside a navigation-water polygon, outside every land mask, AND
+// at least `clearanceMeters` from any land boundary.
 export function isPointInSafeNavigationWater(point: [number, number], clearanceMeters = 0) {
   if (!isPointInAnyPolygon(point, NAVIGATION_WATER_POLYGONS)) return false;
   if (isPointInsideAnyLandMask(point)) return false;
@@ -227,6 +124,8 @@ export function isPointInDubaiWater(point: [number, number]) {
   return isPointInAnyPolygon(point, NAVIGATION_WATER_POLYGONS);
 }
 
+// Clearance a vessel keeps from land: a per-type baseline plus half its own
+// display length, so a big ship stays farther out than a small abra.
 export function getVesselSafetyClearance(
   config: Pick<ModelConfig, "type" | "displayLengthMeters">,
 ) {
@@ -235,14 +134,19 @@ export function getVesselSafetyClearance(
   return (BASE_SAFETY_CLEARANCE_METERS[config.type] ?? 25) + displayLength / 2;
 }
 
+// Roughly one safety check every 25 m so long segments are never under-sampled.
+function getSegmentSampleCount(start: [number, number], end: [number, number]) {
+  const lengthMeters = distanceMeters(start, end);
+  return Math.max(16, Math.ceil(lengthMeters / ROUTE_SAMPLE_STEP_METERS));
+}
+
 export function routeStaysInDubaiWater(route: [number, number][], clearanceMeters = 0) {
   if (route.length < 2) return false;
 
   for (let i = 1; i < route.length; i++) {
     const start = route[i - 1];
     const end = route[i];
-    const segmentLength = distanceMeters(start, end);
-    const samples = Math.max(1, Math.ceil(segmentLength / ROUTE_SAMPLE_STEP_METERS));
+    const samples = getSegmentSampleCount(start, end);
     for (let step = 0; step <= samples; step++) {
       const t = step / samples;
       const point: [number, number] = [
@@ -259,56 +163,42 @@ export function routeStaysInDubaiWater(route: [number, number][], clearanceMeter
   return true;
 }
 
-function routeIndexForId(id: string, routeCount: number) {
-  return [...id].reduce((sum, character) => sum + character.charCodeAt(0), 0) % routeCount;
-}
-
-function safeFallbackGroupsFor(config: ModelConfig): [number, number][][] {
-  const id = config.id.toLowerCase();
-  if (config.type === "ship") return SAFE_OFFSHORE_SHIP_ROUTES;
-  if (id.includes("creek") || config.type === "abra") return SAFE_CREEK_ABRA_ROUTES;
-  if (id.includes("business")) return SAFE_BUSINESS_BAY_ROUTES;
-  if (id.includes("marina")) return SAFE_MARINA_BOAT_ROUTES;
-  if (id.includes("palm") || id.includes("gulf") || id.includes("harbour") || id.includes("jbr")) {
-    return SAFE_PALM_YACHT_ROUTES;
+// Deterministic starting lane for a vessel id (so the fleet spreads across all
+// lanes), then every other lane after it as a fallback.
+function orderedLaneCandidates(id: string): [number, number][][] {
+  const start = [...id].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % OPEN_SEA_LANES.length;
+  const ordered: [number, number][][] = [];
+  for (let i = 0; i < OPEN_SEA_LANES.length; i++) {
+    ordered.push(OPEN_SEA_LANES[(start + i) % OPEN_SEA_LANES.length]);
   }
-  return SAFE_MARINA_BOAT_ROUTES;
-}
-
-function selectSafeFallbackRoute(config: ModelConfig, clearanceMeters: number) {
-  const routes = safeFallbackGroupsFor(config);
-  const firstIndex = routeIndexForId(config.id, routes.length);
-
-  for (let offset = 0; offset < routes.length; offset++) {
-    const route = routes[(firstIndex + offset) % routes.length];
-    if (routeStaysInDubaiWater(route, clearanceMeters)) return route;
-  }
-
-  return undefined;
+  return ordered;
 }
 
 export function modelStaysInDubaiWater(config: ModelConfig) {
   if (!isWatercraft(config.type)) return true;
-  const clearance = getVesselSafetyClearance(config);
-  if (config.route && config.route.length > 1)
-    return routeStaysInDubaiWater(config.route, clearance);
-  return isPointInSafeNavigationWater([config.lng, config.lat], clearance);
+  const route = waterRouteForDisplay(config);
+  return (
+    Boolean(route) &&
+    routeStaysInDubaiWater(route as [number, number][], getVesselSafetyClearance(config))
+  );
 }
 
+// Every vessel sails a verified open-sea lane. The lane derived from its id is
+// tried first; if it somehow fails its clearance, the next lanes are tried; if
+// none pass, the vessel is skipped rather than rendered onto land.
 export function waterRouteForDisplay(config: ModelConfig): [number, number][] | undefined {
   if (!isWatercraft(config.type)) return config.route;
-  if (!config.route || config.route.length < 2) return config.route;
 
   const clearance = getVesselSafetyClearance(config);
-  if (routeStaysInDubaiWater(config.route, clearance)) {
-    logRouteOnce("[BoatRoute] safe route accepted", config.id);
-    return config.route;
-  }
-
-  const fallbackRoute = selectSafeFallbackRoute(config, clearance);
-  if (fallbackRoute) {
-    logRouteOnce("[BoatRoute] fallback route used", config.id);
-    return fallbackRoute;
+  const candidates = orderedLaneCandidates(config.id);
+  for (let i = 0; i < candidates.length; i++) {
+    if (routeStaysInDubaiWater(candidates[i], clearance)) {
+      logRouteOnce(
+        i === 0 ? "[BoatRoute] safe route accepted" : "[BoatRoute] fallback route used",
+        config.id,
+      );
+      return candidates[i];
+    }
   }
 
   logRouteOnce("[BoatRoute] vessel skipped: no safe route", config.id);
@@ -317,6 +207,5 @@ export function waterRouteForDisplay(config: ModelConfig): [number, number][] | 
 
 export function modelHasWaterRoute(config: ModelConfig) {
   if (!isWatercraft(config.type)) return true;
-  if (config.route && config.route.length > 1) return Boolean(waterRouteForDisplay(config));
-  return isPointInSafeNavigationWater([config.lng, config.lat], getVesselSafetyClearance(config));
+  return Boolean(waterRouteForDisplay(config));
 }

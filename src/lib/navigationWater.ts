@@ -1,200 +1,180 @@
+// Navigation water + open-sea lanes for the animated 3D vessels.
+//
+// This is deliberately SEPARATE from the visual WATER_AREAS in water.ts. Those
+// visual polygons hug the coastline (Marina, Palm lagoon, Creek) and are far too
+// close to land to be safe for a moving ship. Here we describe only DEEP OPEN
+// GULF water that is unambiguously offshore, plus the exact lanes vessels sail.
+//
+// Every coordinate below sits well north/west of Palm Jumeirah, Dubai Marina,
+// JBR and the mainland shoreline, so a vessel confined to these lanes can never
+// cross land. Coordinates are [lng, lat].
+
 export type NavigationPolygon = {
   id: string;
   name: string;
   polygon: [number, number][];
 };
 
+// One large, confidently-offshore polygon covering the open Gulf west and north
+// of all Dubai land. Its southern edge is kept safely north of Palm Jumeirah's
+// crescent (~25.131) and the coast; everything above it is deep water. Closed
+// ring (last point repeats the first).
 export const NAVIGATION_WATER_POLYGONS: NavigationPolygon[] = [
   {
-    id: "arabian-gulf-offshore",
-    name: "Arabian Gulf Offshore Navigation Water",
+    id: "open-gulf",
+    name: "Arabian Gulf Open-Sea Navigation Water",
     polygon: [
-      [55.045, 25.058],
-      [55.047, 25.118],
-      [55.06, 25.165],
-      [55.095, 25.186],
-      [55.145, 25.186],
-      [55.184, 25.165],
-      [55.195, 25.142],
-      [55.172, 25.13],
-      [55.158, 25.151],
-      [55.119, 25.152],
-      [55.092, 25.136],
-      [55.083, 25.102],
-      [55.102, 25.069],
-      [55.073, 25.055],
-      [55.045, 25.058],
-    ],
-  },
-  {
-    id: "dubai-harbour-marina",
-    name: "Dubai Harbour and Marina Navigation Channels",
-    polygon: [
-      [55.106, 25.064],
-      [55.118, 25.06],
-      [55.142, 25.064],
-      [55.16, 25.078],
-      [55.158, 25.101],
-      [55.146, 25.106],
-      [55.127, 25.101],
-      [55.114, 25.089],
-      [55.106, 25.064],
-    ],
-  },
-  {
-    id: "palm-lagoon-outer-water",
-    name: "Palm Jumeirah Lagoon and Outer Water",
-    polygon: [
-      [55.079, 25.098],
-      [55.087, 25.133],
-      [55.105, 25.158],
-      [55.134, 25.166],
-      [55.162, 25.149],
-      [55.171, 25.119],
-      [55.158, 25.099],
-      [55.129, 25.091],
-      [55.098, 25.088],
-      [55.079, 25.098],
-    ],
-  },
-  {
-    id: "dubai-creek-channel",
-    name: "Dubai Creek Navigation Channel",
-    polygon: [
-      [55.294, 25.265],
-      [55.303, 25.253],
-      [55.315, 25.238],
-      [55.328, 25.22],
-      [55.34, 25.211],
-      [55.344, 25.218],
-      [55.333, 25.232],
-      [55.32, 25.249],
-      [55.305, 25.266],
-      [55.294, 25.265],
-    ],
-  },
-  {
-    id: "business-bay-canal",
-    name: "Business Bay Canal Navigation Water",
-    polygon: [
-      [55.264, 25.19],
-      [55.265, 25.181],
-      [55.266, 25.172],
-      [55.271, 25.164],
-      [55.276, 25.166],
-      [55.273, 25.176],
-      [55.272, 25.186],
-      [55.268, 25.191],
-      [55.264, 25.19],
+      [54.9, 25.15], // far west offshore
+      [54.93, 25.285], // north-west
+      [55.13, 25.305], // north
+      [55.205, 25.235], // north-east offshore
+      [55.165, 25.165], // south edge, north of Palm Jumeirah
+      [55.02, 25.152], // south edge, north of the west coast
+      [54.9, 25.15], // close ring
     ],
   },
 ];
 
+// Land footprints treated as hard exclusions. All lanes stay kilometres from
+// these; they guarantee no accepted point can ever sit on an island or shore.
+// Closed rings.
 export const LAND_EXCLUSION_POLYGONS: NavigationPolygon[] = [
   {
-    id: "jbr-mainland",
-    name: "JBR and Mainland Shore Buffer",
+    id: "palm-jumeirah",
+    name: "Palm Jumeirah (crescent, fronds, trunk)",
     polygon: [
-      [55.083, 25.043],
-      [55.125, 25.064],
-      [55.151, 25.083],
-      [55.169, 25.113],
-      [55.204, 25.153],
-      [55.228, 25.169],
-      [55.24, 25.123],
-      [55.194, 25.075],
-      [55.13, 25.042],
-      [55.083, 25.043],
+      [55.1, 25.09],
+      [55.1, 25.135],
+      [55.165, 25.135],
+      [55.165, 25.09],
+      [55.1, 25.09],
     ],
   },
   {
-    id: "palm-trunk-land",
-    name: "Palm Jumeirah Trunk Land",
+    id: "palm-jebel-ali",
+    name: "Palm Jebel Ali",
     polygon: [
-      [55.124, 25.096],
-      [55.145, 25.097],
-      [55.146, 25.121],
-      [55.126, 25.122],
-      [55.124, 25.096],
+      [54.96, 24.96],
+      [54.96, 25.05],
+      [55.06, 25.05],
+      [55.06, 24.96],
+      [54.96, 24.96],
     ],
   },
   {
-    id: "palm-fronds-land",
-    name: "Palm Jumeirah Fronds Land",
+    id: "dubai-mainland-coast",
+    name: "Dubai Mainland & JBR/Marina Shore",
     polygon: [
-      [55.111, 25.105],
-      [55.123, 25.101],
-      [55.143, 25.102],
-      [55.155, 25.11],
-      [55.149, 25.12],
-      [55.133, 25.124],
-      [55.116, 25.119],
-      [55.111, 25.105],
-    ],
-  },
-  {
-    id: "palm-crescent-land",
-    name: "Palm Jumeirah Crescent Land",
-    polygon: [
-      [55.101, 25.103],
-      [55.104, 25.126],
-      [55.117, 25.134],
-      [55.137, 25.133],
-      [55.153, 25.122],
-      [55.162, 25.106],
-      [55.156, 25.101],
-      [55.149, 25.113],
-      [55.135, 25.123],
-      [55.118, 25.122],
-      [55.108, 25.113],
-      [55.101, 25.103],
-    ],
-  },
-  {
-    id: "marina-walls-and-piers",
-    name: "Marina Walls and Piers",
-    polygon: [
-      [55.124, 25.069],
-      [55.131, 25.072],
-      [55.139, 25.072],
-      [55.148, 25.069],
-      [55.155, 25.067],
-      [55.158, 25.064],
-      [55.158, 25.06],
-      [55.148, 25.066],
-      [55.137, 25.069],
-      [55.126, 25.066],
-      [55.124, 25.069],
-    ],
-  },
-  {
-    id: "creek-banks",
-    name: "Dubai Creek Banks",
-    polygon: [
-      [55.292, 25.268],
-      [55.302, 25.253],
-      [55.317, 25.234],
-      [55.335, 25.213],
-      [55.35, 25.201],
-      [55.355, 25.208],
-      [55.338, 25.226],
-      [55.323, 25.246],
-      [55.307, 25.268],
-      [55.292, 25.268],
-    ],
-  },
-  {
-    id: "business-bay-banks",
-    name: "Business Bay Canal Banks",
-    polygon: [
-      [55.259, 25.194],
-      [55.262, 25.181],
-      [55.263, 25.17],
-      [55.271, 25.158],
-      [55.286, 25.163],
-      [55.279, 25.18],
-      [55.274, 25.193],
-      [55.259, 25.194],
+      // A conservative band covering the coast and everything inland of it, kept
+      // south of every lane so any point drifting toward shore is rejected.
+      [54.98, 25.0],
+      [55.08, 25.06],
+      [55.16, 25.072],
+      [55.2, 25.145],
+      [55.29, 25.205],
+      [55.45, 25.205],
+      [55.45, 24.85],
+      [54.98, 24.85],
+      [54.98, 25.0],
     ],
   },
 ];
+
+// The lanes every vessel sails. These are drawn as open-sea paths in the
+// Arabian Gulf, offshore of Palm Jumeirah, JBR and the mainland. Every point
+// stays within "open-gulf" and outside the land exclusion masks so ships,
+// yachts and boats remain at sea and never cross Dubai land.
+export const OPEN_SEA_LANES: [number, number][][] = [
+  // --- Wide parallel Gulf lanes (west → east) ---
+  [
+    [54.96, 25.18],
+    [55.02, 25.183],
+    [55.08, 25.182],
+    [55.13, 25.184],
+    [55.17, 25.186],
+  ],
+  [
+    [54.96, 25.192],
+    [55.03, 25.195],
+    [55.09, 25.194],
+    [55.14, 25.197],
+    [55.17, 25.199],
+  ],
+  [
+    [54.97, 25.205],
+    [55.03, 25.207],
+    [55.09, 25.206],
+    [55.14, 25.209],
+    [55.17, 25.211],
+  ],
+  [
+    [54.98, 25.22],
+    [55.04, 25.222],
+    [55.1, 25.221],
+    [55.15, 25.223],
+    [55.17, 25.224],
+  ],
+  [
+    [54.99, 25.235],
+    [55.05, 25.237],
+    [55.11, 25.236],
+    [55.15, 25.238],
+  ],
+
+  // --- Crossing diagonal lines (south-west → north-east) ---
+  [
+    [54.96, 25.18],
+    [55.01, 25.195],
+    [55.07, 25.212],
+    [55.13, 25.229],
+    [55.17, 25.241],
+  ],
+  [
+    [54.97, 25.19],
+    [55.03, 25.205],
+    [55.08, 25.221],
+    [55.14, 25.235],
+    [55.17, 25.245],
+  ],
+  [
+    [54.98, 25.23],
+    [55.03, 25.223],
+    [55.08, 25.215],
+    [55.12, 25.206],
+    [55.15, 25.196],
+  ],
+
+  // --- Crossing diagonal lines (north-west → south-east) ---
+  [
+    [54.97, 25.245],
+    [55.02, 25.233],
+    [55.08, 25.217],
+    [55.13, 25.203],
+    [55.16, 25.19],
+  ],
+  [
+    [54.98, 25.238],
+    [55.04, 25.226],
+    [55.09, 25.212],
+    [55.13, 25.2],
+    [55.16, 25.188],
+  ],
+
+  // --- Long sweeping Gulf connectors ---
+  [
+    [54.96, 25.19],
+    [55.04, 25.2],
+    [55.12, 25.208],
+    [55.17, 25.214],
+  ],
+  [
+    [54.96, 25.23],
+    [55.04, 25.225],
+    [55.12, 25.217],
+    [55.17, 25.209],
+  ],
+];
+
+// One-time load markers (STEP 22 logging contract).
+console.log("[BoatRoute] navigation polygons loaded");
+console.log("[BoatRoute] land masks loaded");
