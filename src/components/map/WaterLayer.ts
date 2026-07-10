@@ -26,11 +26,59 @@ function lngLatToLocal(lng: number, lat: number, ref: MercatorRef, altitude = 0)
   );
 }
 
+// ShapeGeometry triangulates a ring into a flat fan with NO interior vertices,
+// so a vertex-shader Z-displacement would only nudge the boundary and leave the
+// interior flat. Subdividing every triangle (midpoint split, 4x per level) seeds
+// interior vertices so the animated wave surface actually ripples. Two levels
+// (16x triangles) is plenty for these basins and stays cheap (few hundred tris).
+function subdivide(geometry: THREE.BufferGeometry, levels: number): THREE.BufferGeometry {
+  const nonIndexed = geometry.toNonIndexed();
+  let verts = Array.from((nonIndexed.getAttribute("position") as THREE.BufferAttribute).array);
+  nonIndexed.dispose();
+
+  for (let level = 0; level < levels; level++) {
+    const out: number[] = [];
+    for (let i = 0; i < verts.length; i += 9) {
+      const ax = verts[i], ay = verts[i + 1], az = verts[i + 2];
+      const bx = verts[i + 3], by = verts[i + 4], bz = verts[i + 5];
+      const cx = verts[i + 6], cy = verts[i + 7], cz = verts[i + 8];
+      const abx = (ax + bx) / 2, aby = (ay + by) / 2, abz = (az + bz) / 2;
+      const bcx = (bx + cx) / 2, bcy = (by + cy) / 2, bcz = (bz + cz) / 2;
+      const cax = (cx + ax) / 2, cay = (cy + ay) / 2, caz = (cz + az) / 2;
+      out.push(
+        ax, ay, az, abx, aby, abz, cax, cay, caz,
+        abx, aby, abz, bx, by, bz, bcx, bcy, bcz,
+        cax, cay, caz, bcx, bcy, bcz, cx, cy, cz,
+        abx, aby, abz, bcx, bcy, bcz, cax, cay, caz,
+      );
+    }
+    verts = out;
+  }
+
+  const result = new THREE.BufferGeometry();
+  result.setAttribute("position", new THREE.BufferAttribute(new Float32Array(verts), 3));
+  return result;
+}
+
 const WATER_VERTEX = /* glsl */ `
   varying vec3 vWorld;
+  uniform float uTime;
+  uniform float uWaveHeight;
+
+  float wave(vec2 p, vec2 dir, float freq, float speed) {
+    return sin(dot(p, normalize(dir)) * freq + uTime * speed);
+  }
+
   void main() {
-    vWorld = position;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    vec3 displaced = position;
+    vec2 p = position.xy * 0.0035;
+    float h = wave(p, vec2(1.0, 0.35), 7.0, 1.15) * 0.55;
+    h += wave(p, vec2(-0.25, 1.0), 10.0, 0.82) * 0.30;
+    h += wave(p, vec2(0.75, -0.55), 15.0, 1.45) * 0.15;
+    displaced.z += h * uWaveHeight;
+
+    vWorld = displaced;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
   }
 `;
 
@@ -58,10 +106,12 @@ const WATER_FRAGMENT = /* glsl */ `
     float swell = w1 * 0.6 + w2 * 0.4;
 
     float lines = wave(p * vec2(2.2, 5.0), 1.05, t);
+    float fineLines = wave(p * vec2(-4.2, 2.8) + 1.2, -1.35, t);
     float glint = smoothstep(1.0 - uDistortion, 1.0, lines);
-    float whitecap = smoothstep(0.78, 1.0, swell) * 0.45;
+    float fineGlint = smoothstep(0.82, 1.0, fineLines) * 0.18;
+    float whitecap = smoothstep(0.76, 1.0, swell) * 0.5;
     float depthMix = clamp(swell * 0.65 + w3 * 0.35, 0.0, 1.0);
-    float highlight = glint * 0.16 + whitecap;
+    float highlight = glint * 0.2 + fineGlint + whitecap;
 
     vec3 water = mix(uDeepColor, uWaterColor, depthMix);
     vec3 color = mix(water, uWhitecap, highlight);
@@ -72,6 +122,7 @@ const WATER_FRAGMENT = /* glsl */ `
 `;
 
 function makeWaterMaterial(mode: "satellite" | "3d" = "3d"): THREE.ShaderMaterial {
+  const satellite = mode === "satellite";
   return new THREE.ShaderMaterial({
     vertexShader: WATER_VERTEX,
     fragmentShader: WATER_FRAGMENT,
@@ -82,11 +133,12 @@ function makeWaterMaterial(mode: "satellite" | "3d" = "3d"): THREE.ShaderMateria
     side: THREE.DoubleSide,
     uniforms: {
       uTime: { value: 0 },
-      uWaterColor: { value: new THREE.Color(0x66d9ff) },
-      uDeepColor: { value: new THREE.Color(0x0b6f8f) },
+      uWaterColor: { value: new THREE.Color(satellite ? 0x8eefff : 0x66d9ff) },
+      uDeepColor: { value: new THREE.Color(satellite ? 0x118fbd : 0x0b6f8f) },
       uWhitecap: { value: new THREE.Color(0xffffff) },
-      uDistortion: { value: 0.26 },
-      uOpacity: { value: mode === "satellite" ? 0.32 : 0.24 },
+      uDistortion: { value: satellite ? 0.2 : 0.26 },
+      uOpacity: { value: satellite ? 0.5 : 0.24 },
+      uWaveHeight: { value: satellite ? 3.8 : 2.2 },
     },
   });
 }
@@ -139,7 +191,10 @@ export function createWaterLayer(
           else shape.lineTo(p.x, p.y);
         });
 
-        const water = new THREE.Mesh(new THREE.ShapeGeometry(shape), waterMaterial);
+        // Subdivide so the vertex-shader wave displacement has interior vertices
+        // to ripple (ShapeGeometry alone is a flat, boundary-only fan).
+        const geometry = subdivide(new THREE.ShapeGeometry(shape), 2);
+        const water = new THREE.Mesh(geometry, waterMaterial);
         water.position.z = 1;
         water.renderOrder = 1;
         waters.push(water);

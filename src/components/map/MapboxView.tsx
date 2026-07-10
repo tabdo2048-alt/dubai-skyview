@@ -85,6 +85,11 @@ export function MapboxView({
   const trainMotionRef = useRef<Map<string, TrainMotionState>>(new globalThis.Map());
   const styleLoadedRef = useRef(false);
   const modelsAddedRef = useRef(false);
+  const stationInteractionAddedRef = useRef(false);
+  const heavyLayerFallbackTimeoutRef = useRef<number | null>(null);
+  // Ensures the map-ready signal (setMapReady + onReady) fires exactly once,
+  // whether the idle handler or the style.load fallback timeout gets there first.
+  const readySignaledRef = useRef(false);
   // Latest toggle state, readable inside the (stale-closure) style.load handler.
   const metroModeRef = useRef(metroMode);
   const trainModeRef = useRef(trainMode);
@@ -198,6 +203,14 @@ export function MapboxView({
       // play it now that the layers exist.
       if (metroModeRef.current) playNetworkSequence(map, METRO_LINES, "metro");
       if (trainModeRef.current) playNetworkSequence(map, TRAIN_LINES, "train");
+
+      // Fallback: if idle arrives late (or already fired) the water still gets
+      // added shortly after the style loads, so satellite mode shows animated
+      // water without waiting on tiles. Duplicate-guarded inside addHeavyLayers.
+      heavyLayerFallbackTimeoutRef.current = window.setTimeout(() => {
+        addHeavyLayers(map);
+        signalReady();
+      }, 900);
     });
 
     // Heavy Three.js custom layers are added only AFTER the map is idle —
@@ -205,8 +218,7 @@ export function MapboxView({
     // WebGL canvas. Runs once.
     map.once("idle", () => {
       addHeavyLayers(map);
-      setMapReady(true);
-      onReady?.();
+      signalReady();
     });
 
     map.on("moveend", () => {
@@ -218,7 +230,13 @@ export function MapboxView({
     return () => {
       stopNetworkAnimation(map, METRO_LINES, "metro");
       stopNetworkAnimation(map, TRAIN_LINES, "train");
+      if (heavyLayerFallbackTimeoutRef.current != null) {
+        clearTimeout(heavyLayerFallbackTimeoutRef.current);
+        heavyLayerFallbackTimeoutRef.current = null;
+      }
       styleLoadedRef.current = false;
+      stationInteractionAddedRef.current = false;
+      readySignaledRef.current = false;
       map.remove();
       mapRef.current = null;
       projectMarkers.clear();
@@ -302,10 +320,19 @@ export function MapboxView({
     (map.addLayer as (l: unknown, b?: string) => void)(layer, before);
   }
 
-  // Add the heavy Three.js custom layers once the map is idle. The 3D GLB
-  // water wave layer is a white transparent crest overlay; the model layer
-  // (boats/yachts/ships) is 3D-only and gated behind show3DModels. Every add is
-  // guarded against duplicates.
+  // Signal that the map is ready (tiles + heavy layers in). Idempotent — the
+  // idle handler and the style.load fallback both call it, but only the first
+  // wins so onReady never double-fires.
+  function signalReady() {
+    if (readySignaledRef.current) return;
+    readySignaledRef.current = true;
+    setMapReady(true);
+    onReady?.();
+  }
+
+  // Add the heavy Three.js custom layers. Called on idle and by a style.load
+  // fallback so satellite mode gets animated water even if idle arrives late.
+  // Every add is guarded against duplicates.
   function addHeavyLayers(map: mapboxgl.Map) {
     // Controller object passed to custom layers so they can gate their render loops
     // based on whether this instance is active and the tab is visible.
@@ -314,7 +341,7 @@ export function MapboxView({
     };
     if (!map.getLayer("dubai-water-3d")) {
       try {
-        console.log("[Water] trying to add layer");
+        if (mode === "satellite") console.log("[Water] satellite layer requested");
         map.addLayer(createWaterLayer(renderController, mode));
         console.log("[Water] layer added");
       } catch (err) {
@@ -470,6 +497,77 @@ export function MapboxView({
     ];
   }
 
+  function addStationInteractions(map: mapboxgl.Map) {
+    if (stationInteractionAddedRef.current) return;
+
+    const openStation = (event: mapboxgl.MapLayerMouseEvent) => {
+      const feature = event.features?.[0];
+      const geometry = feature?.geometry as { type?: string; coordinates?: number[] } | undefined;
+      if (geometry?.type !== "Point" || !geometry.coordinates) return;
+
+      const [lng, lat] = geometry.coordinates;
+      const coord: [number, number] = [lng, lat];
+      const name = String(feature?.properties?.name ?? "Metro Station");
+      const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+
+      map.flyTo({
+        center: coord,
+        zoom: Math.max(map.getZoom(), 15.25),
+        pitch: mode === "3d" ? 58 : 0,
+        bearing: map.getBearing(),
+        duration: 1200,
+        essential: true,
+      });
+
+      const content = document.createElement("div");
+      content.className = "min-w-[180px] space-y-2";
+      const header = document.createElement("div");
+      header.style.display = "flex";
+      header.style.alignItems = "center";
+      header.style.gap = "8px";
+      const badge = document.createElement("div");
+      badge.textContent = "SN";
+      badge.style.width = "28px";
+      badge.style.height = "28px";
+      badge.style.borderRadius = "9999px";
+      badge.style.background = "#064e3b";
+      badge.style.color = "#c9a84c";
+      badge.style.display = "grid";
+      badge.style.placeItems = "center";
+      badge.style.fontWeight = "800";
+      badge.style.fontSize = "10px";
+      const title = document.createElement("div");
+      title.textContent = name;
+      title.style.fontWeight = "700";
+      title.style.color = "#18211f";
+      header.append(badge, title);
+      content.appendChild(header);
+      const link = document.createElement("a");
+      link.href = googleMapsUrl;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = "Open street location";
+      link.style.color = "#0d7a5f";
+      link.style.fontWeight = "700";
+      link.style.fontSize = "12px";
+      content.appendChild(link);
+
+      new mapboxgl.Popup({ offset: 18, closeButton: true })
+        .setLngLat(coord)
+        .setDOMContent(content)
+        .addTo(map);
+    };
+
+    map.on("click", "metro-station-halo", openStation);
+    map.on("mouseenter", "metro-station-halo", () => {
+      map.getCanvas().style.cursor = "pointer";
+    });
+    map.on("mouseleave", "metro-station-halo", () => {
+      map.getCanvas().style.cursor = "";
+    });
+    stationInteractionAddedRef.current = true;
+  }
+
   // Station footprints (3D extrusions) + labels, created once and hidden;
   // revealed progressively as each line's draw animation reaches them.
   function addStationLayers(map: mapboxgl.Map) {
@@ -602,8 +700,8 @@ export function MapboxView({
         minzoom: 12,
         filter: stationFilter(),
         layout: {
-          "text-field": "M",
-          "text-size": ["interpolate", ["linear"], ["zoom"], 12, 8, 16, 11],
+          "text-field": "SN",
+          "text-size": ["interpolate", ["linear"], ["zoom"], 12, 7, 16, 10],
           "text-font": ["DIN Pro Bold", "Arial Unicode MS Bold"],
           "text-allow-overlap": true,
           "text-ignore-placement": true,
@@ -638,6 +736,7 @@ export function MapboxView({
         },
       });
     }
+    addStationInteractions(map);
   }
 
   // Stop and hide one network's animation (metro or train), leaving the other

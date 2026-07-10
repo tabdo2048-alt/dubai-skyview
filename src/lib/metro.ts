@@ -10,7 +10,8 @@ export type MetroStation = {
 };
 
 // Visual/legend category — drives the premium palette and the guide grouping.
-export type LineCategory = "red" | "green" | "blue" | "yellow" | "pink" | "tram" | "future" | "train";
+export type LineCategory =
+  "red" | "green" | "blue" | "yellow" | "pink" | "tram" | "future" | "train";
 
 export type MetroLine = {
   id: string;
@@ -58,10 +59,19 @@ function lineCategory(line: MetroLine, isTrain: boolean): LineCategory {
 
 // Non-destructively recolor + tag a set of lines by category. The generated
 // data file is never edited by hand; this runs on the imported lists instead.
+function stationConnectedPath(line: MetroLine): [number, number][] {
+  return line.stations.length >= 2 ? line.stations.map((station) => station.coord) : line.path;
+}
+
 function applyCategory(lines: MetroLine[], isTrain: boolean): MetroLine[] {
   return lines.map((line) => {
     const category = lineCategory(line, isTrain);
-    return { ...line, category, color: CATEGORY_COLORS[category] };
+    return {
+      ...line,
+      category,
+      color: CATEGORY_COLORS[category],
+      path: stationConnectedPath(line),
+    };
   });
 }
 
@@ -71,10 +81,15 @@ function applyCategory(lines: MetroLine[], isTrain: boolean): MetroLine[] {
 import { ACCURATE_METRO_LINES } from "./metroAccurate";
 import { IMPORTED_METRO_LINES, IMPORTED_TRAIN_LINES } from "./metroNetwork.generated";
 
-const FUTURE_METRO_LINES = IMPORTED_METRO_LINES.filter((line) => !["red", "green"].includes(line.id));
+const FUTURE_METRO_LINES = IMPORTED_METRO_LINES.filter(
+  (line) => !["red", "green"].includes(line.id),
+);
 
 // Accurate RTA network (Red + Green + Tram), recolored + tagged by category.
-export const METRO_LINES: MetroLine[] = applyCategory([...ACCURATE_METRO_LINES, ...FUTURE_METRO_LINES], false);
+export const METRO_LINES: MetroLine[] = applyCategory(
+  [...ACCURATE_METRO_LINES, ...FUTURE_METRO_LINES],
+  false,
+);
 
 // Separate regional train network, driven by its own "Train" toggle.
 export const TRAIN_LINES: MetroLine[] = applyCategory(IMPORTED_TRAIN_LINES, true);
@@ -82,7 +97,10 @@ export const TRAIN_LINES: MetroLine[] = applyCategory(IMPORTED_TRAIN_LINES, true
 // Both networks combined — used for animation/progress bookkeeping.
 export const ALL_RAIL_LINES: MetroLine[] = [...METRO_LINES, ...TRAIN_LINES];
 
-export const METRO_LINE_BY_ID = Object.fromEntries(ALL_RAIL_LINES.map((l) => [l.id, l])) as Record<string, MetroLine>;
+export const METRO_LINE_BY_ID = Object.fromEntries(ALL_RAIL_LINES.map((l) => [l.id, l])) as Record<
+  string,
+  MetroLine
+>;
 
 // Closest point on `path` to `coord`, expressed as a 0..1 fraction of the
 // path's total length — used to know when the draw animation "reaches" a
