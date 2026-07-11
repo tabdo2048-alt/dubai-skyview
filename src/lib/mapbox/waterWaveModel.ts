@@ -27,16 +27,15 @@ export type WaterWaveParam = {
 };
 
 // Two broad low-frequency swells, two medium waves, two small detail waves.
-// Bigger, faster sea: total amplitude ~2.5 m (was ~1.4) and ~1.5× phase speed so
-// the Gulf reads as a lively, energetic sea. Steepness stays ≤ ~0.72 to avoid
-// Gerstner self-intersection (looping crests). `intensity` scales this per body.
+// Tuned restrained: total amplitude ~1.4 m so the Gulf reads alive but never
+// cartoonish at city zoom. `intensity` scales all of this per water body.
 export const WATER_WAVE_PARAMS: WaterWaveParam[] = [
-  { directionDeg: 300, wavelength: 165, amplitude: 1.0, steepness: 0.7, speed: 11.1, phase: 0.0 },
-  { directionDeg: 284, wavelength: 112, amplitude: 0.72, steepness: 0.66, speed: 9.2, phase: 1.7 },
-  { directionDeg: 322, wavelength: 56, amplitude: 0.36, steepness: 0.58, speed: 6.6, phase: 3.1 },
-  { directionDeg: 258, wavelength: 34, amplitude: 0.24, steepness: 0.5, speed: 5.3, phase: 4.6 },
-  { directionDeg: 210, wavelength: 16, amplitude: 0.11, steepness: 0.36, speed: 3.6, phase: 0.9 },
-  { directionDeg: 32, wavelength: 9.5, amplitude: 0.06, steepness: 0.3, speed: 2.7, phase: 5.4 },
+  { directionDeg: 300, wavelength: 165, amplitude: 0.55, steepness: 0.62, speed: 7.4, phase: 0.0 },
+  { directionDeg: 284, wavelength: 112, amplitude: 0.4, steepness: 0.58, speed: 6.1, phase: 1.7 },
+  { directionDeg: 322, wavelength: 56, amplitude: 0.2, steepness: 0.5, speed: 4.4, phase: 3.1 },
+  { directionDeg: 258, wavelength: 34, amplitude: 0.14, steepness: 0.44, speed: 3.5, phase: 4.6 },
+  { directionDeg: 210, wavelength: 16, amplitude: 0.06, steepness: 0.32, speed: 2.4, phase: 0.9 },
+  { directionDeg: 32, wavelength: 9.5, amplitude: 0.035, steepness: 0.26, speed: 1.8, phase: 5.4 },
 ];
 
 type CompiledWave = {
