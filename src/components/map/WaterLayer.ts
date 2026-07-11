@@ -569,10 +569,12 @@ const WATER_FRAGMENT = /* glsl */ `
 type WaterMaterialOptions = {
   mode: "satellite" | "3d";
   intensity: number;
+  openSea: boolean;
 };
 
-function makeWaterMaterial({ mode, intensity }: WaterMaterialOptions): THREE.ShaderMaterial {
+function makeWaterMaterial({ mode, intensity, openSea }: WaterMaterialOptions): THREE.ShaderMaterial {
   const satellite = mode === "satellite";
+  const opacity = satellite ? (openSea ? 0.18 : 0.22) : openSea ? 0.24 : 0.28;
   return new THREE.ShaderMaterial({
     vertexShader: WATER_VERTEX,
     fragmentShader: WATER_FRAGMENT,
@@ -593,11 +595,11 @@ function makeWaterMaterial({ mode, intensity }: WaterMaterialOptions): THREE.Sha
       uMaxAmp: { value: MAX_WAVE_AMPLITUDE },
       uCamLocal: { value: new THREE.Vector3() },
       uSunDir: { value: new THREE.Vector3(-0.5, -0.35, 0.79).normalize() },
-      uDeepColor: { value: new THREE.Color(satellite ? 0x0d4f66 : 0x125a72) },
-      uShallowColor: { value: new THREE.Color(satellite ? 0x1f97b0 : 0x2bb6cf) },
-      uSkyColor: { value: new THREE.Color(satellite ? 0x9fd6e8 : 0xbfe9f5) },
+      uDeepColor: { value: new THREE.Color(satellite ? 0x19596a : 0x165f72) },
+      uShallowColor: { value: new THREE.Color(satellite ? 0x3c8796 : 0x3b91a2) },
+      uSkyColor: { value: new THREE.Color(satellite ? 0x7cb4c1 : 0x86bdc9) },
       uFoamColor: { value: new THREE.Color(0xffffff) },
-      uOpacity: { value: satellite ? 0.5 : 0.62 },
+      uOpacity: { value: opacity },
     },
   });
 }
@@ -734,7 +736,11 @@ export function createWaterLayer(
           continue;
         }
 
-        const material = makeWaterMaterial({ mode, intensity: area.waveIntensity ?? 1 });
+        const material = makeWaterMaterial({
+          mode,
+          intensity: area.waveIntensity ?? 1,
+          openSea: area.openSea ?? false,
+        });
         const geometry = buildWaterGeometry(area, ref);
         const water = new THREE.Mesh(geometry, material);
         // Tiny lift keeps water off the exact terrain plane; polygon offset in

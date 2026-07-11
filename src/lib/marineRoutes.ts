@@ -166,17 +166,16 @@ export function orderedMarineRouteCandidates(id: string, preferredRouteId?: stri
 }
 
 export function defaultSpeedMetersPerSecond(type: ModelType) {
-  // Livelier traffic than the original baselines (ship 6 / yacht 8.5 / boat 7.2
-  // / abra 5) so the denser enterprise fleet reads as busy, not static.
+  // Brisk but believable traffic that remains readable at Dubai-wide zoom.
   switch (type) {
     case "ship":
-      return 7;
-    case "yacht":
-      return 10;
-    case "boat":
       return 9;
+    case "yacht":
+      return 12;
+    case "boat":
+      return 11;
     case "abra":
-      return 6;
+      return 7.5;
     default:
       return 0;
   }

@@ -237,9 +237,34 @@ const MARINA_JBR_MAINLAND: [number, number][] = [
   [55.12, 25.06],
 ];
 
+// Broad mainland mask used by the full-Gulf surface. The outer water rectangle
+// extends beyond the normal Dubai camera bounds, while this hole follows the
+// satellite coastline and closes far inland so water never paints the city.
+const DUBAI_MAINLAND_LAND: [number, number][] = [
+  [54.72, 24.82],
+  [54.78, 24.86],
+  [54.84, 24.9],
+  [54.9, 24.93],
+  [54.965, 24.955],
+  [55.02, 24.95],
+  [55.05, 24.98],
+  [55.08, 25.02],
+  [55.12, 25.055],
+  [55.166, 25.075],
+  [55.2, 25.145],
+  [55.25, 25.2],
+  [55.31, 25.25],
+  [55.38, 25.29],
+  [55.5, 25.29],
+  [55.5, 24.7],
+  [54.65, 24.7],
+  [54.65, 24.8],
+  [54.72, 24.82],
+];
+
 export const WATER_AREAS: WaterArea[] = [
-  // 1. Open Arabian Gulf — deep offshore water, holes remove both Palm
-  // islands' surrounding-water footprints (those are their own polygons).
+  // 1. Full Arabian Gulf coverage. The boundary is outside the normal camera;
+  // holes remove Dubai mainland and the two Palm water tiles.
   {
     id: "open-arabian-gulf",
     name: "Open Arabian Gulf",
@@ -248,24 +273,17 @@ export const WATER_AREAS: WaterArea[] = [
     openSea: true,
     waveIntensity: 1,
     polygon: [
-      [54.88, 25.148],
-      [54.9, 25.2],
-      [54.92, 25.292],
-      [55.0, 25.31],
-      [55.13, 25.312],
-      [55.19, 25.29],
-      [55.235, 25.248],
-      [55.22, 25.2],
-      [55.18, 25.176],
-      [55.15, 25.16],
-      [55.1, 25.15],
-      [55.06, 25.14],
-      [55.02, 25.15],
-      [54.98, 25.145],
-      [54.94, 25.14],
-      [54.88, 25.148],
+      [54.65, 24.7],
+      [54.65, 25.45],
+      [55.5, 25.45],
+      [55.5, 24.7],
+      [54.65, 24.7],
     ],
-    holes: [PALM_JUMEIRAH_SURROUND_OUTER, PALM_JEBEL_ALI_SURROUND_OUTER],
+    holes: [
+      DUBAI_MAINLAND_LAND,
+      PALM_JUMEIRAH_SURROUND_OUTER,
+      PALM_JEBEL_ALI_SURROUND_OUTER,
+    ],
   },
 
   // 2. Water surrounding Palm Jebel Ali — outer ring, hole removes the land.
@@ -284,7 +302,7 @@ export const WATER_AREAS: WaterArea[] = [
     id: "jebel-ali-marina-connector",
     name: "Water Between Palm Jebel Ali and Dubai Marina",
     center: [55.075, 25.03],
-    renderSurface: true,
+    renderSurface: false,
     openSea: true,
     waveIntensity: 0.85,
     polygon: [
@@ -310,7 +328,7 @@ export const WATER_AREAS: WaterArea[] = [
     id: "jbr-offshore",
     name: "JBR Offshore Water",
     center: [55.14, 25.06],
-    renderSurface: true,
+    renderSurface: false,
     openSea: true,
     waveIntensity: 0.9,
     polygon: [
@@ -350,7 +368,7 @@ export const WATER_AREAS: WaterArea[] = [
     renderSurface: true,
     waveIntensity: 0.6,
     polygon: PALM_JUMEIRAH_SURROUND_OUTER,
-    holes: [PALM_JUMEIRAH_CRESCENT_LAND],
+    holes: [PALM_JUMEIRAH_CRESCENT_LAND, PALM_JUMEIRAH_TRUNK_FRONDS],
   },
 
   // 6. Palm inner lagoons — sheltered water between the crescent and the
@@ -359,7 +377,7 @@ export const WATER_AREAS: WaterArea[] = [
     id: "palm-inner-lagoons",
     name: "Palm Jumeirah Inner Lagoon",
     center: [55.138, 25.116],
-    renderSurface: true,
+    renderSurface: false,
     waveIntensity: 0.25,
     polygon: [
       [55.105, 25.1051],
