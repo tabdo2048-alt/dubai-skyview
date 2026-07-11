@@ -91,43 +91,8 @@ export const METRO_LINES: MetroLine[] = applyCategory(
   false,
 );
 
-// One Dubai passenger rail corridor, matching the public Etihad Rail Dubai map:
-// it enters from the Abu Dhabi/Jebel Ali side, stops at Jumeirah Golf Estates,
-// then continues north-east across Dubai. The previous generated regional routes
-// are intentionally not rendered.
-const DUBAI_REGIONAL_TRAIN: MetroLine = {
-  id: "etihad-rail-dubai-approach",
-  name: "Etihad Rail - Dubai Corridor",
-  color: CATEGORY_COLORS.train,
-  status: "planned-2030",
-  path: [
-    [54.905, 24.795], // Abu Dhabi side, entering Dubai frame
-    [54.945, 24.825], // Ghantoot / west Jebel Ali approach
-    [54.995, 24.862], // Jebel Ali corridor
-    [55.045, 24.902], // Dubai South / DWC side
-    [55.095, 24.955], // Dubai Investments Park approach
-    [55.135, 24.995], // Green Community / E311 corridor
-    [55.1635, 25.0177], // Jumeirah Golf Estates interchange
-    [55.19, 25.045], // after the station, north-east along E311
-    [55.225, 25.085],
-    [55.265, 25.128],
-    [55.315, 25.168],
-    [55.38, 25.197],
-    [55.46, 25.225],
-    [55.545, 25.27], // exits toward the northern emirates side
-  ],
-  stations: [
-    {
-      id: "etihad-dubai-jge",
-      name: "Dubai - Jumeirah Golf Estates",
-      coord: [55.1635, 25.0177],
-      interchange: true,
-    },
-  ],
-};
-
-// The Train toggle intentionally renders this one Dubai-bound approach only.
-export const TRAIN_LINES: MetroLine[] = applyCategory([DUBAI_REGIONAL_TRAIN], true);
+// Etihad Rail removed per user request.
+export const TRAIN_LINES: MetroLine[] = [];
 
 // Both networks combined — used for animation/progress bookkeeping.
 export const ALL_RAIL_LINES: MetroLine[] = [...METRO_LINES, ...TRAIN_LINES];

@@ -129,5 +129,4 @@ export const ACCURATE_METRO_LINES: MetroLine[] = [
   buildLine("red", "Red Line", "#E63946", "operational", RED_STATIONS),
   buildLine("red-2020", "Route 2020", "#E63946", "operational", RED_2020_STATIONS),
   buildLine("green", "Green Line", "#2ECC71", "operational", GREEN_STATIONS),
-  buildLine("tram", "Dubai Tram", "#F2994A", "operational", TRAM_STATIONS),
 ];
