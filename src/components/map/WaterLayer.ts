@@ -21,6 +21,13 @@ import {
 // coverage can be checked against the coastline. Never enable in production.
 const WATER_DEBUG = false;
 
+// Water-mask debug mode: draws polygon outer rings (cyan), holes (red), and
+// the triangulated mesh edges (green) so satellite alignment can be checked
+// visually. Also attaches a map click handler that prints the clicked
+// [lng, lat] to the console, for manually correcting boundary coordinates
+// against the satellite basemap. Never enable in production.
+const WATER_MASK_DEBUG = false;
+
 const SHORE_WAVES_ENABLED = true;
 // Note: the old hand-drawn open-sea white ribbon meshes are retired — open-Gulf
 // crest foam now comes from the water shader itself (see WATER_FRAGMENT).
@@ -604,6 +611,24 @@ function buildWaterGeometry(
   return subdivide(new THREE.ShapeGeometry(shape), levels);
 }
 
+// Builds a closed line loop from a [lng, lat] ring for WATER_MASK_DEBUG
+// visualization (polygon outer rings in cyan, holes in red).
+function buildRingLine(
+  ring: [number, number][],
+  ref: MercatorRef,
+  color: number,
+  z: number,
+): THREE.LineLoop {
+  const points = ring.map(([lng, lat]) => lngLatToLocal(lng, lat, ref, 0));
+  const geo = new THREE.BufferGeometry().setFromPoints(points);
+  const material = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.85 });
+  const line = new THREE.LineLoop(geo, material);
+  line.position.z = z;
+  line.renderOrder = 6;
+  line.frustumCulled = false;
+  return line;
+}
+
 export function createWaterLayer(
   controller?: { shouldRender: () => boolean },
   mode: "satellite" | "3d" = "3d",
@@ -615,9 +640,11 @@ export function createWaterLayer(
   const waters: THREE.Mesh[] = [];
   const waterMaterials: THREE.ShaderMaterial[] = [];
   const debugLines: THREE.LineSegments[] = [];
+  const maskDebugLines: THREE.LineLoop[] = [];
   let ref: MercatorRef;
   let clock: THREE.Clock;
   let onResize: (() => void) | null = null;
+  let onMaskDebugClick: ((e: mapboxgl.MapMouseEvent) => void) | null = null;
   let shoreMesh: THREE.Mesh | null = null;
   let shoreMaterial: THREE.ShaderMaterial | null = null;
   let firstFrameLogged = false;
@@ -702,6 +729,33 @@ export function createWaterLayer(
           debugLines.push(line);
           scene.add(line);
         }
+
+        if (WATER_MASK_DEBUG) {
+          // Triangulated mesh edges in green — confirms triangulation matches
+          // the outer ring + holes with no stray/degenerate triangles.
+          const triWire = new THREE.WireframeGeometry(geometry);
+          const triLine = new THREE.LineSegments(
+            triWire,
+            new THREE.LineBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.35 }),
+          );
+          triLine.position.z = 0.45;
+          triLine.renderOrder = 5;
+          triLine.frustumCulled = false;
+          scene.add(triLine);
+          debugLines.push(triLine);
+
+          // Outer ring in cyan.
+          const outer = buildRingLine(area.polygon, ref, 0x00ffff, 0.55);
+          scene.add(outer);
+          maskDebugLines.push(outer);
+
+          // Holes (excluded land) in red.
+          for (const hole of area.holes ?? []) {
+            const holeLine = buildRingLine(hole, ref, 0xff0000, 0.58);
+            scene.add(holeLine);
+            maskDebugLines.push(holeLine);
+          }
+        }
       }
 
       console.log(
@@ -727,6 +781,15 @@ export function createWaterLayer(
       onResize = () => syncSharedRendererSize(map.getCanvas());
       map.on("resize", onResize);
       console.log("[Water] total areas:", waters.length);
+
+      if (WATER_MASK_DEBUG) {
+        onMaskDebugClick = (e: mapboxgl.MapMouseEvent) => {
+          const { lng, lat } = e.lngLat;
+          console.log("[WaterMaskDebug]", `[${lng.toFixed(6)}, ${lat.toFixed(6)}]`);
+        };
+        map.on("click", onMaskDebugClick);
+        console.log("[WaterMaskDebug] click the map to print [lng, lat] coordinates");
+      }
     },
 
     render(_gl: WebGLRenderingContext, matrix: unknown) {
@@ -791,6 +854,8 @@ export function createWaterLayer(
     onRemove() {
       if (onResize) map.off("resize", onResize);
       onResize = null;
+      if (onMaskDebugClick) map.off("click", onMaskDebugClick);
+      onMaskDebugClick = null;
       for (const water of waters) {
         scene.remove(water);
         water.geometry.dispose();
@@ -804,6 +869,12 @@ export function createWaterLayer(
         (line.material as THREE.Material).dispose();
       }
       debugLines.length = 0;
+      for (const line of maskDebugLines) {
+        scene.remove(line);
+        line.geometry.dispose();
+        (line.material as THREE.Material).dispose();
+      }
+      maskDebugLines.length = 0;
       if (shoreMesh) {
         scene.remove(shoreMesh);
         shoreMesh.geometry.dispose();

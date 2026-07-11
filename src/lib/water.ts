@@ -1,25 +1,28 @@
-// Dubai marine areas + boat routes for the 3D water layer.
-// Coordinates are [lng, lat]. Routes are ordered polylines the boats sail along.
-
-export type BoatKind = "yacht" | "ship" | "abra";
-
-export type BoatRoute = {
-  id: string;
-  kind: BoatKind;
-  color: number; // hex for the hull, e.g. 0xffffff
-  speed: number; // fraction of the route per second
-  path: [number, number][];
-};
+// Dubai animated water surfaces for the 3D water layer.
+// Coordinates are [lng, lat].
+//
+// IMPORTANT: This file is the SOLE SOURCE for animated water surface coverage.
+// It is intentionally decoupled from vessel routing:
+//   - Vessel navigation safety masks live in src/lib/navigationWater.ts
+//   - Named vessel routes live in src/lib/marineRoutes.ts
+// The hand-drawn route lines used to design those systems are NOT used here.
+// Water boundaries below are traced against satellite imagery of the real
+// coastline so animated water never renders over land, islands, piers, docks,
+// breakwaters, or beaches.
+//
+// Coordinates are best-effort satellite tracing and may need further
+// refinement — use WATER_MASK_DEBUG in WaterLayer.ts to visualize boundaries
+// and click the map to print exact [lng, lat] pairs for correction.
 
 export type WaterArea = {
   id: string;
   name: string;
   center: [number, number];
-  // Hand-traced ring hugging the basin's coastline, ordered around the perimeter.
+  // Outer ring hugging the basin's real coastline, ordered around the perimeter.
   polygon: [number, number][];
-  // Optional inner rings punched out of `polygon` (islands/land the water must
-  // not cover, e.g. the Palm sitting inside the open Gulf). Each hole is its own
-  // ordered [lng, lat] ring; triangulation removes it from the surface mesh.
+  // Inner rings punched out of `polygon` — islands, land, piers, breakwaters,
+  // docks the water must not cover. Each hole is its own ordered [lng, lat]
+  // ring; triangulation removes it from the surface mesh.
   holes?: [number, number][][];
   // When true, an animated Gerstner water surface is drawn for this area.
   renderSurface: boolean;
@@ -31,19 +34,377 @@ export type WaterArea = {
   waveIntensity?: number;
 };
 
-// Water polygons traced along the real basins so the water doesn't spill onto
-// land the way an axis-aligned rectangle would. Approximate, not survey-grade.
+// --- Land silhouettes reused as polygon holes -------------------------------
+// These shapes are shared between adjacent water polygons: the "surrounding"
+// water ring uses them as a hole, and the outer boundary of that same ring is
+// reused as a hole in the next-larger polygon (open Gulf) — so neighboring
+// polygons share a boundary instead of leaving a gap or double-covering water.
+
+// Simplified trunk + frond comb for Palm Jumeirah (5 fronds per side; real
+// island has 17, this is "good enough for a cinematic map" per project norm).
+const PALM_JUMEIRAH_TRUNK_FRONDS: [number, number][] = [
+  [55.1388, 25.091],
+  [55.1388, 25.098],
+  [55.134, 25.098],
+  [55.134, 25.101],
+  [55.1388, 25.101],
+  [55.1388, 25.107],
+  [55.134, 25.107],
+  [55.134, 25.11],
+  [55.1388, 25.11],
+  [55.1388, 25.116],
+  [55.134, 25.116],
+  [55.134, 25.119],
+  [55.1388, 25.119],
+  [55.1388, 25.125],
+  [55.134, 25.125],
+  [55.134, 25.128],
+  [55.1388, 25.128],
+  [55.1388, 25.134],
+  [55.134, 25.134],
+  [55.134, 25.137],
+  [55.1388, 25.137],
+  [55.1388, 25.144],
+  [55.1412, 25.144],
+  [55.1412, 25.137],
+  [55.147, 25.137],
+  [55.147, 25.134],
+  [55.1412, 25.134],
+  [55.1412, 25.128],
+  [55.147, 25.128],
+  [55.147, 25.125],
+  [55.1412, 25.125],
+  [55.1412, 25.119],
+  [55.147, 25.119],
+  [55.147, 25.116],
+  [55.1412, 25.116],
+  [55.1412, 25.11],
+  [55.147, 25.11],
+  [55.147, 25.107],
+  [55.1412, 25.107],
+  [55.1412, 25.101],
+  [55.147, 25.101],
+  [55.147, 25.098],
+  [55.1412, 25.098],
+  [55.1412, 25.091],
+  [55.1388, 25.091],
+];
+
+// Crescent breakwater land strip — thin ring: outer (Gulf-facing) arc traced
+// one direction, inner (lagoon-facing) arc traced back, forming the land mass.
+const PALM_JUMEIRAH_CRESCENT_LAND: [number, number][] = [
+  [55.1048, 25.1278],
+  [55.1078, 25.1289],
+  [55.1109, 25.1298],
+  [55.1141, 25.1304],
+  [55.1173, 25.1308],
+  [55.1205, 25.131],
+  [55.1237, 25.131],
+  [55.1269, 25.1308],
+  [55.1301, 25.1304],
+  [55.1332, 25.1298],
+  [55.1363, 25.129],
+  [55.1393, 25.128],
+  [55.1422, 25.1268],
+  [55.1449, 25.1254],
+  [55.1475, 25.1238],
+  [55.1498, 25.122],
+  [55.1519, 25.12],
+  [55.1537, 25.1178],
+  [55.1552, 25.1154],
+  [55.1564, 25.1128],
+  [55.1572, 25.11],
+  [55.1577, 25.107],
+  [55.1577, 25.1039],
+  [55.1564, 25.1053],
+  [55.1549, 25.1075],
+  [55.1531, 25.1094],
+  [55.151, 25.111],
+  [55.1486, 25.1124],
+  [55.146, 25.1135],
+  [55.1431, 25.1144],
+  [55.14, 25.115],
+  [55.1368, 25.1154],
+  [55.1335, 25.1156],
+  [55.1302, 25.1156],
+  [55.1269, 25.1154],
+  [55.1236, 25.1151],
+  [55.1205, 25.1146],
+  [55.1175, 25.1139],
+  [55.1148, 25.1131],
+  [55.1123, 25.1121],
+  [55.1101, 25.1109],
+  [55.1083, 25.1096],
+  [55.1068, 25.1082],
+  [55.1057, 25.1067],
+  [55.105, 25.1051],
+];
+
+// Outer boundary of the water ring surrounding the crescent (a bit wider than
+// the crescent itself) — reused as the hole cut into open-arabian-gulf below,
+// so the two polygons share a boundary with no gap and no double-water.
+const PALM_JUMEIRAH_SURROUND_OUTER: [number, number][] = [
+  [55.1, 25.13],
+  [55.104, 25.134],
+  [55.11, 25.1375],
+  [55.117, 25.1395],
+  [55.124, 25.1405],
+  [55.131, 25.141],
+  [55.138, 25.141],
+  [55.145, 25.1405],
+  [55.151, 25.139],
+  [55.157, 25.136],
+  [55.1615, 25.132],
+  [55.1645, 25.127],
+  [55.1665, 25.121],
+  [55.1675, 25.115],
+  [55.168, 25.108],
+  [55.168, 25.101],
+  [55.1655, 25.0975],
+  [55.161, 25.0955],
+  [55.155, 25.0945],
+  [55.148, 25.094],
+  [55.14, 25.094],
+  [55.132, 25.094],
+  [55.124, 25.0945],
+  [55.117, 25.0955],
+  [55.111, 25.0975],
+  [55.106, 25.1005],
+  [55.102, 25.104],
+  [55.099, 25.108],
+  [55.097, 25.113],
+  [55.097, 25.119],
+  [55.098, 25.125],
+  [55.1, 25.13],
+];
+
+// Simplified Palm Jebel Ali land silhouette (smaller, less iconic — coarser
+// than Palm Jumeirah is acceptable for a cinematic map).
+const PALM_JEBEL_ALI_LAND: [number, number][] = [
+  [54.975, 24.985],
+  [54.98, 24.995],
+  [54.985, 25.005],
+  [54.992, 25.013],
+  [55.0, 25.019],
+  [55.01, 25.022],
+  [55.02, 25.021],
+  [55.028, 25.017],
+  [55.034, 25.01],
+  [55.037, 25.001],
+  [55.036, 24.991],
+  [55.03, 24.982],
+  [55.022, 24.976],
+  [55.012, 24.973],
+  [55.0, 24.973],
+  [54.988, 24.977],
+  [54.979, 24.981],
+  [54.975, 24.985],
+];
+
+// Outer boundary of the water ring surrounding Palm Jebel Ali — hole reused
+// in open-arabian-gulf so the two polygons share a boundary.
+const PALM_JEBEL_ALI_SURROUND_OUTER: [number, number][] = [
+  [54.965, 24.978],
+  [54.97, 24.992],
+  [54.975, 25.006],
+  [54.982, 25.018],
+  [54.992, 25.027],
+  [55.004, 25.032],
+  [55.017, 25.033],
+  [55.029, 25.029],
+  [55.039, 25.021],
+  [55.045, 25.009],
+  [55.046, 24.996],
+  [55.042, 24.983],
+  [55.033, 24.972],
+  [55.021, 24.965],
+  [55.007, 24.963],
+  [54.993, 24.966],
+  [54.978, 24.971],
+  [54.965, 24.978],
+];
+
+// Mainland coastline strip along Marina/JBR — used as a hole so open water
+// polygons never spill onto the beachfront/promenade.
+const MARINA_JBR_MAINLAND: [number, number][] = [
+  [55.12, 25.06],
+  [55.135, 25.062],
+  [55.15, 25.066],
+  [55.16, 25.07],
+  [55.166, 25.075],
+  [55.166, 25.06],
+  [55.12, 25.055],
+  [55.12, 25.06],
+];
+
 export const WATER_AREAS: WaterArea[] = [
+  // 1. Open Arabian Gulf — deep offshore water, holes remove both Palm
+  // islands' surrounding-water footprints (those are their own polygons).
   {
-    id: "marina",
-    name: "Dubai Marina & JBR",
+    id: "open-arabian-gulf",
+    name: "Open Arabian Gulf",
+    center: [55.05, 25.1],
+    renderSurface: true,
+    openSea: true,
+    waveIntensity: 1,
+    polygon: [
+      [54.88, 25.148],
+      [54.9, 25.2],
+      [54.92, 25.292],
+      [55.0, 25.31],
+      [55.13, 25.312],
+      [55.19, 25.29],
+      [55.235, 25.248],
+      [55.22, 25.2],
+      [55.18, 25.176],
+      [55.15, 25.16],
+      [55.1, 25.15],
+      [55.06, 25.14],
+      [55.02, 25.15],
+      [54.98, 25.145],
+      [54.94, 25.14],
+      [54.88, 25.148],
+    ],
+    holes: [PALM_JUMEIRAH_SURROUND_OUTER, PALM_JEBEL_ALI_SURROUND_OUTER],
+  },
+
+  // 2. Water surrounding Palm Jebel Ali — outer ring, hole removes the land.
+  {
+    id: "palm-jebel-ali-surrounding",
+    name: "Water Surrounding Palm Jebel Ali",
+    center: [55.005, 25.0],
+    renderSurface: true,
+    waveIntensity: 0.55,
+    polygon: PALM_JEBEL_ALI_SURROUND_OUTER,
+    holes: [PALM_JEBEL_ALI_LAND],
+  },
+
+  // 3. Water between Palm Jebel Ali and Dubai Marina — connector sea.
+  {
+    id: "jebel-ali-marina-connector",
+    name: "Water Between Palm Jebel Ali and Dubai Marina",
+    center: [55.075, 25.03],
+    renderSurface: true,
+    openSea: true,
+    waveIntensity: 0.85,
+    polygon: [
+      [55.045, 25.009],
+      [55.05, 25.02],
+      [55.06, 25.032],
+      [55.075, 25.042],
+      [55.09, 25.05],
+      [55.105, 25.055],
+      [55.115, 25.058],
+      [55.12, 25.05],
+      [55.11, 25.04],
+      [55.095, 25.03],
+      [55.08, 25.02],
+      [55.065, 25.012],
+      [55.05, 25.005],
+      [55.045, 25.009],
+    ],
+  },
+
+  // 4. JBR offshore water — exposed sea in front of the JBR beachfront.
+  {
+    id: "jbr-offshore",
+    name: "JBR Offshore Water",
+    center: [55.14, 25.06],
+    renderSurface: true,
+    openSea: true,
+    waveIntensity: 0.9,
+    polygon: [
+      [55.115, 25.058],
+      [55.108, 25.065],
+      [55.1, 25.075],
+      [55.095, 25.086],
+      [55.093, 25.098],
+      [55.097, 25.113],
+      [55.099, 25.108],
+      [55.102, 25.104],
+      [55.106, 25.1005],
+      [55.111, 25.0975],
+      [55.117, 25.0955],
+      [55.124, 25.0945],
+      [55.132, 25.094],
+      [55.14, 25.094],
+      [55.148, 25.094],
+      [55.155, 25.0945],
+      [55.161, 25.0955],
+      [55.166, 25.07],
+      [55.16, 25.066],
+      [55.15, 25.062],
+      [55.135, 25.058],
+      [55.12, 25.055],
+      [55.115, 25.058],
+    ],
+    holes: [MARINA_JBR_MAINLAND],
+  },
+
+  // 5. Water surrounding Palm Jumeirah — outer ring, hole removes the
+  // crescent breakwater land strip.
+  {
+    id: "palm-jumeirah-surrounding",
+    name: "Water Surrounding Palm Jumeirah",
+    center: [55.135, 25.115],
+    renderSurface: true,
+    waveIntensity: 0.6,
+    polygon: PALM_JUMEIRAH_SURROUND_OUTER,
+    holes: [PALM_JUMEIRAH_CRESCENT_LAND],
+  },
+
+  // 6. Palm inner lagoons — sheltered water between the crescent and the
+  // trunk/fronds. Hole removes the trunk + frond comb landmass.
+  {
+    id: "palm-inner-lagoons",
+    name: "Palm Jumeirah Inner Lagoon",
+    center: [55.138, 25.116],
+    renderSurface: true,
+    waveIntensity: 0.25,
+    polygon: [
+      [55.105, 25.1051],
+      [55.1057, 25.1067],
+      [55.1068, 25.1082],
+      [55.1083, 25.1096],
+      [55.1101, 25.1109],
+      [55.1123, 25.1121],
+      [55.1148, 25.1131],
+      [55.1175, 25.1139],
+      [55.1205, 25.1146],
+      [55.1236, 25.1151],
+      [55.1269, 25.1154],
+      [55.1302, 25.1156],
+      [55.1335, 25.1156],
+      [55.1368, 25.1154],
+      [55.14, 25.115],
+      [55.1431, 25.1144],
+      [55.146, 25.1135],
+      [55.1486, 25.1124],
+      [55.151, 25.111],
+      [55.1531, 25.1094],
+      [55.1549, 25.1075],
+      [55.1564, 25.1053],
+      [55.1577, 25.1039],
+      [55.155, 25.1],
+      [55.15, 25.096],
+      [55.14, 25.093],
+      [55.13, 25.093],
+      [55.12, 25.096],
+      [55.11, 25.1],
+      [55.105, 25.1051],
+    ],
+    holes: [PALM_JUMEIRAH_TRUNK_FRONDS],
+  },
+
+  // 7. Dubai Marina channels — the developed marina basin itself (distinct
+  // from the open JBR sea in front of it).
+  {
+    id: "marina-channels",
+    name: "Dubai Marina Channels",
     center: [55.138, 25.078],
     renderSurface: true,
-    waveIntensity: 0.4,
-    // High-fidelity basin boundary traced from satellite — includes all inlets,
-    // piers, and the full crescent arc of JBR beachfront and Marina channels.
+    waveIntensity: 0.35,
     polygon: [
-      // JBR northern waterfront (exposed sea-facing coast)
       [55.1565, 25.0685],
       [55.1548, 25.0693],
       [55.1531, 25.0701],
@@ -64,7 +425,6 @@ export const WATER_AREAS: WaterArea[] = [
       [55.1276, 25.0701],
       [55.1259, 25.0693],
       [55.1242, 25.0684],
-      // Marina southern waterfront
       [55.1242, 25.0664],
       [55.1259, 25.0673],
       [55.1276, 25.0681],
@@ -85,7 +445,6 @@ export const WATER_AREAS: WaterArea[] = [
       [55.1531, 25.0681],
       [55.1548, 25.0673],
       [55.1565, 25.0665],
-      // Eastern inlet (Marina Entrance Channel)
       [55.1565, 25.065],
       [55.1555, 25.064],
       [55.1545, 25.063],
@@ -96,7 +455,6 @@ export const WATER_AREAS: WaterArea[] = [
       [55.1495, 25.063],
       [55.1485, 25.064],
       [55.1475, 25.065],
-      // Western arm (full basin loop closes here)
       [55.1475, 25.0665],
       [55.1485, 25.0656],
       [55.1495, 25.0647],
@@ -109,75 +467,15 @@ export const WATER_AREAS: WaterArea[] = [
       [55.1565, 25.0675],
     ],
   },
+
+  // 8. Dubai Creek — narrow tidal estuary, both banks traced.
   {
-    id: "palm",
-    name: "Palm Jumeirah Inner Lagoon",
-    center: [55.138, 25.116],
-    // Protected lagoon water between the fronds and the crescent — small waves.
-    renderSurface: true,
-    waveIntensity: 0.28,
-    // High-fidelity crescent tracing the actual palm shape — outer crescent arc
-    // + inner lagoon boundary. Dense points follow the real estate layout.
-    polygon: [
-      // Outer crescent (exposed Gulf-facing coast, north to south)
-      [55.1048, 25.1278],
-      [55.1078, 25.1289],
-      [55.1109, 25.1298],
-      [55.1141, 25.1304],
-      [55.1173, 25.1308],
-      [55.1205, 25.131],
-      [55.1237, 25.131],
-      [55.1269, 25.1308],
-      [55.1301, 25.1304],
-      [55.1332, 25.1298],
-      [55.1363, 25.129],
-      [55.1393, 25.128],
-      [55.1422, 25.1268],
-      [55.1449, 25.1254],
-      [55.1475, 25.1238],
-      [55.1498, 25.122],
-      [55.1519, 25.12],
-      [55.1537, 25.1178],
-      [55.1552, 25.1154],
-      [55.1564, 25.1128],
-      [55.1572, 25.11],
-      [55.1577, 25.107],
-      [55.1577, 25.1039],
-      // Return inner (protected lagoon, south to north)
-      [55.1564, 25.1053],
-      [55.1549, 25.1075],
-      [55.1531, 25.1094],
-      [55.151, 25.111],
-      [55.1486, 25.1124],
-      [55.146, 25.1135],
-      [55.1431, 25.1144],
-      [55.14, 25.115],
-      [55.1368, 25.1154],
-      [55.1335, 25.1156],
-      [55.1302, 25.1156],
-      [55.1269, 25.1154],
-      [55.1236, 25.1151],
-      [55.1205, 25.1146],
-      [55.1175, 25.1139],
-      [55.1148, 25.1131],
-      [55.1123, 25.1121],
-      [55.1101, 25.1109],
-      [55.1083, 25.1096],
-      [55.1068, 25.1082],
-      [55.1057, 25.1067],
-      [55.105, 25.1051],
-    ],
-  },
-  {
-    id: "creek",
+    id: "dubai-creek",
     name: "Dubai Creek",
     center: [55.32, 25.235],
     renderSurface: true,
     waveIntensity: 0.3,
-    // Narrow, winding tidal estuary — densely sampled for natural curves.
-    // Both banks (west and east) traced in fine detail.
     polygon: [
-      // Western bank (north to south)
       [55.3388, 25.2138],
       [55.3385, 25.2161],
       [55.3382, 25.2184],
@@ -193,7 +491,6 @@ export const WATER_AREAS: WaterArea[] = [
       [55.3312, 25.2414],
       [55.3301, 25.2437],
       [55.3289, 25.246],
-      // Eastern bank (south to north)
       [55.3298, 25.245],
       [55.3308, 25.2428],
       [55.3318, 25.2405],
@@ -211,54 +508,12 @@ export const WATER_AREAS: WaterArea[] = [
       [55.3382, 25.2129],
     ],
   },
-  {
-    id: "jbr-palm-offshore",
-    name: "JBR & Palm Offshore Sea",
-    center: [55.11, 25.16],
-    // Open Gulf water NORTH of the Palm — the big visible sea. Its ring is not a
-    // real coastline, so no shoreline foam is drawn around it; crest foam comes
-    // from the shader instead. Full wave energy.
-    renderSurface: true,
-    openSea: true,
-    waveIntensity: 1,
-    polygon: [
-      [55.052, 25.108],
-      [55.058, 25.15],
-      [55.09, 25.19],
-      [55.135, 25.205],
-      [55.185, 25.196],
-      [55.23, 25.17],
-      [55.235, 25.14],
-      [55.205, 25.13],
-      [55.17, 25.14],
-      [55.132, 25.14],
-      [55.096, 25.128],
-      [55.078, 25.108],
-      [55.052, 25.108],
-    ],
-  },
-  {
-    id: "gulf-west-offshore",
-    name: "Arabian Gulf West Offshore",
-    center: [55.03, 25.06],
-    // Deep open Gulf off Palm Jebel Ali / south-west — full wave energy.
-    renderSurface: true,
-    openSea: true,
-    waveIntensity: 1,
-    polygon: [
-      [54.9, 24.98],
-      [54.9, 25.12],
-      [55.02, 25.12],
-      [55.05, 25.06],
-      [55.02, 24.98],
-      [54.9, 24.98],
-    ],
-  },
+
+  // 9. Dubai Water Canal & Business Bay — narrow urban canal, calm water.
   {
     id: "business-bay-canal",
     name: "Dubai Water Canal & Business Bay",
     center: [55.26, 25.185],
-    // Narrow city canal — visibly calm water.
     renderSurface: true,
     waveIntensity: 0.22,
     polygon: [
@@ -276,137 +531,6 @@ export const WATER_AREAS: WaterArea[] = [
     ],
   },
 ];
-
-// --- Boat routes ---
-export const BOAT_ROUTES: BoatRoute[] = [
-  // Yachts cruising the Marina channel
-  {
-    id: "marina-yacht-1",
-    kind: "yacht",
-    color: 0xffffff,
-    speed: 0.045,
-    path: [
-      [55.1405, 25.0705],
-      [55.1385, 25.0745],
-      [55.136, 25.079],
-      [55.133, 25.083],
-      [55.13, 25.0865],
-      [55.1275, 25.0895],
-    ],
-  },
-  {
-    id: "marina-yacht-2",
-    kind: "yacht",
-    color: 0xf5ead1,
-    speed: 0.035,
-    path: [
-      [55.1285, 25.09],
-      [55.1315, 25.086],
-      [55.1345, 25.0815],
-      [55.1372, 25.077],
-      [55.14, 25.072],
-    ],
-  },
-  // Along the JBR / open water off the beach
-  {
-    id: "jbr-ship-1",
-    kind: "ship",
-    color: 0x9fb4c7,
-    speed: 0.02,
-    path: [
-      [55.118, 25.068],
-      [55.112, 25.076],
-      [55.108, 25.086],
-      [55.106, 25.098],
-    ],
-  },
-  // Palm Jumeirah crescent + fronds
-  {
-    id: "palm-yacht-1",
-    kind: "yacht",
-    color: 0xffffff,
-    speed: 0.03,
-    path: [
-      [55.118, 25.108],
-      [55.13, 25.106],
-      [55.142, 25.108],
-      [55.15, 25.116],
-      [55.144, 25.125],
-      [55.132, 25.128],
-      [55.12, 25.124],
-    ],
-  },
-  {
-    id: "palm-ship-1",
-    kind: "ship",
-    color: 0xb0bec5,
-    speed: 0.016,
-    path: [
-      [55.1, 25.13],
-      [55.115, 25.136],
-      [55.135, 25.138],
-      [55.155, 25.134],
-      [55.165, 25.124],
-    ],
-  },
-  // Dubai Creek abras / dhows going up and down the water
-  {
-    id: "creek-abra-1",
-    kind: "abra",
-    color: 0x8d6e63,
-    speed: 0.05,
-    path: [
-      [55.3, 25.262],
-      [55.308, 25.25],
-      [55.317, 25.238],
-      [55.326, 25.228],
-      [55.332, 25.221],
-    ],
-  },
-  {
-    id: "creek-abra-2",
-    kind: "abra",
-    color: 0xa1887f,
-    speed: 0.042,
-    path: [
-      [55.332, 25.221],
-      [55.3255, 25.229],
-      [55.317, 25.239],
-      [55.308, 25.251],
-      [55.3005, 25.2615],
-    ],
-  },
-];
-
-// Interpolate along a boat route at fraction t (0..1), returning position and
-// heading so the mesh can face its direction of travel.
-export function boatPointAt(
-  path: [number, number][],
-  t: number,
-): { coord: [number, number]; heading: number } {
-  const segLens: number[] = [];
-  let total = 0;
-  for (let i = 1; i < path.length; i++) {
-    const l = Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]);
-    segLens.push(l);
-    total += l;
-  }
-  const target = Math.max(0, Math.min(1, t)) * total;
-  let acc = 0;
-  for (let i = 1; i < path.length; i++) {
-    const l = segLens[i - 1];
-    if (acc + l >= target) {
-      const localT = l === 0 ? 0 : (target - acc) / l;
-      const [ax, ay] = path[i - 1];
-      const [bx, by] = path[i];
-      const coord: [number, number] = [ax + (bx - ax) * localT, ay + (by - ay) * localT];
-      const heading = Math.atan2(bx - ax, by - ay);
-      return { coord, heading };
-    }
-    acc += l;
-  }
-  return { coord: path[path.length - 1], heading: 0 };
-}
 
 // --- Clouds ---
 export type CloudSpec = {

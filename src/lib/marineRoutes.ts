@@ -79,7 +79,7 @@ function routeCategory(index: number): MarineRoute["category"] {
 
 // Basin-specific routes (8 new): Marina, Palm, Creek, Business Bay, JBR
 // TODO(satellite-trace): Replace placeholder coordinates with satellite-traced waypoints
-const BASIN_ROUTES: Record<MarineRouteId, [number, number][]> = {
+const BASIN_ROUTES: Partial<Record<MarineRouteId, [number, number][]>> = {
   "marina-inner-channel": [
     [55.1405, 25.0705],
     [55.1385, 25.0745],
@@ -152,7 +152,7 @@ const BASIN_ROUTES: Record<MarineRouteId, [number, number][]> = {
 export const MARINE_ROUTES: MarineRoute[] = ROUTE_IDS.map((id, index) => ({
   id,
   name: ROUTE_NAMES[id],
-  points: index < 10 ? OPEN_SEA_LANES[index] : BASIN_ROUTES[id as MarineRouteId],
+  points: index < 10 ? OPEN_SEA_LANES[index] : (BASIN_ROUTES[id] ?? []),
   category: routeCategory(index),
 }));
 
