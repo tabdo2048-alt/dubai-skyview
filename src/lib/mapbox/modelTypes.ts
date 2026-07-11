@@ -51,11 +51,17 @@ export type ModelConfig = {
 
   /** When true, the model advances along `route` each frame. */
   animate: boolean;
-  /** Ordered [lng, lat] waypoints the model loops along (water routes only). */
+  /** Reusable named route from marineRoutes.ts. Preferred for all watercraft. */
+  routeId?: string;
+  /** Initial 0..1 progress along the named/legacy route. */
+  startProgress?: number;
+  /** Physical vessel speed. Preferred over legacy normalized `speed`. */
+  speedMetersPerSecond?: number;
+  /** Ordered [lng, lat] waypoints the model loops along (legacy water routes only). */
   route?: [number, number][];
   /** Closed routes loop; open routes move end-to-end and return. */
   routeMode?: "loop" | "pingpong";
-  /** Fraction of the route travelled per second (e.g. 0.03). */
+  /** Legacy fraction of the route travelled per second (e.g. 0.03). */
   speed?: number;
 
   /** Only rendered while the map zoom is within [from, to]. */

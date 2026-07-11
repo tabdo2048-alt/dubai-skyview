@@ -9,6 +9,11 @@
 // console warning is logged — nothing crashes.
 
 import type { ModelConfig } from "./modelTypes";
+import {
+  defaultMarineRouteIdForVessel,
+  defaultSpeedMetersPerSecond,
+  hashRouteSeed,
+} from "@/lib/marineRoutes";
 
 type VesselOrientation = Pick<
   ModelConfig,
@@ -53,6 +58,10 @@ function routeIsClosed(route?: [number, number][]) {
   const first = route[0];
   const last = route[route.length - 1];
   return Math.hypot(first[0] - last[0], first[1] - last[1]) < 0.000001;
+}
+
+function isWatercraftType(type: ModelConfig["type"]) {
+  return type === "boat" || type === "yacht" || type === "ship" || type === "abra";
 }
 
 // Routes hug the real basins (Marina, Palm, Gulf, Creek, Business Bay canal)
@@ -1193,8 +1202,23 @@ export const MODEL_REGISTRY: ModelConfig[] = [
     visibleFromZoom: 9,
     visibleToZoom: 20,
   },
-].map((config) => ({
-  ...(VESSEL_ORIENTATIONS[config.modelUrl] ?? {}),
-  routeMode: routeIsClosed(config.route) ? "loop" : "pingpong",
-  ...config,
-}));
+].map((rawConfig) => {
+  const config = rawConfig as ModelConfig;
+  const normalized: ModelConfig = {
+    ...(VESSEL_ORIENTATIONS[config.modelUrl] ?? {}),
+    routeMode: routeIsClosed(config.route) ? "loop" : "pingpong",
+    ...config,
+  };
+
+  if (!isWatercraftType(normalized.type)) return normalized;
+
+  return {
+    ...normalized,
+    route: undefined,
+    routeId: normalized.routeId ?? defaultMarineRouteIdForVessel(normalized.id, normalized.type),
+    routeMode: "pingpong",
+    startProgress: normalized.startProgress ?? (hashRouteSeed(normalized.id) % 1000) / 1000,
+    speedMetersPerSecond:
+      normalized.speedMetersPerSecond ?? defaultSpeedMetersPerSecond(normalized.type),
+  };
+});

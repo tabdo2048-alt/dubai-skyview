@@ -17,16 +17,18 @@ export type WaterArea = {
   center: [number, number];
   // Hand-traced ring hugging the basin's coastline, ordered around the perimeter.
   polygon: [number, number][];
-  // --- Shoreline-wave tuning (optional) ------------------------------------
+  // Optional inner rings punched out of `polygon` (islands/land the water must
+  // not cover, e.g. the Palm sitting inside the open Gulf). Each hole is its own
+  // ordered [lng, lat] ring; triangulation removes it from the surface mesh.
+  holes?: [number, number][][];
+  // When true, an animated Gerstner water surface is drawn for this area.
+  renderSurface: boolean;
   // When true, this basin is open sea (not a real coastline) so shoreline foam
   // lines are NOT drawn around it. Defaults to false.
-  renderSurface: boolean;
   openSea?: boolean;
-  // Edge indexes (0-based, edge i = polygon[i]→polygon[i+1]) to skip when
-  // drawing shoreline waves — e.g. artificial closing edges that cut across
-  // open water rather than following the real coast.
-  // Per-area multiplier for shoreline-wave strength (opacity). Creek is calmer
-  // than open-sea coast, so it uses a lower value. Defaults to 1.
+  // Per-area wave energy fed to the shared Gerstner model: 1 = exposed open
+  // Gulf, lower = sheltered Marina/Creek/lagoon. Defaults to 1.
+  waveIntensity?: number;
 };
 
 // Water polygons traced along the real basins so the water doesn't spill onto
@@ -37,6 +39,7 @@ export const WATER_AREAS: WaterArea[] = [
     name: "Dubai Marina & JBR",
     center: [55.138, 25.078],
     renderSurface: true,
+    waveIntensity: 0.4,
     // High-fidelity basin boundary traced from satellite — includes all inlets,
     // piers, and the full crescent arc of JBR beachfront and Marina channels.
     polygon: [
@@ -108,9 +111,11 @@ export const WATER_AREAS: WaterArea[] = [
   },
   {
     id: "palm",
-    name: "Palm Jumeirah",
+    name: "Palm Jumeirah Inner Lagoon",
     center: [55.138, 25.116],
-    renderSurface: false,
+    // Protected lagoon water between the fronds and the crescent — small waves.
+    renderSurface: true,
+    waveIntensity: 0.28,
     // High-fidelity crescent tracing the actual palm shape — outer crescent arc
     // + inner lagoon boundary. Dense points follow the real estate layout.
     polygon: [
@@ -168,6 +173,7 @@ export const WATER_AREAS: WaterArea[] = [
     name: "Dubai Creek",
     center: [55.32, 25.235],
     renderSurface: true,
+    waveIntensity: 0.3,
     // Narrow, winding tidal estuary — densely sampled for natural curves.
     // Both banks (west and east) traced in fine detail.
     polygon: [
@@ -208,25 +214,65 @@ export const WATER_AREAS: WaterArea[] = [
   {
     id: "jbr-palm-offshore",
     name: "JBR & Palm Offshore Sea",
-    center: [55.12, 25.13],
-    renderSurface: false,
-    // Open sea — its ring is not a real coastline, so no shoreline foam here.
+    center: [55.11, 25.16],
+    // Open Gulf water NORTH of the Palm — the big visible sea. Its ring is not a
+    // real coastline, so no shoreline foam is drawn around it; crest foam comes
+    // from the shader instead. Full wave energy.
+    renderSurface: true,
     openSea: true,
+    waveIntensity: 1,
     polygon: [
-      [55.07, 25.052],
-      [55.052, 25.1],
-      [55.06, 25.145],
-      [55.092, 25.174],
-      [55.132, 25.184],
-      [55.171, 25.173],
-      [55.202, 25.152],
-      [55.187, 25.136],
-      [55.158, 25.151],
-      [55.12, 25.151],
-      [55.091, 25.134],
-      [55.084, 25.101],
-      [55.101, 25.067],
-      [55.07, 25.052],
+      [55.052, 25.108],
+      [55.058, 25.15],
+      [55.09, 25.19],
+      [55.135, 25.205],
+      [55.185, 25.196],
+      [55.23, 25.17],
+      [55.235, 25.14],
+      [55.205, 25.13],
+      [55.17, 25.14],
+      [55.132, 25.14],
+      [55.096, 25.128],
+      [55.078, 25.108],
+      [55.052, 25.108],
+    ],
+  },
+  {
+    id: "gulf-west-offshore",
+    name: "Arabian Gulf West Offshore",
+    center: [55.03, 25.06],
+    // Deep open Gulf off Palm Jebel Ali / south-west — full wave energy.
+    renderSurface: true,
+    openSea: true,
+    waveIntensity: 1,
+    polygon: [
+      [54.9, 24.98],
+      [54.9, 25.12],
+      [55.02, 25.12],
+      [55.05, 25.06],
+      [55.02, 24.98],
+      [54.9, 24.98],
+    ],
+  },
+  {
+    id: "business-bay-canal",
+    name: "Dubai Water Canal & Business Bay",
+    center: [55.26, 25.185],
+    // Narrow city canal — visibly calm water.
+    renderSurface: true,
+    waveIntensity: 0.22,
+    polygon: [
+      [55.2665, 25.1665],
+      [55.2648, 25.1725],
+      [55.2662, 25.1785],
+      [55.269, 25.1845],
+      [55.2724, 25.1885],
+      [55.2742, 25.1875],
+      [55.271, 25.1835],
+      [55.2682, 25.1775],
+      [55.2668, 25.1715],
+      [55.2685, 25.1665],
+      [55.2665, 25.1665],
     ],
   },
 ];

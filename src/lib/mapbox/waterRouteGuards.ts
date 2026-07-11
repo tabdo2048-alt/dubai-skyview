@@ -9,9 +9,9 @@
 import {
   LAND_EXCLUSION_POLYGONS,
   NAVIGATION_WATER_POLYGONS,
-  OPEN_SEA_LANES,
   type NavigationPolygon,
 } from "@/lib/navigationWater";
+import { orderedMarineRouteCandidates } from "@/lib/marineRoutes";
 import { WATERCRAFT_DISPLAY_LENGTH_METERS, type ModelConfig, type ModelType } from "./modelTypes";
 
 const BOAT_ROUTE_DEBUG = false;
@@ -19,6 +19,14 @@ const WATERCRAFT_TYPES = new Set<ModelType>(["boat", "yacht", "ship", "abra"]);
 const METERS_PER_LATITUDE_DEGREE = 111_320;
 const ROUTE_SAMPLE_STEP_METERS = 25;
 const loggedRoutes = new Set<string>();
+
+export type InvalidRouteSample = {
+  point: [number, number];
+  segmentIndex: number;
+  reason: "outside-navigation-water" | "inside-land-mask" | "shore-clearance";
+  clearanceMeters: number;
+  nearestLandMeters: number;
+};
 
 // Base clearance from any land boundary; the vessel's own half-length is added
 // on top in getVesselSafetyClearance().
@@ -111,6 +119,42 @@ export function distanceToLandBoundaryMeters(point: [number, number]) {
   return distanceToNearestPolygonBoundaryMeters(point, LAND_EXCLUSION_POLYGONS);
 }
 
+function invalidSampleForPoint(
+  point: [number, number],
+  segmentIndex: number,
+  clearanceMeters: number,
+): InvalidRouteSample | undefined {
+  const nearestLandMeters = distanceToLandBoundaryMeters(point);
+  if (!isPointInAnyPolygon(point, NAVIGATION_WATER_POLYGONS)) {
+    return {
+      point,
+      segmentIndex,
+      reason: "outside-navigation-water",
+      clearanceMeters,
+      nearestLandMeters,
+    };
+  }
+  if (isPointInsideAnyLandMask(point)) {
+    return {
+      point,
+      segmentIndex,
+      reason: "inside-land-mask",
+      clearanceMeters,
+      nearestLandMeters,
+    };
+  }
+  if (nearestLandMeters < clearanceMeters) {
+    return {
+      point,
+      segmentIndex,
+      reason: "shore-clearance",
+      clearanceMeters,
+      nearestLandMeters,
+    };
+  }
+  return undefined;
+}
+
 // Safe only if: inside a navigation-water polygon, outside every land mask, AND
 // at least `clearanceMeters` from any land boundary.
 export function isPointInSafeNavigationWater(point: [number, number], clearanceMeters = 0) {
@@ -153,8 +197,9 @@ export function routeStaysInDubaiWater(route: [number, number][], clearanceMeter
         start[0] + (end[0] - start[0]) * t,
         start[1] + (end[1] - start[1]) * t,
       ];
-      if (!isPointInSafeNavigationWater(point, clearanceMeters)) {
-        if (BOAT_ROUTE_DEBUG) console.warn("[BoatRoute] rejected sample", point, clearanceMeters);
+      const invalid = invalidSampleForPoint(point, i - 1, clearanceMeters);
+      if (invalid) {
+        if (BOAT_ROUTE_DEBUG) console.warn("[BoatRoute] rejected sample", invalid);
         return false;
       }
     }
@@ -163,15 +208,29 @@ export function routeStaysInDubaiWater(route: [number, number][], clearanceMeter
   return true;
 }
 
-// Deterministic starting lane for a vessel id (so the fleet spreads across all
-// lanes), then every other lane after it as a fallback.
-function orderedLaneCandidates(id: string): [number, number][][] {
-  const start = [...id].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % OPEN_SEA_LANES.length;
-  const ordered: [number, number][][] = [];
-  for (let i = 0; i < OPEN_SEA_LANES.length; i++) {
-    ordered.push(OPEN_SEA_LANES[(start + i) % OPEN_SEA_LANES.length]);
+export function collectInvalidRouteSamples(
+  route: [number, number][] | undefined,
+  clearanceMeters = 0,
+) {
+  const invalidSamples: InvalidRouteSample[] = [];
+  if (!route || route.length < 2) return invalidSamples;
+
+  for (let i = 1; i < route.length; i++) {
+    const start = route[i - 1];
+    const end = route[i];
+    const samples = getSegmentSampleCount(start, end);
+    for (let step = 0; step <= samples; step++) {
+      const t = step / samples;
+      const point: [number, number] = [
+        start[0] + (end[0] - start[0]) * t,
+        start[1] + (end[1] - start[1]) * t,
+      ];
+      const invalid = invalidSampleForPoint(point, i - 1, clearanceMeters);
+      if (invalid) invalidSamples.push(invalid);
+    }
   }
-  return ordered;
+
+  return invalidSamples;
 }
 
 export function modelStaysInDubaiWater(config: ModelConfig) {
@@ -190,14 +249,14 @@ export function waterRouteForDisplay(config: ModelConfig): [number, number][] | 
   if (!isWatercraft(config.type)) return config.route;
 
   const clearance = getVesselSafetyClearance(config);
-  const candidates = orderedLaneCandidates(config.id);
+  const candidates = orderedMarineRouteCandidates(config.id, config.routeId);
   for (let i = 0; i < candidates.length; i++) {
-    if (routeStaysInDubaiWater(candidates[i], clearance)) {
+    if (routeStaysInDubaiWater(candidates[i].points, clearance)) {
       logRouteOnce(
         i === 0 ? "[BoatRoute] safe route accepted" : "[BoatRoute] fallback route used",
-        config.id,
+        `${config.id}:${candidates[i].id}`,
       );
-      return candidates[i];
+      return candidates[i].points;
     }
   }
 

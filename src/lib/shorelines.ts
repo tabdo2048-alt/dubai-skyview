@@ -87,7 +87,7 @@ export const PALM_OUTER_SHORELINE: ShorelinePath = {
 export const PALM_FRONDS_SHORELINE: ShorelinePath = {
   id: "palm-fronds",
   name: "Palm Jumeirah Inner Fronds",
-  intensity: 0.42,
+  intensity: 0.95,
   waterSide: 1,
   offsetMeters: 5,
   points: [
@@ -113,7 +113,7 @@ export const PALM_FRONDS_SHORELINE: ShorelinePath = {
 export const CREEK_SHORELINE: ShorelinePath = {
   id: "creek",
   name: "Dubai Creek Banks",
-  intensity: 0.52,
+  intensity: 0.95,
   waterSide: -1,
   offsetMeters: 7,
   points: [
@@ -135,11 +135,61 @@ export const CREEK_SHORELINE: ShorelinePath = {
   ],
 };
 
+// Dubai mainland beachfront — Jumeirah open-coast beach south of the Palm,
+// facing the open Gulf. This is the long city beach that previously had no foam.
+export const JUMEIRAH_BEACH_SHORELINE: ShorelinePath = {
+  id: "jumeirah-beach",
+  name: "Jumeirah Open Beach",
+  intensity: 1.15,
+  waterSide: 1,
+  offsetMeters: 8,
+  points: [
+    [55.1585, 25.0975], // near Palm trunk / south of Marina
+    [55.1637, 25.1015],
+    [55.1689, 25.1056],
+    [55.1741, 25.1097],
+    [55.1793, 25.1138],
+    [55.1845, 25.1179],
+    [55.1897, 25.1219],
+    [55.1949, 25.1258],
+    [55.2001, 25.1296],
+    [55.2053, 25.1333],
+    [55.2105, 25.1369],
+    [55.2157, 25.1404],
+    [55.2209, 25.1438], // toward Jumeirah / Canal mouth
+  ],
+};
+
+// Dubai mainland north — Deira / Port Rashid open-coast facing the Gulf,
+// north of the Creek mouth.
+export const DEIRA_COAST_SHORELINE: ShorelinePath = {
+  id: "deira-coast",
+  name: "Deira & Port Rashid Coast",
+  intensity: 1.1,
+  waterSide: 1,
+  offsetMeters: 8,
+  points: [
+    [55.2711, 25.1611], // Port Rashid
+    [55.2766, 25.1662],
+    [55.2821, 25.1713],
+    [55.2876, 25.1764],
+    [55.2931, 25.1815],
+    [55.2986, 25.1866],
+    [55.3041, 25.1917],
+    [55.3096, 25.1968],
+    [55.3151, 25.2019],
+    [55.3206, 25.207],
+    [55.3261, 25.2121], // toward Creek mouth
+  ],
+};
+
 // All active shorelines — only real coastlines, no artificial boundaries.
 export const SHORELINE_PATHS: ShorelinePath[] = [
   MARINA_BEACH_SHORELINE,
   PALM_OUTER_SHORELINE,
   PALM_FRONDS_SHORELINE,
+  JUMEIRAH_BEACH_SHORELINE,
+  DEIRA_COAST_SHORELINE,
   CREEK_SHORELINE,
 ];
 

@@ -34,16 +34,17 @@ import {
   modelHasWaterRoute,
   waterRouteForDisplay,
 } from "./waterRouteGuards";
+import { sampleWaterWave, waterTimeSeconds, type WaveSample } from "./waterWaveModel";
 
 type MercatorRef = { x: number; y: number; z: number; scale: number };
 
 const WAKE_SAMPLES = 24;
-const WAKE_RECORD_EVERY = 2; // frames between wake position samples
 const LOOK_AHEAD_T = 0.002;
 const BOAT_ORIENTATION_DEBUG = false;
 const BOAT_ROUTE_DEBUG = false;
-const WATERCRAFT_SPEED_FACTOR = 0.9;
 const WATERCRAFT_WAKE_MULTIPLIER = 0.45;
+const METERS_PER_LATITUDE_DEGREE = 111_320;
+const WAKE_SAMPLE_DISTANCE_METERS = 9;
 
 function normalizeAngle(angle: number) {
   return Math.atan2(Math.sin(angle), Math.cos(angle));
@@ -147,6 +148,13 @@ function setLocalPositionFromLngLat(
     (m.y - ref.y) / ref.scale,
     (m.z - ref.z) / ref.scale,
   );
+}
+
+function distanceMeters(a: [number, number], b: [number, number]) {
+  const meanLatitude = ((a[1] + b[1]) * Math.PI) / 360;
+  const dx = (a[0] - b[0]) * METERS_PER_LATITUDE_DEGREE * Math.cos(meanLatitude);
+  const dy = (a[1] - b[1]) * METERS_PER_LATITUDE_DEGREE;
+  return Math.hypot(dx, dy);
 }
 
 // --- Procedural placeholder models ----------------------------------------
@@ -405,17 +413,17 @@ class WakeTrail {
 
 // Interpolate along a route at fraction t (0..1) → position + heading so the
 // model can face its direction of travel.
-type RouteMetrics = { segmentLengths: number[]; totalLength: number };
+type RouteMetrics = { segmentLengthsMeters: number[]; totalLengthMeters: number };
 
 function createRouteMetrics(path: [number, number][]): RouteMetrics {
-  const segmentLengths: number[] = [];
-  let totalLength = 0;
+  const segmentLengthsMeters: number[] = [];
+  let totalLengthMeters = 0;
   for (let i = 1; i < path.length; i++) {
-    const l = Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]);
-    segmentLengths.push(l);
-    totalLength += l;
+    const l = distanceMeters(path[i - 1], path[i]);
+    segmentLengthsMeters.push(l);
+    totalLengthMeters += l;
   }
-  return { segmentLengths, totalLength };
+  return { segmentLengthsMeters, totalLengthMeters };
 }
 
 function routePointAt(
@@ -424,15 +432,15 @@ function routePointAt(
   t: number,
   targetCoord: [number, number],
 ) {
-  if (path.length < 2 || metrics.totalLength === 0) {
+  if (path.length < 2 || metrics.totalLengthMeters === 0) {
     targetCoord[0] = path[0]?.[0] ?? 0;
     targetCoord[1] = path[0]?.[1] ?? 0;
     return;
   }
-  const target = Math.max(0, Math.min(1, t)) * metrics.totalLength;
+  const target = Math.max(0, Math.min(1, t)) * metrics.totalLengthMeters;
   let acc = 0;
   for (let i = 1; i < path.length; i++) {
-    const l = metrics.segmentLengths[i - 1];
+    const l = metrics.segmentLengthsMeters[i - 1];
     if (acc + l >= target) {
       const localT = l === 0 ? 0 : (target - acc) / l;
       const [ax, ay] = path[i - 1];
@@ -488,6 +496,8 @@ type ModelInstance = {
   bowDirection: THREE.Vector3;
   headingCorrection: number;
   yaw: number;
+  pitch: number;
+  roll: number;
   orientationInitialized: boolean;
   routeYaw: number;
   orientationLogged: boolean;
@@ -500,8 +510,9 @@ type ModelInstance = {
   unsafeBlockedLogged: boolean;
   blockedUntil: number;
   baseModelScale: number;
-  frame: number;
+  wakeDistanceAccumulator: number;
   bobOffset: number;
+  waveSample: WaveSample;
 };
 
 // Build the Mapbox custom layer from a registry of model configs.
@@ -548,16 +559,17 @@ export function createModel3DLayer(
       scene.add(sun);
       scene.add(new THREE.HemisphereLight(0x87ceeb, 0xf5f3f0, 1.1));
 
-      const safeRegistry = registry.flatMap((config) => {
+      const safeRegistry = registry.flatMap((config): ModelConfig[] => {
         const route = waterRouteForDisplay(config);
         const allowed = modelHasWaterRoute(config);
         if (!allowed) console.warn(`[Boats] skipped land-crossing route: ${config.id}`);
         if (!allowed) return [];
+        const mode: "loop" | "pingpong" = isClosedRoute(route ?? []) ? "loop" : "pingpong";
         if (route && route !== config.route) {
-          return [{ ...config, route, routeMode: isClosedRoute(route) ? "loop" : "pingpong" }];
+          return [{ ...config, route, routeMode: mode }];
         }
         if (route && !config.routeMode) {
-          return [{ ...config, routeMode: isClosedRoute(route) ? "loop" : "pingpong" }];
+          return [{ ...config, routeMode: mode }];
         }
         return [config];
       });
@@ -568,7 +580,10 @@ export function createModel3DLayer(
 
       for (const config of safeRegistry) {
         const group = new THREE.Group();
-        const initialT = Math.random();
+        const initialT =
+          config.startProgress != null
+            ? Math.max(0, Math.min(1, config.startProgress))
+            : Math.random();
         // Wake only for water craft that move.
         const baseWakeWidth =
           config.type === "ship"
@@ -599,6 +614,8 @@ export function createModel3DLayer(
           bowDirection: new THREE.Vector3(),
           headingCorrection: forwardAxisHeading(config.forwardAxis ?? "+x", config.rotation),
           yaw: 0,
+          pitch: 0,
+          roll: 0,
           orientationInitialized: false,
           routeYaw: 0,
           orientationLogged: false,
@@ -611,8 +628,9 @@ export function createModel3DLayer(
           unsafeBlockedLogged: false,
           blockedUntil: 0,
           baseModelScale: 1,
-          frame: 0,
+          wakeDistanceAccumulator: 0,
           bobOffset: instances.length * 1.3,
+          waveSample: { height: 0, normal: new THREE.Vector3(), slopeX: 0, slopeY: 0 },
         };
         scene.add(group);
         if (inst.wake) {
@@ -693,12 +711,19 @@ export function createModel3DLayer(
 
         if (config.animate && isValidRoute(config.route) && inst.routeMetrics) {
           const routeMode = resolveRouteMode(config);
-          const speed = (config.speed ?? 0.03) * WATERCRAFT_SPEED_FACTOR;
+          const speedMetersPerSecond =
+            config.speedMetersPerSecond ??
+            (config.speed ?? 0.03) * inst.routeMetrics.totalLengthMeters;
+          const progressStep =
+            inst.routeMetrics.totalLengthMeters > 0
+              ? (speedMetersPerSecond * dt) / inst.routeMetrics.totalLengthMeters
+              : 0;
           if (inst.blockedUntil > time) continue;
+          const prevT = inst.t;
           if (routeMode === "loop") {
-            inst.t = (inst.t + speed * dt) % 1;
+            inst.t = (inst.t + progressStep) % 1;
           } else {
-            inst.t += inst.direction * speed * dt;
+            inst.t += inst.direction * progressStep;
             if (inst.t >= 1) {
               inst.t = 1;
               inst.direction = -1;
@@ -708,6 +733,10 @@ export function createModel3DLayer(
               inst.direction = 1;
             }
           }
+          const distanceTravelledMeters =
+            routeMode === "loop"
+              ? ((inst.t - prevT + 1) % 1 || progressStep) * inst.routeMetrics.totalLengthMeters
+              : Math.abs(inst.t - prevT) * inst.routeMetrics.totalLengthMeters;
           const lookAheadDirection = routeMode === "loop" ? 1 : inst.direction;
           let aheadT =
             routeMode === "loop"
@@ -751,26 +780,35 @@ export function createModel3DLayer(
             ref,
             config.altitude,
           );
-          // Gentle bob for water craft.
-          pos.z += 1 + Math.sin(time * 1.5 + inst.bobOffset) * 0.4;
+          const waveTime = waterTimeSeconds();
+          sampleWaterWave(pos.x, pos.y, waveTime, 1, inst.waveSample);
+          const floatOffset = config.type === "ship" ? 1.2 : config.type === "abra" ? 0.45 : 0.8;
+          pos.z += floatOffset + inst.waveSample.height;
           inst.group.position.copy(pos);
           const dx = ahead.x - pos.x;
           const dy = ahead.y - pos.y;
           inst.routeYaw = Math.atan2(dy, dx);
           const targetYaw = inst.routeYaw - inst.headingCorrection + (config.headingOffset ?? 0);
+          const targetPitch = Math.atan(inst.waveSample.slopeX) * 0.28;
+          const targetRoll = Math.atan(inst.waveSample.slopeY) * 0.34;
 
           if (!inst.orientationInitialized) {
             inst.yaw = targetYaw;
-            inst.group.rotation.x = 0;
-            inst.group.rotation.y = 0;
+            inst.pitch = targetPitch;
+            inst.roll = targetRoll;
+            inst.group.rotation.x = targetRoll;
+            inst.group.rotation.y = -targetPitch;
             inst.group.rotation.z = targetYaw;
             inst.orientationInitialized = true;
           } else {
             const turnSpeed = config.turnSpeed ?? 3.5;
             const turnAmount = 1 - Math.exp(-turnSpeed * dt);
             inst.yaw = lerpAngle(inst.yaw, targetYaw, turnAmount);
-            inst.group.rotation.x = 0;
-            inst.group.rotation.y = 0;
+            const floatAmount = 1 - Math.exp(-4.5 * dt);
+            inst.pitch += (targetPitch - inst.pitch) * floatAmount;
+            inst.roll += (targetRoll - inst.roll) * floatAmount;
+            inst.group.rotation.x = inst.roll;
+            inst.group.rotation.y = -inst.pitch;
             inst.group.rotation.z = inst.yaw;
           }
 
@@ -793,13 +831,17 @@ export function createModel3DLayer(
             }
           }
 
-          inst.frame++;
-          if (inst.wake && inst.frame % WAKE_RECORD_EVERY === 0) {
+          if (inst.wake) {
+            inst.wakeDistanceAccumulator += distanceTravelledMeters;
+          }
+          if (inst.wake && inst.wakeDistanceAccumulator >= WAKE_SAMPLE_DISTANCE_METERS) {
+            inst.wakeDistanceAccumulator %= WAKE_SAMPLE_DISTANCE_METERS;
             const bowYaw = inst.yaw + inst.headingCorrection;
             const sternOffset = config.sternOffset ?? 16;
             inst.sternPosition.copy(pos);
             inst.sternPosition.x -= Math.cos(bowYaw) * sternOffset;
             inst.sternPosition.y -= Math.sin(bowYaw) * sternOffset;
+            inst.sternPosition.z += inst.waveSample.height * 0.25;
             inst.wake.push(inst.sternPosition);
             inst.wake.update();
           }

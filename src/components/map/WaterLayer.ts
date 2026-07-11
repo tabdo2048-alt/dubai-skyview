@@ -3,7 +3,6 @@
 
 import * as THREE from "three";
 import mapboxgl from "mapbox-gl";
-import { OPEN_SEA_WAVE_PATHS, type OpenSeaWavePath } from "@/lib/openSeaWaves";
 import { WATER_AREAS } from "@/lib/water";
 import { SHORELINE_PATHS, type ShorelinePath } from "@/lib/shorelines";
 import {
@@ -12,15 +11,24 @@ import {
   releaseSharedRenderer,
   syncSharedRendererSize,
 } from "@/lib/mapbox/sharedThreeRenderer";
+import {
+  buildWaterWaveGLSL,
+  MAX_WAVE_AMPLITUDE,
+  waterTimeSeconds,
+} from "@/lib/mapbox/waterWaveModel";
+
+// Development-only wireframe overlay of every water polygon (and its holes) so
+// coverage can be checked against the coastline. Never enable in production.
+const WATER_DEBUG = false;
 
 const SHORE_WAVES_ENABLED = true;
-const OPEN_SEA_WAVES_ENABLED = true;
+// Note: the old hand-drawn open-sea white ribbon meshes are retired — open-Gulf
+// crest foam now comes from the water shader itself (see WATER_FRAGMENT).
 const SHORE_WAVE_CYCLE_SECONDS = 4.5;
-const SHORE_RIBBON_OFFSETS = [42, 28, 14] as const;
-const BASE_SHORE_HALF_WIDTH_M = 13;
+const SHORE_RIBBON_OFFSETS = [70, 56, 42, 28, 14] as const;
+const BASE_SHORE_HALF_WIDTH_M = 22;
 const SHORE_SAMPLE_STEP_M = 7;
 const SHORE_Z = 0.62;
-const OPEN_SEA_WAVE_Z = 0.74;
 
 type MercatorRef = {
   x: number;
@@ -34,16 +42,11 @@ type ShorelineGeometryBundle = {
   material: THREE.ShaderMaterial;
 };
 
-type OpenSeaWaveGeometryBundle = {
-  mesh: THREE.Mesh;
-  material: THREE.ShaderMaterial;
-};
-
 function getShoreWaveWidthMeters(zoom: number): number {
-  if (zoom <= 10) return 18;
-  if (zoom <= 12) return 14;
-  if (zoom <= 14) return 10;
-  return 7;
+  if (zoom <= 10) return 30;
+  if (zoom <= 12) return 24;
+  if (zoom <= 14) return 18;
+  return 13;
 }
 
 function hash01(value: number): number {
@@ -210,7 +213,7 @@ const SHORE_FRAGMENT = /* glsl */ `
   void main() {
     float cycleLength = max(uCycleSeconds, 0.1);
     float cycle = mod(uTime, cycleLength) / cycleLength;
-    float ribbonPhase = vRibbon / 3.0;
+    float ribbonPhase = vRibbon / 5.0;
     float localPhase = fract(cycle - ribbonPhase + 0.18);
     float arrival =
       smoothstep(0.04, 0.16, localPhase) *
@@ -224,7 +227,7 @@ const SHORE_FRAGMENT = /* glsl */ `
     float pulse = 0.72 + 0.24 * sin(uTime * 2.1 + vPhase * 9.0);
     float alpha =
       uOpacity *
-      0.92 *
+      1.7 *
       vIntensity *
       vSegmentMask *
       generationMask *
@@ -233,7 +236,7 @@ const SHORE_FRAGMENT = /* glsl */ `
       edgeFade *
       pulse;
 
-    gl_FragColor = vec4(uColor, alpha);
+    gl_FragColor = vec4(uColor, clamp(alpha, 0.0, 1.0));
   }
 `;
 
@@ -249,146 +252,12 @@ function makeShoreMaterial(): THREE.ShaderMaterial {
     uniforms: {
       uTime: { value: 0 },
       uGeneration: { value: 0 },
-      uOpacity: { value: 0.78 },
+      uOpacity: { value: 1.1 },
       uCycleSeconds: { value: SHORE_WAVE_CYCLE_SECONDS },
       uWidthScale: { value: 1 },
       uColor: { value: new THREE.Color(0xffffff) },
     },
   });
-}
-
-const OPEN_SEA_VERTEX = /* glsl */ `
-  attribute float aAlong;
-  attribute float aAcross;
-  attribute float aPhase;
-  attribute float aIntensity;
-  varying float vAlong;
-  varying float vAcross;
-  varying float vPhase;
-  varying float vIntensity;
-
-  void main() {
-    vAlong = aAlong;
-    vAcross = aAcross;
-    vPhase = aPhase;
-    vIntensity = aIntensity;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }
-`;
-
-const OPEN_SEA_FRAGMENT = /* glsl */ `
-  precision highp float;
-  varying float vAlong;
-  varying float vAcross;
-  varying float vPhase;
-  varying float vIntensity;
-  uniform float uTime;
-  uniform float uOpacity;
-
-  float hash01(float value) {
-    float x = sin(value * 12.9898) * 43758.5453;
-    return x - floor(x);
-  }
-
-  void main() {
-    float distanceFade = 1.0 - smoothstep(0.18, 1.0, abs(vAcross));
-    float wavePulse = sin(vAlong * 0.028 - uTime * 1.45 + vPhase * 6.2831) * 0.5 + 0.5;
-    float crest = smoothstep(0.5, 0.95, wavePulse);
-    float segmentNoise = hash01(floor(vAlong * 0.028) + vPhase * 311.0);
-    float broken = smoothstep(0.16, 0.54, segmentNoise);
-    float shimmer = 0.7 + 0.3 * sin(vAlong * 0.01 + uTime * 0.58 + vPhase * 9.0);
-    float alpha = uOpacity * 0.95 * vIntensity * distanceFade * crest * broken * shimmer;
-    gl_FragColor = vec4(vec3(1.0), alpha);
-  }
-`;
-
-function makeOpenSeaWaveMaterial(): THREE.ShaderMaterial {
-  return new THREE.ShaderMaterial({
-    vertexShader: OPEN_SEA_VERTEX,
-    fragmentShader: OPEN_SEA_FRAGMENT,
-    transparent: true,
-    depthTest: false,
-    depthWrite: false,
-    blending: THREE.NormalBlending,
-    side: THREE.DoubleSide,
-    uniforms: {
-      uTime: { value: 0 },
-      uOpacity: { value: 0.56 },
-    },
-  });
-}
-
-function buildOpenSeaWaveGeometry(ref: MercatorRef): THREE.BufferGeometry {
-  const positions: number[] = [];
-  const alongs: number[] = [];
-  const acrosses: number[] = [];
-  const phases: number[] = [];
-  const intensities: number[] = [];
-
-  const pushVertex = (
-    x: number,
-    y: number,
-    along: number,
-    across: number,
-    phase: number,
-    intensity: number,
-  ) => {
-    positions.push(x, y, OPEN_SEA_WAVE_Z);
-    alongs.push(along);
-    acrosses.push(across);
-    phases.push(phase);
-    intensities.push(intensity);
-  };
-
-  for (const wavePath of OPEN_SEA_WAVE_PATHS) {
-    addOpenSeaWavePath(wavePath, ref, pushVertex);
-  }
-
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(positions), 3));
-  geometry.setAttribute("aAlong", new THREE.BufferAttribute(new Float32Array(alongs), 1));
-  geometry.setAttribute("aAcross", new THREE.BufferAttribute(new Float32Array(acrosses), 1));
-  geometry.setAttribute("aPhase", new THREE.BufferAttribute(new Float32Array(phases), 1));
-  geometry.setAttribute("aIntensity", new THREE.BufferAttribute(new Float32Array(intensities), 1));
-  return geometry;
-}
-
-function addOpenSeaWavePath(
-  wavePath: OpenSeaWavePath,
-  ref: MercatorRef,
-  pushVertex: (
-    x: number,
-    y: number,
-    along: number,
-    across: number,
-    phase: number,
-    intensity: number,
-  ) => void,
-) {
-  const points = wavePath.points.map(([lng, lat]) => lngLatToLocal(lng, lat, ref));
-  const phase = hash01(idHash(wavePath.id));
-  let accumulated = 0;
-
-  for (let index = 0; index < points.length - 1; index++) {
-    const start = points[index];
-    const end = points[index + 1];
-    const dx = end.x - start.x;
-    const dy = end.y - start.y;
-    const length = Math.hypot(dx, dy);
-    if (length < 1) continue;
-
-    const nx = (-dy / length) * (wavePath.widthMeters / 2);
-    const ny = (dx / length) * (wavePath.widthMeters / 2);
-    const startAlong = accumulated;
-    const endAlong = accumulated + length;
-    pushVertex(start.x - nx, start.y - ny, startAlong, -1, phase, wavePath.intensity);
-    pushVertex(start.x + nx, start.y + ny, startAlong, 1, phase, wavePath.intensity);
-    pushVertex(end.x - nx, end.y - ny, endAlong, -1, phase, wavePath.intensity);
-    pushVertex(start.x + nx, start.y + ny, startAlong, 1, phase, wavePath.intensity);
-    pushVertex(end.x + nx, end.y + ny, endAlong, 1, phase, wavePath.intensity);
-    pushVertex(end.x - nx, end.y - ny, endAlong, -1, phase, wavePath.intensity);
-    accumulated = endAlong;
-  }
 }
 
 function buildShoreGeometry(ref: MercatorRef): THREE.BufferGeometry {
@@ -538,7 +407,7 @@ function addShorelinePath(
       const along1 = accumulated + s1;
       const segmentSeed = baseHash + i * 97 + step * 13;
       const phase = hash01(segmentSeed);
-      const segmentMask = hash01(segmentSeed + 41) > 0.26 ? 1 : 0;
+      const segmentMask = hash01(segmentSeed + 41) > 0.08 ? 1 : 0;
 
       for (let ribbonIndex = 0; ribbonIndex < SHORE_RIBBON_OFFSETS.length; ribbonIndex++) {
         const finalOffset = shoreline.offsetMeters + SHORE_RIBBON_OFFSETS[ribbonIndex];
@@ -567,84 +436,172 @@ function addShorelinePath(
   }
 }
 
-const WATER_VERTEX = /* glsl */ `
-  varying vec3 vWorld;
-  uniform float uTime;
-  uniform float uWaveHeight;
-  uniform float uWaveScale;
+// Vertex + fragment share ONE copy of the Gerstner maths, generated from
+// waterWaveModel.ts so the GPU surface matches the CPU boat physics exactly.
+const WAVE_GLSL = buildWaterWaveGLSL();
 
-  float wave(vec2 p, vec2 dir, float freq, float speed) {
-    return sin(dot(p, normalize(dir)) * freq + uTime * speed);
-  }
+const WATER_VERTEX = /* glsl */ `
+  ${WAVE_GLSL}
+  uniform float uTime;
+  uniform float uIntensity;
+  varying vec3 vLocal;
+  varying vec2 vBase;
 
   void main() {
-    vec3 displaced = position;
-    vec2 p = position.xy * uWaveScale;
-    float h = wave(p, vec2(1.0, 0.35), 7.0, 1.15) * 0.45;
-    h += wave(p, vec2(-0.25, 1.0), 10.0, 0.82) * 0.35;
-    h += wave(p, vec2(0.75, -0.55), 15.0, 1.45) * 0.20;
-    displaced.z += h * uWaveHeight;
-    vWorld = displaced;
+    vec2 base = position.xy;
+    vec2 shift = waterWaveDisplaceXY(base, uTime, uIntensity);
+    float h = waterWaveHeight(base, uTime, uIntensity);
+    vec3 displaced = vec3(base + shift, position.z + h);
+    vBase = base;
+    vLocal = displaced;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
   }
 `;
 
 const WATER_FRAGMENT = /* glsl */ `
   precision highp float;
-  varying vec3 vWorld;
+  ${WAVE_GLSL}
+  varying vec3 vLocal;
+  varying vec2 vBase;
   uniform float uTime;
-  uniform vec3 uWaterColor;
+  uniform float uIntensity;
+  uniform float uMaxAmp;
+  uniform vec3 uCamLocal;
+  uniform vec3 uSunDir;
   uniform vec3 uDeepColor;
+  uniform vec3 uShallowColor;
+  uniform vec3 uSkyColor;
   uniform vec3 uFoamColor;
-  uniform float uDistortion;
   uniform float uOpacity;
 
-  float wave(vec2 p, float speed, float t) {
-    return sin((p.x + p.y) + t * speed) * 0.5 + 0.5;
+  // Cheap value noise for restrained high-frequency normal detail.
+  float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+  }
+  float valueNoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    float a = hash(i);
+    float b = hash(i + vec2(1.0, 0.0));
+    float c = hash(i + vec2(0.0, 1.0));
+    float d = hash(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
   }
 
   void main() {
-    float t = uTime;
-    vec2 p = vWorld.xy * 0.010;
-    float w1 = wave(p * 1.0, 1.25, t);
-    float w2 = wave(p * 1.7 + 3.7, -0.9, t);
-    float w3 = wave(p * vec2(3.8, 1.4) + 1.6, 0.55, t);
-    float swell = w1 * 0.6 + w2 * 0.4;
-    float lines = wave(p * vec2(2.2, 5.0), 1.05, t);
-    float fineLines = wave(p * vec2(-4.2, 2.8) + 1.2, -1.35, t);
-    float glint = smoothstep(1.0 - uDistortion, 1.0, lines);
-    float fineGlint = smoothstep(0.82, 1.0, fineLines) * 0.18;
-    float whitecap = smoothstep(0.72, 1.0, swell) * 0.7;
-    float depthMix = clamp(swell * 0.65 + w3 * 0.35, 0.0, 1.0);
-    float highlight = glint * 0.12 + fineGlint * 0.10 + whitecap * 0.22;
-    vec3 water = mix(uDeepColor, uWaterColor, depthMix);
-    vec3 color = mix(water, uFoamColor, highlight);
-    float alpha = uOpacity * (0.86 + swell * 0.12 + glint * 0.10);
-    gl_FragColor = vec4(color, alpha);
+    vec3 viewVec = uCamLocal - vLocal;
+    float dist = length(viewVec);
+    vec3 viewDir = viewVec / max(dist, 1e-4);
+
+    // Per-fragment wave normal + height from the SAME Gerstner field — so
+    // lighting is independent of triangle density across the huge Gulf polygon.
+    vec3 waveNormal = waterWaveNormal(vBase, uTime, uIntensity);
+    float height = waterWaveHeight(vBase, uTime, uIntensity);
+
+    // Distance-based detail reduction: near water gets fine ripples, far water
+    // settles so the surface never shimmers into aliasing at the horizon.
+    float detail = 1.0 - smoothstep(400.0, 2600.0, dist);
+    vec2 np = vLocal.xy * 0.09 + uTime * 0.12;
+    float n = valueNoise(np) + 0.5 * valueNoise(np * 2.3 - uTime * 0.07);
+    vec3 normal = normalize(waveNormal + vec3((n - 0.75) * 0.28 * detail, (valueNoise(np.yx) - 0.5) * 0.28 * detail, 0.0));
+
+    // Fresnel: grazing angles reflect the sky, steep angles show water color.
+    float fres = pow(clamp(1.0 - max(dot(normal, viewDir), 0.0), 0.0, 1.0), 5.0);
+    fres = mix(0.02, 1.0, fres);
+
+    // Directional sun specular highlight.
+    vec3 halfDir = normalize(uSunDir + viewDir);
+    float spec = pow(max(dot(normal, halfDir), 0.0), 220.0) * 1.4;
+
+    // Deep vs shallow water color driven by surface facing + crest height.
+    float facing = clamp(dot(normal, vec3(0.0, 0.0, 1.0)), 0.0, 1.0);
+    float crest = clamp(height / max(uMaxAmp * uIntensity, 0.001), -1.0, 1.0);
+    float depthMix = clamp(facing * 0.7 + crest * 0.3 + 0.15, 0.0, 1.0);
+    vec3 water = mix(uDeepColor, uShallowColor, depthMix);
+
+    // Sky reflection via Fresnel, then warm sun glint.
+    vec3 color = mix(water, uSkyColor, fres * 0.6);
+    color += vec3(1.0, 0.96, 0.86) * spec;
+
+    // Subtle foam ONLY on the sharpest, highest crests — never full-surface.
+    float foam = smoothstep(0.72, 0.98, crest) * smoothstep(0.35, 0.9, 1.0 - facing);
+    foam *= 0.5 + 0.5 * valueNoise(vLocal.xy * 0.5 + uTime * 0.4);
+    color = mix(color, uFoamColor, clamp(foam * uIntensity, 0.0, 0.6));
+
+    float alpha = uOpacity * (0.82 + fres * 0.18) + spec * 0.15 + foam * 0.25;
+    gl_FragColor = vec4(color, clamp(alpha, 0.0, 1.0));
   }
 `;
 
-function makeWaterMaterial(mode: "satellite" | "3d" = "3d"): THREE.ShaderMaterial {
+type WaterMaterialOptions = {
+  mode: "satellite" | "3d";
+  intensity: number;
+};
+
+function makeWaterMaterial({ mode, intensity }: WaterMaterialOptions): THREE.ShaderMaterial {
   const satellite = mode === "satellite";
   return new THREE.ShaderMaterial({
     vertexShader: WATER_VERTEX,
     fragmentShader: WATER_FRAGMENT,
     transparent: true,
-    depthTest: false,
+    // Real depth so land, piers, and islands can occlude water instead of it
+    // painting over everything. depthWrite stays off (transparent surface) and a
+    // tiny polygon offset keeps it off the terrain plane without z-fighting.
+    depthTest: true,
     depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1,
     blending: THREE.NormalBlending,
     side: THREE.DoubleSide,
     uniforms: {
       uTime: { value: 0 },
-      uWaterColor: { value: new THREE.Color(satellite ? 0x4fa9bd : 0x56b5ca) },
-      uDeepColor: { value: new THREE.Color(satellite ? 0x145e73 : 0x1c7187) },
+      uIntensity: { value: intensity },
+      uMaxAmp: { value: MAX_WAVE_AMPLITUDE },
+      uCamLocal: { value: new THREE.Vector3() },
+      uSunDir: { value: new THREE.Vector3(-0.5, -0.35, 0.79).normalize() },
+      uDeepColor: { value: new THREE.Color(satellite ? 0x0d4f66 : 0x125a72) },
+      uShallowColor: { value: new THREE.Color(satellite ? 0x1f97b0 : 0x2bb6cf) },
+      uSkyColor: { value: new THREE.Color(satellite ? 0x9fd6e8 : 0xbfe9f5) },
       uFoamColor: { value: new THREE.Color(0xffffff) },
-      uDistortion: { value: satellite ? 0.25 : 0.32 },
-      uOpacity: { value: satellite ? 0.23 : 0.18 },
-      uWaveHeight: { value: satellite ? 1.9 : 1.55 },
-      uWaveScale: { value: 0.0044 },
+      uOpacity: { value: satellite ? 0.5 : 0.62 },
     },
   });
+}
+
+// Build a triangulated, grid-refined water surface for one area. THREE.Shape
+// handles the outer ring + holes (islands/land) via Earcut; the result is then
+// subdivided so there are enough vertices for smooth Gerstner displacement even
+// across the large offshore polygons.
+function buildWaterGeometry(
+  area: (typeof WATER_AREAS)[number],
+  ref: MercatorRef,
+): THREE.BufferGeometry {
+  const shape = new THREE.Shape();
+  area.polygon.forEach(([lng, lat], i) => {
+    const p = lngLatToLocal(lng, lat, ref, 0);
+    if (i === 0) shape.moveTo(p.x, p.y);
+    else shape.lineTo(p.x, p.y);
+  });
+  shape.closePath();
+
+  for (const hole of area.holes ?? []) {
+    if (hole.length < 3) continue;
+    const path = new THREE.Path();
+    hole.forEach(([lng, lat], i) => {
+      const p = lngLatToLocal(lng, lat, ref, 0);
+      if (i === 0) path.moveTo(p.x, p.y);
+      else path.lineTo(p.x, p.y);
+    });
+    path.closePath();
+    shape.holes.push(path);
+  }
+
+  // Bigger, exposed areas need more subdivision for clean crests; sheltered
+  // basins stay light. openSea areas are large → 3 levels, others → 2.
+  const levels = area.openSea ? 3 : 2;
+  return subdivide(new THREE.ShapeGeometry(shape), levels);
 }
 
 export function createWaterLayer(
@@ -656,31 +613,24 @@ export function createWaterLayer(
   let camera: THREE.Camera;
   let map: mapboxgl.Map;
   const waters: THREE.Mesh[] = [];
+  const waterMaterials: THREE.ShaderMaterial[] = [];
+  const debugLines: THREE.LineSegments[] = [];
   let ref: MercatorRef;
   let clock: THREE.Clock;
   let onResize: (() => void) | null = null;
-  let waterMaterial: THREE.ShaderMaterial | null = null;
   let shoreMesh: THREE.Mesh | null = null;
   let shoreMaterial: THREE.ShaderMaterial | null = null;
-  let openSeaMesh: THREE.Mesh | null = null;
-  let openSeaMaterial: THREE.ShaderMaterial | null = null;
   let firstFrameLogged = false;
   let projectionWarned = false;
   const localToMercator = new THREE.Matrix4();
   const projectionMatrix = new THREE.Matrix4();
   const mercatorScale = new THREE.Vector3();
+  const camLocal = new THREE.Vector3();
+  const camMercator = new THREE.Vector3();
 
   const createShorelineBundle = (): ShorelineGeometryBundle => {
     const material = makeShoreMaterial();
     const mesh = new THREE.Mesh(buildShoreGeometry(ref), material);
-    mesh.renderOrder = 2;
-    mesh.frustumCulled = false;
-    return { mesh, material };
-  };
-
-  const createOpenSeaWaveBundle = (): OpenSeaWaveGeometryBundle => {
-    const material = makeOpenSeaWaveMaterial();
-    const mesh = new THREE.Mesh(buildOpenSeaWaveGeometry(ref), material);
     mesh.renderOrder = 2;
     mesh.frustumCulled = false;
     return { mesh, material };
@@ -708,7 +658,8 @@ export function createWaterLayer(
         scale: origin.meterInMercatorCoordinateUnits(),
       };
 
-      waterMaterial = makeWaterMaterial(mode);
+      // One mesh + material per water body so each carries its own wave
+      // intensity (calm Marina/Creek/canal, small Palm lagoon, full open Gulf).
       for (const area of WATER_AREAS) {
         if (!area.renderSurface) {
           console.log("[Water] surface skipped", area.id);
@@ -727,20 +678,30 @@ export function createWaterLayer(
           continue;
         }
 
-        const shape = new THREE.Shape();
-        area.polygon.forEach(([lng, lat], i) => {
-          const p = lngLatToLocal(lng, lat, ref, 0);
-          if (i === 0) shape.moveTo(p.x, p.y);
-          else shape.lineTo(p.x, p.y);
-        });
-        shape.closePath();
-
-        const geometry = subdivide(new THREE.ShapeGeometry(shape), 2);
-        const water = new THREE.Mesh(geometry, waterMaterial);
-        water.position.z = 0.2;
+        const material = makeWaterMaterial({ mode, intensity: area.waveIntensity ?? 1 });
+        const geometry = buildWaterGeometry(area, ref);
+        const water = new THREE.Mesh(geometry, material);
+        // Tiny lift keeps water off the exact terrain plane; polygon offset in
+        // the material does the real z-fighting prevention.
+        water.position.z = 0.15;
         water.renderOrder = 1;
+        water.frustumCulled = false;
+        waterMaterials.push(material);
         waters.push(water);
         scene.add(water);
+
+        if (WATER_DEBUG) {
+          const wire = new THREE.WireframeGeometry(geometry);
+          const line = new THREE.LineSegments(
+            wire,
+            new THREE.LineBasicMaterial({ color: area.openSea ? 0xff3366 : 0x33ff99 }),
+          );
+          line.position.z = 0.5;
+          line.renderOrder = 5;
+          line.frustumCulled = false;
+          debugLines.push(line);
+          scene.add(line);
+        }
       }
 
       console.log(
@@ -761,14 +722,6 @@ export function createWaterLayer(
         console.log("[ShoreWaves] geometry created once");
       }
 
-      if (OPEN_SEA_WAVES_ENABLED) {
-        const bundle = createOpenSeaWaveBundle();
-        openSeaMesh = bundle.mesh;
-        openSeaMaterial = bundle.material;
-        scene.add(openSeaMesh);
-        console.log("[OpenSeaWaves] wide swell tracks created", OPEN_SEA_WAVE_PATHS.length);
-      }
-
       renderer = acquireSharedRenderer(map.getCanvas(), gl);
       console.log("[Water] shared renderer acquired");
       onResize = () => syncSharedRendererSize(map.getCanvas());
@@ -778,17 +731,35 @@ export function createWaterLayer(
 
     render(_gl: WebGLRenderingContext, matrix: unknown) {
       if (!renderer || (controller && !controller.shouldRender())) return;
-      const dt = Math.min(clock.getDelta(), 0.1);
+      clock.getDelta();
       const elapsed = clock.elapsedTime;
+      // Shared, layer-independent wave clock so the surface and the boats
+      // (Model3DLayer) evaluate the identical wave field at the identical t.
+      const waveTime = waterTimeSeconds();
 
-      if (waterMaterial?.uniforms.uTime) waterMaterial.uniforms.uTime.value += dt * 0.8;
+      // Camera position in local metres space, for Fresnel + specular.
+      const cam = map.getFreeCameraOptions().position;
+      if (cam) {
+        camMercator.set(cam.x, cam.y, cam.z);
+        // Inverse of localToMercator (which negates Y via mercatorScale.y).
+        camLocal.set(
+          (camMercator.x - ref.x) / ref.scale,
+          -(camMercator.y - ref.y) / ref.scale,
+          (camMercator.z - ref.z) / ref.scale,
+        );
+      }
+
+      for (const material of waterMaterials) {
+        material.uniforms.uTime.value = waveTime;
+        (material.uniforms.uCamLocal.value as THREE.Vector3).copy(camLocal);
+      }
+
       if (shoreMaterial) {
         shoreMaterial.uniforms.uTime.value = elapsed;
         shoreMaterial.uniforms.uGeneration.value = Math.floor(elapsed / SHORE_WAVE_CYCLE_SECONDS);
         shoreMaterial.uniforms.uCycleSeconds.value = SHORE_WAVE_CYCLE_SECONDS;
         shoreMaterial.uniforms.uWidthScale.value = getShoreWaveWidthMeters(map.getZoom()) / 18;
       }
-      if (openSeaMaterial) openSeaMaterial.uniforms.uTime.value = elapsed;
 
       const mArr = extractProjectionMatrix(matrix);
       if (!mArr) {
@@ -821,11 +792,18 @@ export function createWaterLayer(
       if (onResize) map.off("resize", onResize);
       onResize = null;
       for (const water of waters) {
+        scene.remove(water);
         water.geometry.dispose();
       }
       waters.length = 0;
-      waterMaterial?.dispose();
-      waterMaterial = null;
+      for (const material of waterMaterials) material.dispose();
+      waterMaterials.length = 0;
+      for (const line of debugLines) {
+        scene.remove(line);
+        line.geometry.dispose();
+        (line.material as THREE.Material).dispose();
+      }
+      debugLines.length = 0;
       if (shoreMesh) {
         scene.remove(shoreMesh);
         shoreMesh.geometry.dispose();
@@ -833,13 +811,6 @@ export function createWaterLayer(
       }
       shoreMaterial?.dispose();
       shoreMaterial = null;
-      if (openSeaMesh) {
-        scene.remove(openSeaMesh);
-        openSeaMesh.geometry.dispose();
-        openSeaMesh = null;
-      }
-      openSeaMaterial?.dispose();
-      openSeaMaterial = null;
       releaseSharedRenderer();
       renderer = null;
     },

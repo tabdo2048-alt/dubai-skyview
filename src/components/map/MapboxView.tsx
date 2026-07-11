@@ -12,6 +12,10 @@ import {
 import { createWaterLayer } from "./WaterLayer";
 import { createModel3DLayer } from "@/lib/mapbox/Model3DLayer";
 import { MODEL_REGISTRY } from "@/lib/mapbox/modelRegistry";
+import {
+  addSatelliteNavigationDebugOverlay,
+  shouldShowNavigationDebugOverlay,
+} from "@/lib/mapbox/navigationDebugOverlay";
 import { waterRouteForDisplay } from "@/lib/mapbox/waterRouteGuards";
 import type { ProjectWithRelations } from "@/lib/types";
 import { useFiltersStore } from "@/store/filters";
@@ -88,6 +92,8 @@ export function MapboxView({
   const modelsAddedRef = useRef(false);
   const stationInteractionAddedRef = useRef(false);
   const heavyLayerFallbackTimeoutRef = useRef<number | null>(null);
+  const deferredLayerTimeoutsRef = useRef<number[]>([]);
+  const deferredLayersScheduledRef = useRef(false);
   // Ensures the map-ready signal (setMapReady + onReady) fires exactly once,
   // whether the idle handler or the style.load fallback timeout gets there first.
   const readySignaledRef = useRef(false);
@@ -101,8 +107,8 @@ export function MapboxView({
   // Threaded into custom layers so they can gate their render loops.
   const isActiveRef = useRef(active);
   const isVisibleRef = useRef(document.visibilityState === "visible");
-  // Loading overlay: shown until the map style + tiles are idle and heavy
-  // Three.js layers have been added, so no black/blank frame is visible.
+  // Loading overlay: shown only until the base Mapbox map is ready. All custom
+  // layers are scheduled after that so the map appears quickly.
   const [mapReady, setMapReady] = useState(false);
   const { selectedProjectId, setSelectedProjectId } = useFiltersStore();
 
@@ -194,29 +200,14 @@ export function MapboxView({
         }
       }
 
-      // --- Metro 2030 network (layers created hidden; metroMode drives them) ---
-      // Lightweight vector layers — safe to add immediately on style.load.
-      try {
-        addMetroLayers(map);
-        addStationLayers(map);
-      } catch (err) {
-        console.error("Failed to add metro/train layers", err);
-      }
-
-      // Subtle boat route guide lines — available in both modes if boats are enabled.
       styleLoadedRef.current = true;
-
-      // If a network toggle was flipped on before the style finished loading,
-      // play it now that the layers exist.
-      if (metroModeRef.current) playNetworkSequence(map, METRO_LINES, "metro");
-      if (trainModeRef.current) playNetworkSequence(map, TRAIN_LINES, "train");
 
       // Fallback: if idle arrives late (or already fired) the water still gets
       // added shortly after the style loads, so satellite mode shows animated
       // water without waiting on tiles. Duplicate-guarded inside addHeavyLayers.
       heavyLayerFallbackTimeoutRef.current = window.setTimeout(() => {
-        addHeavyLayers(map);
         signalReady();
+        scheduleDeferredLayers(map);
       }, 900);
     });
 
@@ -224,8 +215,8 @@ export function MapboxView({
     // style loaded, tiles in — so the first frames are never a black/blank
     // WebGL canvas. Runs once.
     map.once("idle", () => {
-      addHeavyLayers(map);
       signalReady();
+      scheduleDeferredLayers(map);
     });
 
     map.on("moveend", () => {
@@ -241,6 +232,8 @@ export function MapboxView({
         clearTimeout(heavyLayerFallbackTimeoutRef.current);
         heavyLayerFallbackTimeoutRef.current = null;
       }
+      clearDeferredLayerTimeouts();
+      deferredLayersScheduledRef.current = false;
       styleLoadedRef.current = false;
       stationInteractionAddedRef.current = false;
       readySignaledRef.current = false;
@@ -345,6 +338,43 @@ export function MapboxView({
     onReady?.();
   }
 
+  function clearDeferredLayerTimeouts() {
+    for (const timeout of deferredLayerTimeoutsRef.current) clearTimeout(timeout);
+    deferredLayerTimeoutsRef.current = [];
+  }
+
+  function scheduleDeferredLayers(map: mapboxgl.Map) {
+    if (deferredLayersScheduledRef.current) return;
+    deferredLayersScheduledRef.current = true;
+    clearDeferredLayerTimeouts();
+
+    const schedule = (delay: number, task: () => void) => {
+      const timeout = window.setTimeout(() => {
+        if (!mapRef.current || mapRef.current !== map) return;
+        task();
+      }, delay);
+      deferredLayerTimeoutsRef.current.push(timeout);
+    };
+
+    schedule(120, () => {
+      try {
+        addMetroLayers(map);
+        addStationLayers(map);
+      } catch (err) {
+        console.error("Failed to add deferred metro/train layers", err);
+      }
+    });
+
+    schedule(260, () => {
+      if (metroModeRef.current) playNetworkSequence(map, METRO_LINES, "metro");
+      if (trainModeRef.current) playNetworkSequence(map, TRAIN_LINES, "train");
+    });
+
+    schedule(420, () => {
+      addHeavyLayers(map);
+    });
+  }
+
   // Add the heavy Three.js custom layers. Called on idle and by a style.load
   // fallback so satellite mode gets animated water even if idle arrives late.
   // Every add is guarded against duplicates.
@@ -367,6 +397,13 @@ export function MapboxView({
       addBoatRouteLayers(map);
     } catch (err) {
       console.error("Failed to add boat route layers", err);
+    }
+    if (shouldShowNavigationDebugOverlay()) {
+      try {
+        addSatelliteNavigationDebugOverlay(map, MODEL_REGISTRY);
+      } catch (err) {
+        console.error("Failed to add satellite navigation debug overlay", err);
+      }
     }
     if (show3DModelsRef.current && !map.getLayer("dubai-3d-models")) {
       try {
@@ -917,7 +954,14 @@ export function MapboxView({
     el.style.background = line.color;
     el.style.boxShadow = `0 0 14px ${line.color}, 0 2px 6px rgba(0,0,0,0.35)`;
     el.style.border = "2px solid rgba(255,255,255,0.9)";
-    el.innerHTML = TRAIN_MARKER_SVG.replace("#c9a84c", "#ffffff");
+    const icon = document.createElement("div");
+    icon.style.width = "100%";
+    icon.style.height = "100%";
+    icon.style.display = "grid";
+    icon.style.placeItems = "center";
+    icon.style.transition = "transform 180ms linear";
+    icon.innerHTML = TRAIN_MARKER_SVG.replace("#c9a84c", "#ffffff");
+    el.appendChild(icon);
     const marker = new mapboxgl.Marker({ element: el }).setLngLat(line.path[0]).addTo(map);
     trainMarkersRef.current.set(line.id, marker);
     trainMotionRef.current.set(line.id, { t: 0, dir: 1, last: performance.now(), pausedUntil: 0 });
@@ -993,8 +1037,10 @@ export function MapboxView({
         }
 
         state.t = next;
-        const { coord } = pointAlongPath(line.path, state.t);
+        const { coord, bearing } = pointAlongPath(line.path, state.t);
         marker.setLngLat(coord);
+        const icon = marker.getElement().firstElementChild as HTMLElement | null;
+        if (icon) icon.style.transform = `rotate(${bearing + (state.dir === -1 ? 180 : 0)}deg)`;
       }
       trainRafRef.current = requestAnimationFrame(tick);
     };
@@ -1009,14 +1055,9 @@ export function MapboxView({
     // If the style is loaded, act now. Otherwise the style.load handler reads
     // metroModeRef and plays it once the layers exist.
     if (!styleLoadedRef.current) return;
-    // Self-heal: if for any reason the layers weren't added, add them now.
     if (!map.getLayer("metro-red-reveal") && !map.getLayer(`metro-${METRO_LINES[0]?.id}-reveal`)) {
-      try {
-        addMetroLayers(map);
-        addStationLayers(map);
-      } catch (err) {
-        console.error("Failed to (re)add metro/train layers", err);
-      }
+      scheduleDeferredLayers(map);
+      return;
     }
     if (metroMode) playNetworkSequence(map, METRO_LINES, "metro");
     else stopNetworkAnimation(map, METRO_LINES, "metro");
@@ -1030,12 +1071,8 @@ export function MapboxView({
     if (!map) return;
     if (!styleLoadedRef.current) return;
     if (TRAIN_LINES[0] && !map.getLayer(`metro-${TRAIN_LINES[0].id}-reveal`)) {
-      try {
-        addMetroLayers(map);
-        addStationLayers(map);
-      } catch (err) {
-        console.error("Failed to (re)add metro/train layers", err);
-      }
+      scheduleDeferredLayers(map);
+      return;
     }
     if (trainMode) playNetworkSequence(map, TRAIN_LINES, "train");
     else stopNetworkAnimation(map, TRAIN_LINES, "train");
