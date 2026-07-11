@@ -66,6 +66,25 @@ function lngLatToLocal(lng: number, lat: number, ref: MercatorRef, altitude = 0)
   );
 }
 
+function pointInLocalRing(point: THREE.Vector3, ring: THREE.Vector3[]) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i].x;
+    const yi = ring[i].y;
+    const xj = ring[j].x;
+    const yj = ring[j].y;
+    const intersects =
+      yi > point.y !== yj > point.y &&
+      point.x < ((xj - xi) * (point.y - yi)) / (yj - yi || 1e-9) + xi;
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
+function pointInAnyLocalWaterRing(point: THREE.Vector3, rings: THREE.Vector3[][]) {
+  return rings.some((ring) => pointInLocalRing(point, ring));
+}
+
 function subdivide(geometry: THREE.BufferGeometry, levels: number): THREE.BufferGeometry {
   const nonIndexed = geometry.toNonIndexed();
   let verts = Array.from((nonIndexed.getAttribute("position") as THREE.BufferAttribute).array);
@@ -180,6 +199,7 @@ const SHORE_FRAGMENT = /* glsl */ `
   uniform float uTime;
   uniform float uGeneration;
   uniform float uOpacity;
+  uniform float uCycleSeconds;
   uniform vec3 uColor;
 
   float hash01(float value) {
@@ -188,7 +208,8 @@ const SHORE_FRAGMENT = /* glsl */ `
   }
 
   void main() {
-    float cycle = mod(uTime, 3.2) / 3.2;
+    float cycleLength = max(uCycleSeconds, 0.1);
+    float cycle = mod(uTime, cycleLength) / cycleLength;
     float ribbonPhase = vRibbon / 3.0;
     float localPhase = fract(cycle - ribbonPhase + 0.18);
     float arrival =
@@ -200,10 +221,10 @@ const SHORE_FRAGMENT = /* glsl */ `
     float alongVariation =
       0.95 + 0.25 * sin(vAlong * 0.045 + vPhase * 6.2831 + uGeneration * 0.42);
     float edgeFade = pow(1.0 - vAcross, 2.2);
-    float pulse = 0.75 + 0.35 * sin(uTime * 2.1 + vPhase * 9.0);
+    float pulse = 0.72 + 0.24 * sin(uTime * 2.1 + vPhase * 9.0);
     float alpha =
       uOpacity *
-      1.18 *
+      0.92 *
       vIntensity *
       vSegmentMask *
       generationMask *
@@ -228,7 +249,8 @@ function makeShoreMaterial(): THREE.ShaderMaterial {
     uniforms: {
       uTime: { value: 0 },
       uGeneration: { value: 0 },
-      uOpacity: { value: 1.12 },
+      uOpacity: { value: 0.78 },
+      uCycleSeconds: { value: SHORE_WAVE_CYCLE_SECONDS },
       uWidthScale: { value: 1 },
       uColor: { value: new THREE.Color(0xffffff) },
     },
@@ -275,7 +297,7 @@ const OPEN_SEA_FRAGMENT = /* glsl */ `
     float segmentNoise = hash01(floor(vAlong * 0.028) + vPhase * 311.0);
     float broken = smoothstep(0.16, 0.54, segmentNoise);
     float shimmer = 0.7 + 0.3 * sin(vAlong * 0.01 + uTime * 0.58 + vPhase * 9.0);
-    float alpha = uOpacity * 1.25 * vIntensity * distanceFade * crest * broken * shimmer;
+    float alpha = uOpacity * 0.95 * vIntensity * distanceFade * crest * broken * shimmer;
     gl_FragColor = vec4(vec3(1.0), alpha);
   }
 `;
@@ -291,7 +313,7 @@ function makeOpenSeaWaveMaterial(): THREE.ShaderMaterial {
     side: THREE.DoubleSide,
     uniforms: {
       uTime: { value: 0 },
-      uOpacity: { value: 0.72 },
+      uOpacity: { value: 0.56 },
     },
   });
 }
@@ -434,8 +456,12 @@ function buildShoreGeometry(ref: MercatorRef): THREE.BufferGeometry {
     pushVert(cx1, cy1, a1, 0, ribbon, phase, intensity, segmentMask, 0, 0);
   };
 
+  const waterRings = WATER_AREAS.map((area) =>
+    area.polygon.map(([lng, lat]) => lngLatToLocal(lng, lat, ref, 0)),
+  );
+
   for (const shoreline of SHORELINE_PATHS) {
-    addShorelinePath(shoreline, ref, pushRibbonTri);
+    addShorelinePath(shoreline, ref, waterRings, pushRibbonTri);
   }
 
   const geo = new THREE.BufferGeometry();
@@ -454,6 +480,7 @@ function buildShoreGeometry(ref: MercatorRef): THREE.BufferGeometry {
 function addShorelinePath(
   shoreline: ShorelinePath,
   ref: MercatorRef,
+  waterRings: THREE.Vector3[][],
   pushRibbonTri: (
     cx0: number,
     cy0: number,
@@ -483,8 +510,25 @@ function addShorelinePath(
 
     const tx = dx / segmentLength;
     const ty = dy / segmentLength;
-    const nx = -ty * shoreline.waterSide;
-    const ny = tx * shoreline.waterSide;
+    const preferredNx = -ty * shoreline.waterSide;
+    const preferredNy = tx * shoreline.waterSide;
+    const probeOffset = shoreline.offsetMeters + SHORE_RIBBON_OFFSETS[0];
+    const mid = new THREE.Vector3((a.x + b.x) / 2, (a.y + b.y) / 2, 0);
+    const preferredProbe = new THREE.Vector3(
+      mid.x + preferredNx * probeOffset,
+      mid.y + preferredNy * probeOffset,
+      0,
+    );
+    const oppositeProbe = new THREE.Vector3(
+      mid.x - preferredNx * probeOffset,
+      mid.y - preferredNy * probeOffset,
+      0,
+    );
+    const preferredIsWater = pointInAnyLocalWaterRing(preferredProbe, waterRings);
+    const oppositeIsWater = pointInAnyLocalWaterRing(oppositeProbe, waterRings);
+    const sideCorrection = !preferredIsWater && oppositeIsWater ? -1 : 1;
+    const nx = preferredNx * sideCorrection;
+    const ny = preferredNy * sideCorrection;
     const steps = Math.max(1, Math.ceil(segmentLength / SHORE_SAMPLE_STEP_M));
 
     for (let step = 0; step < steps; step++) {
@@ -741,6 +785,7 @@ export function createWaterLayer(
       if (shoreMaterial) {
         shoreMaterial.uniforms.uTime.value = elapsed;
         shoreMaterial.uniforms.uGeneration.value = Math.floor(elapsed / SHORE_WAVE_CYCLE_SECONDS);
+        shoreMaterial.uniforms.uCycleSeconds.value = SHORE_WAVE_CYCLE_SECONDS;
         shoreMaterial.uniforms.uWidthScale.value = getShoreWaveWidthMeters(map.getZoom()) / 18;
       }
       if (openSeaMaterial) openSeaMaterial.uniforms.uTime.value = elapsed;

@@ -91,28 +91,29 @@ export const METRO_LINES: MetroLine[] = applyCategory(
   false,
 );
 
-// One regional passenger rail approach, inspired by the UAE network: it enters
-// Dubai from the Abu Dhabi side and stops at a single Dubai interchange. The
-// previous generated regional routes are intentionally not rendered.
+// One Dubai passenger rail approach, matching the public Etihad Rail Dubai
+// corridor: it enters from the Abu Dhabi/Jebel Ali side and stops at the Dubai
+// interchange by Jumeirah Golf Estates. The previous generated regional routes
+// are intentionally not rendered.
 const DUBAI_REGIONAL_TRAIN: MetroLine = {
   id: "etihad-rail-dubai-approach",
-  name: "Etihad Rail - Dubai Approach",
+  name: "Etihad Rail - Dubai Station",
   color: CATEGORY_COLORS.train,
   status: "planned-2030",
   path: [
-    [54.985, 24.79], // outside Dubai, approaching from Abu Dhabi
-    [55.035, 24.825],
-    [55.078, 24.862],
-    [55.115, 24.902],
-    [55.148, 24.947],
-    [55.176, 24.992],
-    [55.19, 25.035],
+    [54.94, 24.78], // outside Dubai, approaching from Abu Dhabi
+    [54.995, 24.825], // Ghantoot / Jebel Ali approach
+    [55.04, 24.87], // Jebel Ali logistics corridor
+    [55.082, 24.925], // Dubai South / DWC side
+    [55.118, 24.972], // Dubai Investments Park approach
+    [55.148, 25.004], // Green Community / E311 corridor
+    [55.1635, 25.0177], // Jumeirah Golf Estates interchange
   ],
   stations: [
     {
       id: "etihad-dubai-jge",
-      name: "Dubai Jumeirah Golf Estates",
-      coord: [55.19, 25.035],
+      name: "Dubai - Jumeirah Golf Estates",
+      coord: [55.1635, 25.0177],
       interchange: true,
     },
   ],

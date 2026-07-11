@@ -87,9 +87,9 @@ export const PALM_OUTER_SHORELINE: ShorelinePath = {
 export const PALM_FRONDS_SHORELINE: ShorelinePath = {
   id: "palm-fronds",
   name: "Palm Jumeirah Inner Fronds",
-  intensity: 0.6,
+  intensity: 0.42,
   waterSide: 1,
-  offsetMeters: 7,
+  offsetMeters: 5,
   points: [
     [55.1185, 25.108], // West frond inner
     [55.1205, 25.1095],
@@ -139,6 +139,7 @@ export const CREEK_SHORELINE: ShorelinePath = {
 export const SHORELINE_PATHS: ShorelinePath[] = [
   MARINA_BEACH_SHORELINE,
   PALM_OUTER_SHORELINE,
+  PALM_FRONDS_SHORELINE,
   CREEK_SHORELINE,
 ];
 

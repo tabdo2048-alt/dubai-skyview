@@ -391,20 +391,29 @@ export function MapboxView({
   // and always below the DOM project markers (canvas layer). Duplicate-guarded.
   function addBoatRouteLayers(map: mapboxgl.Map) {
     let added = 0;
+    const renderedRoutes = new Set<string>();
     for (const cfg of MODEL_REGISTRY) {
       const route = waterRouteForDisplay(cfg);
       if (!route || route.length < 2) continue;
-      const srcId = `boat-route-${cfg.id}`;
+      const routeKey = route.map(([lng, lat]) => `${lng.toFixed(5)},${lat.toFixed(5)}`).join("|");
+      if (renderedRoutes.has(routeKey)) continue;
+      renderedRoutes.add(routeKey);
+
+      const srcId = `boat-route-lane-${renderedRoutes.size}`;
       const layerId = `${srcId}-line`;
+      const routeData = {
+        type: "Feature" as const,
+        properties: {},
+        geometry: { type: "LineString" as const, coordinates: route },
+      };
       if (!map.getSource(srcId)) {
         map.addSource(srcId, {
           type: "geojson",
-          data: {
-            type: "Feature",
-            properties: {},
-            geometry: { type: "LineString", coordinates: route },
-          },
+          data: routeData,
         });
+      } else {
+        const source = map.getSource(srcId) as mapboxgl.GeoJSONSource | undefined;
+        source?.setData(routeData);
       }
       if (!map.getLayer(layerId)) {
         addLayerSafe(map, {
@@ -413,11 +422,11 @@ export function MapboxView({
           source: srcId,
           layout: { "line-cap": "round", "line-join": "round" },
           paint: {
-            "line-color": "rgba(190, 239, 255, 0.25)",
-            "line-width": 1.5,
-            "line-blur": 1,
-            "line-dasharray": [2, 2],
-            "line-opacity": 0.22,
+            "line-color": "rgba(210, 245, 255, 0.35)",
+            "line-width": 1.25,
+            "line-blur": 0.8,
+            "line-dasharray": [2.5, 3],
+            "line-opacity": 0.18,
           },
         });
         added++;
