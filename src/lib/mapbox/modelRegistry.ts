@@ -12,7 +12,9 @@ import type { ModelConfig } from "./modelTypes";
 import {
   defaultMarineRouteIdForVessel,
   defaultSpeedMetersPerSecond,
+  getMarineRoute,
   hashRouteSeed,
+  marineRoutesForVesselType,
 } from "@/lib/marineRoutes";
 
 type VesselOrientation = Pick<
@@ -66,7 +68,7 @@ function isWatercraftType(type: ModelConfig["type"]) {
 
 // Routes hug the real basins (Marina, Palm, Gulf, Creek, Business Bay canal)
 // so boats stay on water and never cross land.
-export const MODEL_REGISTRY: ModelConfig[] = [
+const BASE_MODEL_REGISTRY: ModelConfig[] = [
   {
     id: "marina-yacht-01",
     name: "Marina Yacht 01",
@@ -1202,23 +1204,123 @@ export const MODEL_REGISTRY: ModelConfig[] = [
     visibleFromZoom: 9,
     visibleToZoom: 20,
   },
-].map((rawConfig) => {
-  const config = rawConfig as ModelConfig;
-  const normalized: ModelConfig = {
-    ...(VESSEL_ORIENTATIONS[config.modelUrl] ?? {}),
-    routeMode: routeIsClosed(config.route) ? "loop" : "pingpong",
-    ...config,
-  };
+];
 
-  if (!isWatercraftType(normalized.type)) return normalized;
+const ENTERPRISE_FLEET_TARGETS: Partial<Record<ModelConfig["type"], number>> = {
+  ship: 12,
+  yacht: 35,
+  boat: 45,
+  abra: 15,
+};
 
-  return {
-    ...normalized,
-    route: undefined,
-    routeId: normalized.routeId ?? defaultMarineRouteIdForVessel(normalized.id, normalized.type),
-    routeMode: "pingpong",
-    startProgress: normalized.startProgress ?? (hashRouteSeed(normalized.id) % 1000) / 1000,
-    speedMetersPerSecond:
-      normalized.speedMetersPerSecond ?? defaultSpeedMetersPerSecond(normalized.type),
-  };
-});
+const TYPE_COLOR_SWATCHES: Partial<Record<ModelConfig["type"], number[]>> = {
+  ship: [0x8fa3b5, 0xc7d0d6, 0x93a5b3, 0xb0453a],
+  yacht: [0xffffff, 0xf4f1e8, 0xd9c7a3, 0x24445a, 0x3a3f45, 0xc9a84c],
+  boat: [0xffffff, 0x4fc3f7, 0xffd54f, 0x66bb6a, 0xff7043, 0xeef4f7],
+  abra: [0x8d6e63, 0xa1887f, 0x9c6b4f, 0xb58a5a],
+};
+
+function deterministicScaleNudge(index: number) {
+  return 0.94 + ((index * 7) % 13) / 100;
+}
+
+function expandFleetForEnterpriseTraffic(configs: ModelConfig[]) {
+  const expanded = [...configs];
+
+  for (const [type, targetCount] of Object.entries(ENTERPRISE_FLEET_TARGETS) as [
+    ModelConfig["type"],
+    number,
+  ][]) {
+    const templates = configs.filter((config) => config.type === type);
+    if (templates.length === 0) continue;
+    const currentCount = expanded.filter((config) => config.type === type).length;
+    const palette = TYPE_COLOR_SWATCHES[type] ?? [];
+
+    for (let i = currentCount; i < targetCount; i++) {
+      const template = templates[i % templates.length];
+      const id = `enterprise-${type}-${String(i + 1).padStart(2, "0")}`;
+      const scaleNudge = deterministicScaleNudge(i);
+      expanded.push({
+        ...template,
+        id,
+        name: `Enterprise ${type} ${String(i + 1).padStart(2, "0")}`,
+        color: palette[i % palette.length] ?? template.color,
+        lng: template.lng,
+        lat: template.lat,
+        route: undefined,
+        routeId: defaultMarineRouteIdForVessel(id, type),
+        routeMode: "pingpong",
+        startProgress: ((i * 997) % 1000) / 1000,
+        speed: undefined,
+        speedMetersPerSecond: defaultSpeedMetersPerSecond(type) * (0.88 + ((i * 11) % 19) / 100),
+        scale: template.scale * scaleNudge,
+      });
+    }
+  }
+
+  return expanded;
+}
+
+function normalizeRegistry(configs: ModelConfig[]) {
+  return configs.map((rawConfig) => {
+    const config = rawConfig as ModelConfig;
+    const normalized: ModelConfig = {
+      ...(VESSEL_ORIENTATIONS[config.modelUrl] ?? {}),
+      routeMode: routeIsClosed(config.route) ? "loop" : "pingpong",
+      ...config,
+    };
+
+    if (!isWatercraftType(normalized.type)) return normalized;
+
+    const watercraft: ModelConfig = {
+      ...normalized,
+      route: undefined,
+      routeId: normalized.routeId ?? defaultMarineRouteIdForVessel(normalized.id, normalized.type),
+      routeMode: "pingpong",
+      startProgress: normalized.startProgress ?? (hashRouteSeed(normalized.id) % 1000) / 1000,
+      speedMetersPerSecond:
+        normalized.speedMetersPerSecond ?? defaultSpeedMetersPerSecond(normalized.type),
+    };
+    return watercraft;
+  });
+}
+
+function distributeFleetEvenly(configs: ModelConfig[]) {
+  const distributed = configs.map((config) => ({ ...config }));
+
+  for (const type of ["ship", "yacht", "boat", "abra"] as const) {
+    const vessels = distributed.filter((config) => config.type === type);
+    const routes = marineRoutesForVesselType(type);
+    vessels.forEach((vessel, index) => {
+      const route = routes[index % routes.length];
+      vessel.routeId = route.id;
+      vessel.routeMode =
+        route.points.length > 2 && routeIsClosed(route.points) ? "loop" : "pingpong";
+    });
+  }
+
+  const routeGroups = new Map<string, ModelConfig[]>();
+  for (const config of distributed) {
+    if (!isWatercraftType(config.type) || !config.routeId) continue;
+    const group = routeGroups.get(config.routeId) ?? [];
+    group.push(config);
+    routeGroups.set(config.routeId, group);
+  }
+
+  for (const [routeId, vessels] of routeGroups) {
+    const route = getMarineRoute(routeId);
+    if (!route) continue;
+    vessels.sort((a, b) => a.id.localeCompare(b.id));
+    vessels.forEach((vessel, index) => {
+      // routePointAt uses distance-normalized progress, so this is true physical
+      // spacing rather than waypoint-index spacing.
+      vessel.startProgress = (index + 0.5) / vessels.length;
+    });
+  }
+
+  return distributed;
+}
+
+export const MODEL_REGISTRY: ModelConfig[] = distributeFleetEvenly(
+  normalizeRegistry(expandFleetForEnterpriseTraffic(BASE_MODEL_REGISTRY)),
+);

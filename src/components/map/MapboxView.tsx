@@ -42,6 +42,12 @@ type Props = {
   camera: { lat: number; lng: number; zoom: number };
   onCameraChange: (c: { lat: number; lng: number; zoom: number }) => void;
   onReady?: () => void;
+  /**
+   * Fires with the live Mapbox map instance once it is ready (map + heavy layers
+   * in), and again when this view re-activates. Used by the dev-only Water Debug
+   * Editor to attach click handlers / draw sources to the active map.
+   */
+  onMapReady?: (map: mapboxgl.Map) => void;
   active: boolean;
   metroMode: boolean;
   trainMode: boolean;
@@ -72,6 +78,7 @@ export function MapboxView({
   camera,
   onCameraChange,
   onReady,
+  onMapReady,
   active,
   metroMode,
   trainMode,
@@ -336,6 +343,7 @@ export function MapboxView({
     readySignaledRef.current = true;
     setMapReady(true);
     onReady?.();
+    if (mapRef.current) onMapReady?.(mapRef.current);
   }
 
   function clearDeferredLayerTimeouts() {
@@ -1211,8 +1219,11 @@ export function MapboxView({
   // A map can finish loading while hidden behind the other mode. When it later
   // becomes active, notify the parent again so the shared loading overlay exits.
   useEffect(() => {
-    if (active && mapReady) onReady?.();
-  }, [active, mapReady, onReady]);
+    if (active && mapReady) {
+      onReady?.();
+      if (mapRef.current) onMapReady?.(mapRef.current);
+    }
+  }, [active, mapReady, onReady, onMapReady]);
 
   // Markers
   useEffect(() => {

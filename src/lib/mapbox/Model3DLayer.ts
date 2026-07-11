@@ -29,11 +29,13 @@ import {
 } from "./modelTypes";
 import {
   getVesselSafetyClearance,
-  isPointInSafeNavigationWater,
+  isPointInAnySafeWater,
   isWatercraft,
-  modelHasWaterRoute,
+  routeContextForCategory,
   waterRouteForDisplay,
+  type RouteContext,
 } from "./waterRouteGuards";
+import { getMarineRoute, getMarineRouteByPoints } from "@/lib/marineRoutes";
 import { sampleWaterWave, waterTimeSeconds, type WaveSample } from "./waterWaveModel";
 
 type MercatorRef = { x: number; y: number; z: number; scale: number };
@@ -45,6 +47,14 @@ const BOAT_ROUTE_DEBUG = false;
 const WATERCRAFT_WAKE_MULTIPLIER = 0.45;
 const METERS_PER_LATITUDE_DEGREE = 111_320;
 const WAKE_SAMPLE_DISTANCE_METERS = 9;
+const GLTF_SCENE_CACHE = new Map<string, Promise<THREE.Object3D>>();
+const loggedGltfLoads = new Set<string>();
+const WATERLINE_FRACTION_BY_TYPE: Partial<Record<ModelType, number>> = {
+  ship: 0.14,
+  yacht: 0.12,
+  boat: 0.16,
+  abra: 0.18,
+};
 
 function normalizeAngle(angle: number) {
   return Math.atan2(Math.sin(angle), Math.cos(angle));
@@ -52,6 +62,10 @@ function normalizeAngle(angle: number) {
 
 function lerpAngle(current: number, target: number, amount: number) {
   return current + normalizeAngle(target - current) * amount;
+}
+
+function hashString(value: string) {
+  return [...value].reduce((hash, character) => (hash * 31 + character.charCodeAt(0)) >>> 0, 0);
 }
 
 function forwardAxisVector(axis: ModelForwardAxis) {
@@ -115,11 +129,44 @@ function fitModelToDisplaySize(object: THREE.Object3D, config: ModelConfig) {
   return scale;
 }
 
+function alignModelToWaterline(object: THREE.Object3D, config: ModelConfig) {
+  if (!isWatercraft(config.type)) return;
+  object.updateMatrixWorld(true);
+  const bounds = new THREE.Box3().setFromObject(object);
+  const height = bounds.max.z - bounds.min.z;
+  if (!Number.isFinite(height) || height <= 0) return;
+  const submergedFraction = Math.max(
+    0.04,
+    Math.min(0.35, config.waterlineFraction ?? WATERLINE_FRACTION_BY_TYPE[config.type] ?? 0.14),
+  );
+  object.position.z -= bounds.min.z + height * submergedFraction;
+  object.updateMatrixWorld(true);
+}
+
 function getVesselZoomScale(zoom: number) {
   if (zoom < 10) return 0.82;
   if (zoom < 13) return 1;
   if (zoom < 15) return 1.08;
   return 1.16;
+}
+
+function getVesselUpdateStride(zoom: number) {
+  if (zoom < 10) return 4;
+  if (zoom < 12) return 2;
+  return 1;
+}
+
+function isNearVisibleMap(map: mapboxgl.Map, point: [number, number]) {
+  const bounds = map.getBounds();
+  if (!bounds) return true; // bounds unavailable — don't cull
+  const lngPadding = Math.max(0.03, (bounds.getEast() - bounds.getWest()) * 0.2);
+  const latPadding = Math.max(0.02, (bounds.getNorth() - bounds.getSouth()) * 0.2);
+  return (
+    point[0] >= bounds.getWest() - lngPadding &&
+    point[0] <= bounds.getEast() + lngPadding &&
+    point[1] >= bounds.getSouth() - latPadding &&
+    point[1] <= bounds.getNorth() + latPadding
+  );
 }
 
 function polishWatercraftMaterials(object: THREE.Object3D) {
@@ -133,6 +180,42 @@ function polishWatercraftMaterials(object: THREE.Object3D) {
       material.needsUpdate = true;
     }
   });
+}
+
+function cloneMaterial(material: THREE.Material | THREE.Material[]) {
+  return Array.isArray(material) ? material.map((entry) => entry.clone()) : material.clone();
+}
+
+function cloneCachedScene(source: THREE.Object3D) {
+  const clone = source.clone(true);
+  clone.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+    child.userData.sharedGlbGeometry = true;
+    child.material = cloneMaterial(child.material);
+  });
+  return clone;
+}
+
+function loadCachedGltfScene(loader: GLTFLoader, url: string) {
+  let cached = GLTF_SCENE_CACHE.get(url);
+  if (!cached) {
+    cached = new Promise<THREE.Object3D>((resolve, reject) => {
+      loader.load(
+        url,
+        (gltf) => {
+          if (!loggedGltfLoads.has(url)) {
+            console.log("[Boats] GLB cached", url);
+            loggedGltfLoads.add(url);
+          }
+          resolve(gltf.scene);
+        },
+        undefined,
+        reject,
+      );
+    });
+    GLTF_SCENE_CACHE.set(url, cached);
+  }
+  return cached;
 }
 
 function setLocalPositionFromLngLat(
@@ -507,9 +590,12 @@ type ModelInstance = {
   t: number;
   lastSafeT: number;
   safetyClearance: number;
+  routeContext: RouteContext;
   unsafeBlockedLogged: boolean;
   blockedUntil: number;
   baseModelScale: number;
+  updateAccumulator: number;
+  lodSeed: number;
   wakeDistanceAccumulator: number;
   bobOffset: number;
   waveSample: WaveSample;
@@ -528,6 +614,7 @@ export function createModel3DLayer(
   let clock: THREE.Clock;
   let disposed = false;
   let onResize: (() => void) | null = null;
+  let frameNumber = 0;
   const instances: ModelInstance[] = [];
   // Reused every frame to avoid per-frame allocations (60 FPS target).
   const localToMercator = new THREE.Matrix4();
@@ -561,15 +648,17 @@ export function createModel3DLayer(
 
       const safeRegistry = registry.flatMap((config): ModelConfig[] => {
         const route = waterRouteForDisplay(config);
-        const allowed = modelHasWaterRoute(config);
-        if (!allowed) console.warn(`[Boats] skipped land-crossing route: ${config.id}`);
-        if (!allowed) return [];
+        if (!route && isWatercraft(config.type)) {
+          console.warn(`[Boats] skipped land-crossing route: ${config.id}`);
+          return [];
+        }
+        const routeMeta = getMarineRouteByPoints(route);
         const mode: "loop" | "pingpong" = isClosedRoute(route ?? []) ? "loop" : "pingpong";
         if (route && route !== config.route) {
-          return [{ ...config, route, routeMode: mode }];
+          return [{ ...config, route, routeId: routeMeta?.id ?? config.routeId, routeMode: mode }];
         }
         if (route && !config.routeMode) {
-          return [{ ...config, routeMode: mode }];
+          return [{ ...config, routeId: routeMeta?.id ?? config.routeId, routeMode: mode }];
         }
         return [config];
       });
@@ -625,13 +714,21 @@ export function createModel3DLayer(
           t: initialT, // stagger start along route
           lastSafeT: initialT,
           safetyClearance: isWatercraft(config.type) ? getVesselSafetyClearance(config) : 0,
+          routeContext: routeContextForCategory(
+            getMarineRoute(config.routeId)?.category ?? "open-sea",
+          ),
           unsafeBlockedLogged: false,
           blockedUntil: 0,
           baseModelScale: 1,
+          updateAccumulator: 0,
+          lodSeed: hashString(config.id) % 12,
           wakeDistanceAccumulator: 0,
           bobOffset: instances.length * 1.3,
           waveSample: { height: 0, normal: new THREE.Vector3(), slopeX: 0, slopeY: 0 },
         };
+        if (inst.routeMetrics && config.route) {
+          routePointAt(config.route, inst.routeMetrics, initialT, inst.routeCoord);
+        }
         scene.add(group);
         if (inst.wake) {
           scene.add(inst.wake.mesh);
@@ -657,30 +754,31 @@ export function createModel3DLayer(
         // Try the real GLB; fall back to a low-poly placeholder on any failure.
         // A per-model `color` overrides the type's default hull color.
         const color = config.color ?? PLACEHOLDER_COLORS[config.type] ?? 0xffffff;
-        loader.load(
-          config.modelUrl,
-          (gltf) => {
+        loadCachedGltfScene(loader, config.modelUrl)
+          .then((source) => {
             if (disposed) return;
-            console.log("[Boats] model loaded");
-            const obj = gltf.scene;
+            const obj = cloneCachedScene(source);
             obj.rotation.set(config.rotation[0], config.rotation[1], config.rotation[2]);
             obj.updateMatrixWorld(true);
             inst.baseModelScale = fitModelToDisplaySize(obj, config) ?? config.scale;
+            alignModelToWaterline(obj, config);
             if (isWatercraft(config.type)) polishWatercraftMaterials(obj);
             group.add(obj);
-          },
-          undefined,
-          () => {
+          })
+          .catch(() => {
             if (disposed) return;
-            console.log("[Boats] placeholder used");
+            if (!loggedGltfLoads.has(`${config.modelUrl}:placeholder`)) {
+              console.log("[Boats] placeholder used", config.modelUrl);
+              loggedGltfLoads.add(`${config.modelUrl}:placeholder`);
+            }
             const ph = makePlaceholder(config.type, color);
             ph.rotation.set(0, 0, 0);
             inst.headingCorrection = 0;
             console.warn("[BoatOrientation] placeholder orientation fallback", config.id);
             inst.baseModelScale = fitModelToDisplaySize(ph, config) ?? config.scale;
+            alignModelToWaterline(ph, config);
             group.add(ph);
-          },
-        );
+          });
       }
 
       if (wakeCount > 0) console.log("[Boats] wake trails active");
@@ -696,13 +794,14 @@ export function createModel3DLayer(
       const dt = Math.min(clock.getDelta(), 0.1);
       const zoom = map.getZoom();
       const time = clock.elapsedTime;
+      frameNumber++;
 
       for (const inst of instances) {
         const { config } = inst;
         // Zoom-range visibility.
         const visible = zoom >= config.visibleFromZoom && zoom <= config.visibleToZoom;
         inst.group.visible = visible;
-        if (inst.wake) inst.wake.mesh.visible = visible;
+        if (inst.wake) inst.wake.mesh.visible = visible && zoom >= 10;
         if (!visible) continue;
         const vesselVisualScale = isWatercraft(config.type)
           ? getVesselZoomScale(zoom) * (config.zoomScaleMultiplier ?? 1)
@@ -710,13 +809,20 @@ export function createModel3DLayer(
         inst.group.scale.setScalar(vesselVisualScale);
 
         if (config.animate && isValidRoute(config.route) && inst.routeMetrics) {
+          inst.updateAccumulator += dt;
+          const updateStride = getVesselUpdateStride(zoom);
+          const outsideViewport = !isNearVisibleMap(map, inst.routeCoord);
+          const cadence = outsideViewport ? Math.max(updateStride, 12) : updateStride;
+          if ((frameNumber + inst.lodSeed) % cadence !== 0) continue;
+          const vesselDt = Math.min(inst.updateAccumulator, 0.25);
+          inst.updateAccumulator = 0;
           const routeMode = resolveRouteMode(config);
           const speedMetersPerSecond =
             config.speedMetersPerSecond ??
             (config.speed ?? 0.03) * inst.routeMetrics.totalLengthMeters;
           const progressStep =
             inst.routeMetrics.totalLengthMeters > 0
-              ? (speedMetersPerSecond * dt) / inst.routeMetrics.totalLengthMeters
+              ? (speedMetersPerSecond * vesselDt) / inst.routeMetrics.totalLengthMeters
               : 0;
           if (inst.blockedUntil > time) continue;
           const prevT = inst.t;
@@ -753,7 +859,7 @@ export function createModel3DLayer(
           routePointAt(config.route, inst.routeMetrics, aheadT, inst.aheadRouteCoord);
           if (
             isWatercraft(config.type) &&
-            !isPointInSafeNavigationWater(inst.routeCoord, inst.safetyClearance)
+            !isPointInAnySafeWater(inst.routeCoord, inst.safetyClearance, inst.routeContext)
           ) {
             if (!inst.unsafeBlockedLogged || BOAT_ROUTE_DEBUG) {
               console.warn("[BoatRoute] runtime land guard blocked", config.id, inst.routeCoord);
@@ -802,9 +908,9 @@ export function createModel3DLayer(
             inst.orientationInitialized = true;
           } else {
             const turnSpeed = config.turnSpeed ?? 3.5;
-            const turnAmount = 1 - Math.exp(-turnSpeed * dt);
+            const turnAmount = 1 - Math.exp(-turnSpeed * vesselDt);
             inst.yaw = lerpAngle(inst.yaw, targetYaw, turnAmount);
-            const floatAmount = 1 - Math.exp(-4.5 * dt);
+            const floatAmount = 1 - Math.exp(-4.5 * vesselDt);
             inst.pitch += (targetPitch - inst.pitch) * floatAmount;
             inst.roll += (targetRoll - inst.roll) * floatAmount;
             inst.group.rotation.x = inst.roll;
@@ -882,7 +988,7 @@ export function createModel3DLayer(
         inst.bowArrow?.dispose();
         inst.group.traverse((obj) => {
           const mesh = obj as THREE.Mesh;
-          if (mesh.geometry) mesh.geometry.dispose();
+          if (mesh.geometry && !mesh.userData.sharedGlbGeometry) mesh.geometry.dispose();
           const mat = mesh.material as THREE.Material | THREE.Material[] | undefined;
           if (Array.isArray(mat)) mat.forEach((mm) => mm.dispose());
           else mat?.dispose();

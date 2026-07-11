@@ -1,5 +1,6 @@
 import type mapboxgl from "mapbox-gl";
 import { LAND_EXCLUSION_POLYGONS, NAVIGATION_WATER_POLYGONS } from "@/lib/navigationWater";
+import { BASIN_CORRIDORS, basinCorridorRing } from "@/lib/navigationBasins";
 import { MARINE_ROUTES } from "@/lib/marineRoutes";
 import { SHORELINE_PATHS } from "@/lib/shorelines";
 import type { ModelConfig } from "./modelTypes";
@@ -7,6 +8,7 @@ import {
   collectInvalidRouteSamples,
   getVesselSafetyClearance,
   isWatercraft,
+  routeContextForCategory,
   waterRouteForDisplay,
 } from "./waterRouteGuards";
 
@@ -85,6 +87,13 @@ export function addSatelliteNavigationDebugOverlay(map: mapboxgl.Map, models: Mo
   const navigationPolygons = NAVIGATION_WATER_POLYGONS.map((area) =>
     polygonFeature(area.id, area.polygon, { name: area.name, type: "navigation-water" }),
   );
+  const basinCorridors = BASIN_CORRIDORS.map((corridor) =>
+    polygonFeature(corridor.id, basinCorridorRing(corridor), {
+      name: corridor.name,
+      type: "basin-navigation-water",
+      halfWidthMeters: corridor.halfWidthMeters,
+    }),
+  );
   const landMasks = LAND_EXCLUSION_POLYGONS.map((area) =>
     polygonFeature(area.id, area.polygon, { name: area.name, type: "land-exclusion" }),
   );
@@ -115,7 +124,13 @@ export function addSatelliteNavigationDebugOverlay(map: mapboxgl.Map, models: Mo
     }
 
     const rawInvalid = collectInvalidRouteSamples(model.route, clearance);
-    const displayInvalid = collectInvalidRouteSamples(route, clearance);
+    const routeMeta = MARINE_ROUTES.find((marineRoute) => marineRoute.points === route);
+    const displayContext = routeContextForCategory(routeMeta?.category ?? "open-sea");
+    const displayInvalid = collectInvalidRouteSamples(
+      route,
+      displayContext === "basin" ? 0 : clearance,
+      displayContext,
+    );
     for (const [sampleIndex, sample] of [...rawInvalid, ...displayInvalid].entries()) {
       invalidSamples.push(
         pointFeature(`${model.id}-invalid-${sampleIndex}`, sample.point, {
@@ -132,6 +147,7 @@ export function addSatelliteNavigationDebugOverlay(map: mapboxgl.Map, models: Mo
   const sources: Record<string, DebugCollection> = {
     [`${DEBUG_LAYER_PREFIX}-coastline`]: collection(coastline),
     [`${DEBUG_LAYER_PREFIX}-water-polygons`]: collection(navigationPolygons),
+    [`${DEBUG_LAYER_PREFIX}-basin-corridors`]: collection(basinCorridors),
     [`${DEBUG_LAYER_PREFIX}-land-masks`]: collection(landMasks),
     [`${DEBUG_LAYER_PREFIX}-lanes`]: collection(laneCenterlines),
     [`${DEBUG_LAYER_PREFIX}-routes`]: collection(routeCenterlines),
@@ -159,6 +175,25 @@ export function addSatelliteNavigationDebugOverlay(map: mapboxgl.Map, models: Mo
       "line-color": "rgba(33, 150, 243, 0.9)",
       "line-width": 2,
       "line-dasharray": [2, 2],
+    },
+  });
+  map.addLayer({
+    id: `${DEBUG_LAYER_PREFIX}-basin-fill`,
+    type: "fill",
+    source: `${DEBUG_LAYER_PREFIX}-basin-corridors`,
+    paint: {
+      "fill-color": "rgba(0, 200, 160, 0.16)",
+      "fill-outline-color": "rgba(0, 200, 160, 0.8)",
+    },
+  });
+  map.addLayer({
+    id: `${DEBUG_LAYER_PREFIX}-basin-outline`,
+    type: "line",
+    source: `${DEBUG_LAYER_PREFIX}-basin-corridors`,
+    paint: {
+      "line-color": "rgba(0, 220, 180, 0.9)",
+      "line-width": 2,
+      "line-dasharray": [2, 1.5],
     },
   });
   map.addLayer({

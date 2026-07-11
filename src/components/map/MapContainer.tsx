@@ -1,9 +1,23 @@
 import { useState, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Globe2, Satellite, Loader2, TrainFront, TramFront, Sunrise, Sun, Sunset, Moon, ChevronDown } from "lucide-react";
+import {
+  Globe2,
+  Satellite,
+  Loader2,
+  TrainFront,
+  TramFront,
+  Sunrise,
+  Sun,
+  Sunset,
+  Moon,
+  ChevronDown,
+} from "lucide-react";
+import type mapboxgl from "mapbox-gl";
 import { MapboxView, type LightPreset } from "./MapboxView";
 import { CloudLayer } from "./CloudLayer";
 import { ProjectPopup } from "./ProjectPopup";
+import { WaterDebugEditor } from "./WaterDebugEditor";
+import { shouldShowWaterDebugEditor } from "./waterDebugState";
 import { useMapConfig } from "@/hooks/use-map-config";
 import { useFiltersStore } from "@/store/filters";
 import { useProjects, filterProjects } from "@/hooks/use-projects";
@@ -27,7 +41,6 @@ const RAIL_GUIDE: { category: keyof typeof CATEGORY_COLORS; name: string; status
   { category: "yellow", name: "Yellow Line", status: "2030" },
   { category: "pink", name: "Pink Line", status: "Future" },
   { category: "tram", name: "Dubai Tram", status: "Operational" },
-  { category: "train", name: "Etihad Rail", status: "Future" },
 ];
 
 export function MapContainer() {
@@ -46,16 +59,26 @@ export function MapContainer() {
     selectedProjectId,
     setSelectedProjectId,
   } = useFiltersStore();
-  const [camera, setCamera] = useState({ lat: DUBAI_CENTER.lat, lng: DUBAI_CENTER.lng, zoom: DEFAULT_ZOOM });
+  const [camera, setCamera] = useState({
+    lat: DUBAI_CENTER.lat,
+    lng: DUBAI_CENTER.lng,
+    zoom: DEFAULT_ZOOM,
+  });
   const [transitioning, setTransitioning] = useState(false);
   // Guide panel is expanded on desktop, collapsible on mobile (starts collapsed
   // under md via the `hidden md:block` body + this toggle for the mobile chevron).
   const [guideOpen, setGuideOpen] = useState(false);
   // Track when the active map instance is ready (tiles + heavy layers loaded)
   const [mapReady, setMapReady] = useState(false);
+  // Dev-only: the live map for the active view, handed to the Water Debug Editor.
+  const waterEditorEnabled = useMemo(() => shouldShowWaterDebugEditor(), []);
+  const [editorMap, setEditorMap] = useState<mapboxgl.Map | null>(null);
 
   const filtered = useMemo(() => filterProjects(projects, filters), [projects, filters]);
-  const selected = filtered.find((p) => p.id === selectedProjectId) ?? projects.find((p) => p.id === selectedProjectId) ?? null;
+  const selected =
+    filtered.find((p) => p.id === selectedProjectId) ??
+    projects.find((p) => p.id === selectedProjectId) ??
+    null;
 
   const switchMode = (mode: "satellite" | "3d") => {
     if (mode === mapMode) return;
@@ -76,7 +99,13 @@ export function MapContainer() {
       {cfg && (
         <>
           {/* Flat Mapbox satellite view (satellite-streets) with metro/train + water overlay */}
-          <div className={mapMode === "satellite" ? "absolute inset-0" : "absolute inset-0 opacity-0 pointer-events-none"}>
+          <div
+            className={
+              mapMode === "satellite"
+                ? "absolute inset-0"
+                : "absolute inset-0 opacity-0 pointer-events-none"
+            }
+          >
             <MapboxView
               accessToken={cfg.mapboxAccessToken}
               projects={filtered}
@@ -92,13 +121,20 @@ export function MapContainer() {
           </div>
 
           {/* 3D Mapbox view (Standard style, buildings, animated water/boats/clouds) */}
-          <div className={mapMode === "3d" ? "absolute inset-0" : "absolute inset-0 opacity-0 pointer-events-none"}>
+          <div
+            className={
+              mapMode === "3d"
+                ? "absolute inset-0"
+                : "absolute inset-0 opacity-0 pointer-events-none"
+            }
+          >
             <MapboxView
               accessToken={cfg.mapboxAccessToken}
               projects={filtered}
               camera={camera}
               onCameraChange={setCamera}
               onReady={() => mapMode === "3d" && setMapReady(true)}
+              onMapReady={waterEditorEnabled ? setEditorMap : undefined}
               active={mapMode === "3d"}
               metroMode={metroMode}
               trainMode={trainMode}
@@ -111,6 +147,9 @@ export function MapContainer() {
 
       {/* Premium aerial cloud layer — fades out as you zoom into the city (both modes) */}
       <CloudLayer zoom={camera.zoom} />
+
+      {/* Dev-only Water Debug Editor (3D mode) — never mounted in production. */}
+      {waterEditorEnabled && mapMode === "3d" && <WaterDebugEditor map={editorMap} />}
 
       {/* Loading overlay — shown until the active map is ready (idle + heavy layers loaded) */}
       <AnimatePresence>
@@ -171,7 +210,9 @@ export function MapContainer() {
               title={label}
               onClick={() => setLightPreset(value)}
               className={`grid h-8 w-8 place-items-center rounded-full transition-colors ${
-                lightPreset === value ? "bg-gold text-gold-foreground" : "text-cream hover:bg-white/10"
+                lightPreset === value
+                  ? "bg-gold text-gold-foreground"
+                  : "text-cream hover:bg-white/10"
               }`}
             >
               <Icon className="h-4 w-4" />
@@ -180,7 +221,7 @@ export function MapContainer() {
         </div>
       )}
 
-      {/* Dubai Metro & Rail Guide — premium legend, only while metro mode plays */}
+      {/* Dubai Metro Guide — premium legend, only while metro mode plays */}
       <AnimatePresence>
         {metroMode && (
           <motion.div
@@ -198,7 +239,7 @@ export function MapContainer() {
                 className="flex w-full items-center gap-1.5 font-display text-sm text-cream"
               >
                 <TrainFront className="h-4 w-4 text-gold" />
-                <span className="flex-1 text-left">Dubai Metro &amp; Rail Guide</span>
+                <span className="flex-1 text-left">Dubai Metro Guide</span>
                 <ChevronDown
                   className={`h-4 w-4 text-cream/70 transition-transform md:hidden ${guideOpen ? "rotate-180" : ""}`}
                 />
@@ -211,7 +252,10 @@ export function MapContainer() {
                     <li key={l.category} className="flex items-center gap-2 text-xs text-cream/90">
                       <span
                         className="h-2.5 w-2.5 shrink-0 rounded-full"
-                        style={{ background: CATEGORY_COLORS[l.category], boxShadow: `0 0 8px ${CATEGORY_COLORS[l.category]}` }}
+                        style={{
+                          background: CATEGORY_COLORS[l.category],
+                          boxShadow: `0 0 8px ${CATEGORY_COLORS[l.category]}`,
+                        }}
                       />
                       <span className="flex-1 truncate">{l.name}</span>
                       <span className="shrink-0 rounded-full bg-white/10 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-cream/70">
@@ -221,8 +265,8 @@ export function MapContainer() {
                   ))}
                 </ul>
                 <p className="mt-2.5 border-t border-white/10 pt-2 text-[10px] leading-tight text-muted-foreground">
-                  Watch the network draw itself across Dubai. Yachts &amp; ships sail the Marina, Palm and Creek
-                  waters.
+                  Watch the network draw itself across Dubai. Yachts &amp; ships sail the Marina,
+                  Palm and Creek waters.
                 </p>
               </div>
             </div>

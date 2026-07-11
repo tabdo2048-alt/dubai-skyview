@@ -1,17 +1,13 @@
-import { OPEN_SEA_LANES } from "./navigationWater";
+import {
+  OPEN_SEA_CONNECTOR_LANES,
+  OPEN_SEA_DIAGONAL_LANES,
+  OPEN_SEA_HORIZONTAL_LANES,
+  OPEN_SEA_YACHT_LOOPS,
+} from "./navigationWater";
+import { BASIN_CORRIDORS, type BasinId } from "./navigationBasins";
 import type { ModelType } from "./mapbox/modelTypes";
 
-export type MarineRouteId =
-  | "gulf-west-east-outer"
-  | "gulf-west-east-middle"
-  | "gulf-west-east-inner"
-  | "gulf-southwest-northeast"
-  | "gulf-northwest-southeast"
-  | "gulf-west-vertical"
-  | "gulf-mid-vertical"
-  | "gulf-east-vertical"
-  | "gulf-yacht-loop-west"
-  | "gulf-yacht-loop-east"
+type BasinRouteId =
   | "marina-inner-channel"
   | "marina-entrance-lane"
   | "palm-outer-clockwise"
@@ -21,24 +17,27 @@ export type MarineRouteId =
   | "business-bay-canal"
   | "jbr-offshore-lane";
 
+export type MarineRouteId =
+  | `gulf-horizontal-${number}`
+  | `gulf-diagonal-${number}`
+  | `gulf-connector-${number}`
+  | `gulf-yacht-loop-${number}`
+  | BasinRouteId;
+
+export type MarineRouteCategory = "open-sea" | "yacht-loop" | "connector" | "basin";
+export type MarineRouteLayout = "horizontal" | "diagonal" | "connector" | "loop" | "basin";
+
 export type MarineRoute = {
   id: MarineRouteId;
   name: string;
   points: [number, number][];
-  category: "open-sea" | "yacht-loop" | "connector";
+  category: MarineRouteCategory;
+  layout: MarineRouteLayout;
+  /** For `basin` routes: which basin corridor the route is validated against. */
+  basinId?: BasinId;
 };
 
-const ROUTE_IDS: MarineRouteId[] = [
-  "gulf-west-east-outer",
-  "gulf-west-east-middle",
-  "gulf-west-east-inner",
-  "gulf-southwest-northeast",
-  "gulf-northwest-southeast",
-  "gulf-west-vertical",
-  "gulf-mid-vertical",
-  "gulf-east-vertical",
-  "gulf-yacht-loop-west",
-  "gulf-yacht-loop-east",
+const BASIN_ROUTE_IDS: BasinRouteId[] = [
   "marina-inner-channel",
   "marina-entrance-lane",
   "palm-outer-clockwise",
@@ -49,17 +48,7 @@ const ROUTE_IDS: MarineRouteId[] = [
   "jbr-offshore-lane",
 ];
 
-const ROUTE_NAMES: Record<MarineRouteId, string> = {
-  "gulf-west-east-outer": "Arabian Gulf outer west-east lane",
-  "gulf-west-east-middle": "Arabian Gulf middle west-east lane",
-  "gulf-west-east-inner": "Arabian Gulf inner west-east lane",
-  "gulf-southwest-northeast": "Arabian Gulf southwest to northeast crossing",
-  "gulf-northwest-southeast": "Arabian Gulf northwest to southeast crossing",
-  "gulf-west-vertical": "Arabian Gulf west connector",
-  "gulf-mid-vertical": "Arabian Gulf central connector",
-  "gulf-east-vertical": "Arabian Gulf east connector",
-  "gulf-yacht-loop-west": "Arabian Gulf west yacht loop",
-  "gulf-yacht-loop-east": "Arabian Gulf east yacht loop",
+const BASIN_ROUTE_NAMES: Record<BasinRouteId, string> = {
   "marina-inner-channel": "Dubai Marina Inner Channel",
   "marina-entrance-lane": "Dubai Marina Entrance Lane",
   "palm-outer-clockwise": "Palm Jumeirah Outer Crescent (Clockwise)",
@@ -70,109 +59,97 @@ const ROUTE_NAMES: Record<MarineRouteId, string> = {
   "jbr-offshore-lane": "JBR Offshore Lane",
 };
 
-function routeCategory(index: number): MarineRoute["category"] {
-  if (index >= 18) return "connector"; // basin routes (index 10-17)
-  if (index >= 8) return "yacht-loop";
-  if (index >= 5) return "connector";
-  return "open-sea";
-}
-
-// Basin-specific routes (8 new): Marina, Palm, Creek, Business Bay, JBR
-// TODO(satellite-trace): Replace placeholder coordinates with satellite-traced waypoints
-const BASIN_ROUTES: Partial<Record<MarineRouteId, [number, number][]>> = {
-  "marina-inner-channel": [
-    [55.1405, 25.0705],
-    [55.1385, 25.0745],
-    [55.136, 25.079],
-    [55.133, 25.083],
-    [55.13, 25.0865],
-    [55.1275, 25.0895],
-  ],
-  "marina-entrance-lane": [
-    [55.1442, 25.0688],
-    [55.1405, 25.0705],
-    [55.1360, 25.0725],
-    [55.1310, 25.0745],
-  ],
-  "palm-outer-clockwise": [
-    [55.104, 25.128],
-    [55.118, 25.134],
-    [55.134, 25.136],
-    [55.150, 25.132],
-    [55.162, 25.122],
-    [55.166, 25.108],
-    [55.160, 25.096],
-    [55.146, 25.090],
-    [55.130, 25.089],
-    [55.116, 25.094],
-    [55.106, 25.104],
-    [55.102, 25.116],
-    [55.104, 25.128],
-  ],
-  "palm-inner-lagoon": [
-    [55.118, 25.108],
-    [55.128, 25.112],
-    [55.138, 25.115],
-    [55.148, 25.116],
-    [55.156, 25.113],
-    [55.150, 25.105],
-    [55.140, 25.103],
-    [55.128, 25.104],
-  ],
-  "creek-northbound-lane": [
-    [55.332, 25.221],
-    [55.3255, 25.229],
-    [55.317, 25.239],
-    [55.308, 25.251],
-    [55.3005, 25.2615],
-  ],
-  "creek-southbound-lane": [
-    [55.3, 25.262],
-    [55.308, 25.25],
-    [55.317, 25.238],
-    [55.326, 25.228],
-    [55.332, 25.221],
-  ],
-  "business-bay-canal": [
-    [55.2705, 25.1875],
-    [55.2685, 25.182],
-    [55.267, 25.1765],
-    [55.2685, 25.171],
-    [55.272, 25.1665],
-  ],
-  "jbr-offshore-lane": [
-    [55.118, 25.058],
-    [55.108, 25.070],
-    [55.100, 25.084],
-    [55.094, 25.100],
-    [55.090, 25.116],
-  ],
+const ROUTE_BASIN: Partial<Record<BasinRouteId, BasinId>> = {
+  "marina-inner-channel": "marina",
+  "marina-entrance-lane": "marina",
+  "palm-outer-clockwise": "palm-lagoon",
+  "palm-inner-lagoon": "palm-lagoon",
+  // The Creek water pinches shut mid-estuary, so it is two corridors.
+  "creek-northbound-lane": "creek-north",
+  "creek-southbound-lane": "creek-south",
+  "business-bay-canal": "business-bay",
 };
 
-export const MARINE_ROUTES: MarineRoute[] = ROUTE_IDS.map((id, index) => ({
+const basinCenterlineById = new Map(
+  BASIN_CORRIDORS.map((corridor) => [corridor.id, corridor.centerline]),
+);
+
+function basinRoutePoints(id: BasinRouteId): [number, number][] {
+  const basinId = ROUTE_BASIN[id];
+  if (basinId) {
+    const centerline = basinCenterlineById.get(basinId) ?? [];
+    const reversed =
+      id === "creek-southbound-lane" || id === "marina-entrance-lane" || id === "palm-inner-lagoon";
+    return reversed ? [...centerline].reverse() : [...centerline];
+  }
+  // jbr-offshore-lane: deep water off JBR/Marina, inside the open-gulf navigation
+  // polygon (the beachfront itself is too close to shore for moving vessels).
+  return [
+    [55.1, 25.182],
+    [55.09, 25.186],
+    [55.078, 25.19],
+    [55.066, 25.193],
+    [55.054, 25.195],
+  ];
+}
+
+function numberedRoute(
+  prefix: "horizontal" | "diagonal" | "connector" | "yacht-loop",
+  index: number,
+  points: [number, number][],
+): MarineRoute {
+  const number = index + 1;
+  const isLoop = prefix === "yacht-loop";
+  const isConnector = prefix === "connector";
+  return {
+    id: `gulf-${prefix}-${number}`,
+    name: `Arabian Gulf ${prefix.replace("-", " ")} lane ${number}`,
+    points,
+    category: isLoop ? "yacht-loop" : isConnector ? "connector" : "open-sea",
+    layout: isLoop ? "loop" : prefix,
+  };
+}
+
+const OFFSHORE_ROUTES: MarineRoute[] = [
+  ...OPEN_SEA_HORIZONTAL_LANES.map((points, index) => numberedRoute("horizontal", index, points)),
+  ...OPEN_SEA_DIAGONAL_LANES.map((points, index) => numberedRoute("diagonal", index, points)),
+  ...OPEN_SEA_CONNECTOR_LANES.map((points, index) => numberedRoute("connector", index, points)),
+  ...OPEN_SEA_YACHT_LOOPS.map((points, index) => numberedRoute("yacht-loop", index, points)),
+];
+
+const BASIN_ROUTES: MarineRoute[] = BASIN_ROUTE_IDS.map((id) => ({
   id,
-  name: ROUTE_NAMES[id],
-  points: index < 10 ? OPEN_SEA_LANES[index] : (BASIN_ROUTES[id] ?? []),
-  category: routeCategory(index),
+  name: BASIN_ROUTE_NAMES[id],
+  points: basinRoutePoints(id),
+  category: ROUTE_BASIN[id] ? "basin" : "connector",
+  layout: ROUTE_BASIN[id] ? "basin" : "connector",
+  basinId: ROUTE_BASIN[id],
 }));
 
+export const MARINE_ROUTES: MarineRoute[] = [...OFFSHORE_ROUTES, ...BASIN_ROUTES];
 export const MARINE_ROUTE_IDS = MARINE_ROUTES.map((route) => route.id);
 
 export function getMarineRoute(routeId: string | undefined) {
   return MARINE_ROUTES.find((route) => route.id === routeId);
 }
 
+export function getMarineRouteByPoints(points: [number, number][] | undefined) {
+  return MARINE_ROUTES.find((route) => route.points === points);
+}
+
 export function hashRouteSeed(id: string) {
   return [...id].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
 }
 
+export function marineRoutesForVesselType(type: ModelType) {
+  if (type === "ship") return MARINE_ROUTES.filter((route) => route.category === "open-sea");
+  if (type === "abra") return MARINE_ROUTES.filter((route) => route.category === "basin");
+  return MARINE_ROUTES;
+}
+
 export function defaultMarineRouteIdForVessel(id: string, type: ModelType): MarineRouteId {
-  const seed = hashRouteSeed(id);
-  const candidates =
-    type === "ship"
-      ? MARINE_ROUTES.filter((route) => route.category === "open-sea")
-      : MARINE_ROUTES;
-  return candidates[seed % candidates.length].id;
+  const candidates = marineRoutesForVesselType(type);
+  return candidates[hashRouteSeed(id) % candidates.length].id;
 }
 
 export function orderedMarineRouteCandidates(id: string, preferredRouteId?: string) {
@@ -189,15 +166,17 @@ export function orderedMarineRouteCandidates(id: string, preferredRouteId?: stri
 }
 
 export function defaultSpeedMetersPerSecond(type: ModelType) {
+  // Livelier traffic than the original baselines (ship 6 / yacht 8.5 / boat 7.2
+  // / abra 5) so the denser enterprise fleet reads as busy, not static.
   switch (type) {
     case "ship":
-      return 6;
+      return 7;
     case "yacht":
-      return 8.5;
+      return 10;
     case "boat":
-      return 7.2;
+      return 9;
     case "abra":
-      return 5;
+      return 6;
     default:
       return 0;
   }

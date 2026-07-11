@@ -31,6 +31,8 @@ export type ModelConfig = {
    * default in WATERCRAFT_DISPLAY_LENGTH_METERS when fitting the model on the map.
    */
   displayLengthMeters?: number;
+  /** Fraction of the hull height submerged below the animated water surface. */
+  waterlineFraction?: number;
   /**
    * Optional per-model multiplier on the zoom-based visibility scale so a single
    * vessel can be nudged larger/smaller without touching the whole type.

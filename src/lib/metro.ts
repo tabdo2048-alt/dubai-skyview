@@ -34,7 +34,7 @@ export const CATEGORY_COLORS: Record<LineCategory, string> = {
   pink: "#D85B8C",
   tram: "#F2994A",
   future: "#B66DFF",
-  train: "#F7F7F2",
+  train: "#050505",
 };
 
 // Decide a line's category from its id/name/status. Regional/rail lines are
@@ -91,8 +91,72 @@ export const METRO_LINES: MetroLine[] = applyCategory(
   false,
 );
 
-// Etihad Rail removed per user request.
-export const TRAIN_LINES: MetroLine[] = [];
+// Dubai passenger rail route traced from the user's satellite reference. This
+// stays OUT of the Metro button because it is exported only through TRAIN_LINES.
+const DUBAI_TRAIN_MAIN: MetroLine = {
+  id: "dubai-train-main-corridor",
+  name: "Dubai Train Main Corridor",
+  color: CATEGORY_COLORS.train,
+  status: "planned-2030",
+  path: [
+    [55.005, 24.79], // enters from the south-west edge
+    [55.025, 24.815],
+    [55.047, 24.845],
+    [55.073, 24.878],
+    [55.098, 24.912],
+    [55.122, 24.948],
+    [55.146, 24.985],
+    [55.168, 25.018],
+    [55.19, 25.052], // main junction near Dubai Investment Park / JGE side
+    [55.206, 25.086],
+    [55.225, 25.124],
+    [55.255, 25.164],
+    [55.292, 25.196],
+    [55.333, 25.222],
+    [55.374, 25.249], // exits east/north-east like the reference
+  ],
+  stations: [
+    {
+      id: "dubai-train-jge-interchange",
+      name: "Dubai Train Interchange",
+      coord: [55.19, 25.052],
+      interchange: true,
+    },
+  ],
+};
+
+const DUBAI_TRAIN_DUBAI_BRANCH: MetroLine = {
+  id: "dubai-train-dubai-branch",
+  name: "Dubai Train Dubai Branch",
+  color: CATEGORY_COLORS.train,
+  status: "planned-2030",
+  path: [
+    [55.19, 25.052], // branches from the main corridor
+    [55.172, 25.067],
+    [55.148, 25.077],
+    [55.118, 25.078],
+    [55.091, 25.077],
+    [55.071, 25.082],
+    [55.058, 25.095], // short north kink near Jebel Ali Industrial Area
+    [55.074, 25.105],
+    [55.101, 25.107],
+    [55.126, 25.104],
+    [55.148, 25.103], // Dubai branch endpoint from the reference image
+  ],
+  stations: [
+    {
+      id: "dubai-train-dubai-station",
+      name: "Dubai Station",
+      coord: [55.148, 25.103],
+      interchange: true,
+    },
+  ],
+};
+
+export const TRAIN_LINES: MetroLine[] = applyCategory(
+  [DUBAI_TRAIN_MAIN, DUBAI_TRAIN_DUBAI_BRANCH],
+  true,
+);
 
 // Both networks combined — used for animation/progress bookkeeping.
 export const ALL_RAIL_LINES: MetroLine[] = [...METRO_LINES, ...TRAIN_LINES];

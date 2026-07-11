@@ -26,7 +26,32 @@ const WATER_DEBUG = false;
 // visually. Also attaches a map click handler that prints the clicked
 // [lng, lat] to the console, for manually correcting boundary coordinates
 // against the satellite basemap. Never enable in production.
-const WATER_MASK_DEBUG = false;
+//
+// This is a RUNTIME flag (not a compile-time const) so the dev-only Water Debug
+// Editor can toggle the mask on/off live. The mask geometry is always built in
+// onAdd but stays hidden until enabled — flipping it is just a `.visible` change,
+// no layer rebuild. Defaults off; the editor is the only thing that turns it on.
+let waterMaskDebugEnabled = false;
+const waterMaskDebugListeners = new Set<(enabled: boolean) => void>();
+
+export function setWaterMaskDebug(enabled: boolean) {
+  if (waterMaskDebugEnabled === enabled) return;
+  waterMaskDebugEnabled = enabled;
+  for (const listener of waterMaskDebugListeners) listener(enabled);
+}
+
+export function isWaterMaskDebugEnabled() {
+  return waterMaskDebugEnabled;
+}
+
+// Any created water layer registers a listener so a live toggle reaches it even
+// when there are two layers mounted (satellite + 3d). Returns an unsubscribe.
+function subscribeWaterMaskDebug(listener: (enabled: boolean) => void) {
+  waterMaskDebugListeners.add(listener);
+  return () => {
+    waterMaskDebugListeners.delete(listener);
+  };
+}
 
 const SHORE_WAVES_ENABLED = true;
 // Note: the old hand-drawn open-sea white ribbon meshes are retired — open-Gulf
@@ -641,10 +666,14 @@ export function createWaterLayer(
   const waterMaterials: THREE.ShaderMaterial[] = [];
   const debugLines: THREE.LineSegments[] = [];
   const maskDebugLines: THREE.LineLoop[] = [];
+  // Every mask-debug object (tri-wire + ring/hole lines) so their visibility can
+  // be toggled together at runtime by the Water Debug Editor.
+  const maskDebugObjects: THREE.Object3D[] = [];
   let ref: MercatorRef;
   let clock: THREE.Clock;
   let onResize: (() => void) | null = null;
   let onMaskDebugClick: ((e: mapboxgl.MapMouseEvent) => void) | null = null;
+  let unsubscribeMaskDebug: (() => void) | null = null;
   let shoreMesh: THREE.Mesh | null = null;
   let shoreMaterial: THREE.ShaderMaterial | null = null;
   let firstFrameLogged = false;
@@ -730,7 +759,9 @@ export function createWaterLayer(
           scene.add(line);
         }
 
-        if (WATER_MASK_DEBUG) {
+        // Mask-debug geometry is always built but hidden until enabled at
+        // runtime by the Water Debug Editor (setWaterMaskDebug).
+        {
           // Triangulated mesh edges in green — confirms triangulation matches
           // the outer ring + holes with no stray/degenerate triangles.
           const triWire = new THREE.WireframeGeometry(geometry);
@@ -741,19 +772,25 @@ export function createWaterLayer(
           triLine.position.z = 0.45;
           triLine.renderOrder = 5;
           triLine.frustumCulled = false;
+          triLine.visible = waterMaskDebugEnabled;
           scene.add(triLine);
           debugLines.push(triLine);
+          maskDebugObjects.push(triLine);
 
           // Outer ring in cyan.
           const outer = buildRingLine(area.polygon, ref, 0x00ffff, 0.55);
+          outer.visible = waterMaskDebugEnabled;
           scene.add(outer);
           maskDebugLines.push(outer);
+          maskDebugObjects.push(outer);
 
           // Holes (excluded land) in red.
           for (const hole of area.holes ?? []) {
             const holeLine = buildRingLine(hole, ref, 0xff0000, 0.58);
+            holeLine.visible = waterMaskDebugEnabled;
             scene.add(holeLine);
             maskDebugLines.push(holeLine);
+            maskDebugObjects.push(holeLine);
           }
         }
       }
@@ -782,14 +819,27 @@ export function createWaterLayer(
       map.on("resize", onResize);
       console.log("[Water] total areas:", waters.length);
 
-      if (WATER_MASK_DEBUG) {
-        onMaskDebugClick = (e: mapboxgl.MapMouseEvent) => {
-          const { lng, lat } = e.lngLat;
-          console.log("[WaterMaskDebug]", `[${lng.toFixed(6)}, ${lat.toFixed(6)}]`);
-        };
-        map.on("click", onMaskDebugClick);
-        console.log("[WaterMaskDebug] click the map to print [lng, lat] coordinates");
-      }
+      // Apply a mask-debug enabled/disabled state to this layer's objects and
+      // its console click-logger. Called on init and whenever the runtime flag
+      // flips (via the Water Debug Editor's toggle).
+      const applyMaskDebug = (enabled: boolean) => {
+        for (const obj of maskDebugObjects) obj.visible = enabled;
+        if (enabled && !onMaskDebugClick) {
+          onMaskDebugClick = (e: mapboxgl.MapMouseEvent) => {
+            const { lng, lat } = e.lngLat;
+            console.log("[WaterMaskDebug]", `[${lng.toFixed(6)}, ${lat.toFixed(6)}]`);
+          };
+          map.on("click", onMaskDebugClick);
+          console.log("[WaterMaskDebug] click the map to print [lng, lat] coordinates");
+        } else if (!enabled && onMaskDebugClick) {
+          map.off("click", onMaskDebugClick);
+          onMaskDebugClick = null;
+        }
+        map.triggerRepaint();
+      };
+
+      applyMaskDebug(waterMaskDebugEnabled);
+      unsubscribeMaskDebug = subscribeWaterMaskDebug(applyMaskDebug);
     },
 
     render(_gl: WebGLRenderingContext, matrix: unknown) {
@@ -854,6 +904,8 @@ export function createWaterLayer(
     onRemove() {
       if (onResize) map.off("resize", onResize);
       onResize = null;
+      if (unsubscribeMaskDebug) unsubscribeMaskDebug();
+      unsubscribeMaskDebug = null;
       if (onMaskDebugClick) map.off("click", onMaskDebugClick);
       onMaskDebugClick = null;
       for (const water of waters) {
@@ -875,6 +927,7 @@ export function createWaterLayer(
         (line.material as THREE.Material).dispose();
       }
       maskDebugLines.length = 0;
+      maskDebugObjects.length = 0;
       if (shoreMesh) {
         scene.remove(shoreMesh);
         shoreMesh.geometry.dispose();

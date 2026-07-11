@@ -11,19 +11,21 @@ import {
   NAVIGATION_WATER_POLYGONS,
   type NavigationPolygon,
 } from "@/lib/navigationWater";
-import { orderedMarineRouteCandidates } from "@/lib/marineRoutes";
+import { isPointInAnyBasinNavigationWater } from "@/lib/navigationBasins";
+import { orderedMarineRouteCandidates, type MarineRouteCategory } from "@/lib/marineRoutes";
 import { WATERCRAFT_DISPLAY_LENGTH_METERS, type ModelConfig, type ModelType } from "./modelTypes";
 
 const BOAT_ROUTE_DEBUG = false;
 const WATERCRAFT_TYPES = new Set<ModelType>(["boat", "yacht", "ship", "abra"]);
 const METERS_PER_LATITUDE_DEGREE = 111_320;
-const ROUTE_SAMPLE_STEP_METERS = 25;
+export const ROUTE_SAMPLE_STEP_METERS = 10;
 const loggedRoutes = new Set<string>();
 
 export type InvalidRouteSample = {
   point: [number, number];
   segmentIndex: number;
-  reason: "outside-navigation-water" | "inside-land-mask" | "shore-clearance";
+  reason:
+    "outside-navigation-water" | "outside-basin-water" | "inside-land-mask" | "shore-clearance";
   clearanceMeters: number;
   nearestLandMeters: number;
 };
@@ -119,11 +121,38 @@ export function distanceToLandBoundaryMeters(point: [number, number]) {
   return distanceToNearestPolygonBoundaryMeters(point, LAND_EXCLUSION_POLYGONS);
 }
 
+// Validation context: open-sea routes are checked against the deep-Gulf mask +
+// coarse land boxes; basin routes are checked against the basin corridors, which
+// are already clipped to the real basin water polygon (and its holes). The two
+// never mix — the coarse mainland box would wrongly reject in-basin points, and
+// the offshore mask does not cover the sheltered basins.
+export type RouteContext = "open-sea" | "basin";
+
+export function routeContextForCategory(category: MarineRouteCategory): RouteContext {
+  return category === "basin" ? "basin" : "open-sea";
+}
+
 function invalidSampleForPoint(
   point: [number, number],
   segmentIndex: number,
   clearanceMeters: number,
+  context: RouteContext = "open-sea",
 ): InvalidRouteSample | undefined {
+  if (context === "basin") {
+    // A basin corridor already guarantees water + island-hole exclusion, so the
+    // only failure mode is drifting out of the corridor / basin water.
+    if (!isPointInAnyBasinNavigationWater(point)) {
+      return {
+        point,
+        segmentIndex,
+        reason: "outside-basin-water",
+        clearanceMeters,
+        nearestLandMeters: 0,
+      };
+    }
+    return undefined;
+  }
+
   const nearestLandMeters = distanceToLandBoundaryMeters(point);
   if (!isPointInAnyPolygon(point, NAVIGATION_WATER_POLYGONS)) {
     return {
@@ -164,6 +193,19 @@ export function isPointInSafeNavigationWater(point: [number, number], clearanceM
   return true;
 }
 
+// Runtime per-frame safety net used by Model3DLayer. A point is safe if it is
+// valid open-sea navigation water OR valid basin navigation water. Basin vessels
+// ride corridors clipped to real basin water, so they satisfy the basin branch
+// even though the coarse offshore mask would reject them.
+export function isPointInAnySafeWater(
+  point: [number, number],
+  clearanceMeters = 0,
+  context: RouteContext = "open-sea",
+) {
+  if (context === "basin") return isPointInAnyBasinNavigationWater(point);
+  return isPointInSafeNavigationWater(point, clearanceMeters);
+}
+
 export function isPointInDubaiWater(point: [number, number]) {
   return isPointInAnyPolygon(point, NAVIGATION_WATER_POLYGONS);
 }
@@ -178,13 +220,17 @@ export function getVesselSafetyClearance(
   return (BASE_SAFETY_CLEARANCE_METERS[config.type] ?? 25) + displayLength / 2;
 }
 
-// Roughly one safety check every 25 m so long segments are never under-sampled.
+// Enterprise acceptance requires at least one safety check every 10 m.
 function getSegmentSampleCount(start: [number, number], end: [number, number]) {
   const lengthMeters = distanceMeters(start, end);
   return Math.max(16, Math.ceil(lengthMeters / ROUTE_SAMPLE_STEP_METERS));
 }
 
-export function routeStaysInDubaiWater(route: [number, number][], clearanceMeters = 0) {
+export function routeStaysInDubaiWater(
+  route: [number, number][],
+  clearanceMeters = 0,
+  context: RouteContext = "open-sea",
+) {
   if (route.length < 2) return false;
 
   for (let i = 1; i < route.length; i++) {
@@ -197,7 +243,7 @@ export function routeStaysInDubaiWater(route: [number, number][], clearanceMeter
         start[0] + (end[0] - start[0]) * t,
         start[1] + (end[1] - start[1]) * t,
       ];
-      const invalid = invalidSampleForPoint(point, i - 1, clearanceMeters);
+      const invalid = invalidSampleForPoint(point, i - 1, clearanceMeters, context);
       if (invalid) {
         if (BOAT_ROUTE_DEBUG) console.warn("[BoatRoute] rejected sample", invalid);
         return false;
@@ -211,6 +257,7 @@ export function routeStaysInDubaiWater(route: [number, number][], clearanceMeter
 export function collectInvalidRouteSamples(
   route: [number, number][] | undefined,
   clearanceMeters = 0,
+  context: RouteContext = "open-sea",
 ) {
   const invalidSamples: InvalidRouteSample[] = [];
   if (!route || route.length < 2) return invalidSamples;
@@ -225,7 +272,7 @@ export function collectInvalidRouteSamples(
         start[0] + (end[0] - start[0]) * t,
         start[1] + (end[1] - start[1]) * t,
       ];
-      const invalid = invalidSampleForPoint(point, i - 1, clearanceMeters);
+      const invalid = invalidSampleForPoint(point, i - 1, clearanceMeters, context);
       if (invalid) invalidSamples.push(invalid);
     }
   }
@@ -235,28 +282,35 @@ export function collectInvalidRouteSamples(
 
 export function modelStaysInDubaiWater(config: ModelConfig) {
   if (!isWatercraft(config.type)) return true;
-  const route = waterRouteForDisplay(config);
-  return (
-    Boolean(route) &&
-    routeStaysInDubaiWater(route as [number, number][], getVesselSafetyClearance(config))
-  );
+  return Boolean(waterRouteForDisplay(config));
 }
 
-// Every vessel sails a verified open-sea lane. The lane derived from its id is
-// tried first; if it somehow fails its clearance, the next lanes are tried; if
-// none pass, the vessel is skipped rather than rendered onto land.
+function routeFitsVessel(config: ModelConfig, category: MarineRouteCategory) {
+  if (config.type === "ship") return category === "open-sea";
+  return true;
+}
+
+// Every vessel sails a verified named route. Open-sea routes are checked against
+// the Gulf navigation mask and land buffers; basin routes are checked against
+// their corridor clipped to visual water polygons.
 export function waterRouteForDisplay(config: ModelConfig): [number, number][] | undefined {
   if (!isWatercraft(config.type)) return config.route;
 
   const clearance = getVesselSafetyClearance(config);
   const candidates = orderedMarineRouteCandidates(config.id, config.routeId);
   for (let i = 0; i < candidates.length; i++) {
-    if (routeStaysInDubaiWater(candidates[i].points, clearance)) {
+    const candidate = candidates[i];
+    if (!routeFitsVessel(config, candidate.category)) continue;
+    const context = routeContextForCategory(candidate.category);
+    // Basin corridors already carry their own clearance, so no extra land
+    // clearance is imposed there (the coarse land boxes don't apply in-basin).
+    const clearanceForContext = context === "basin" ? 0 : clearance;
+    if (routeStaysInDubaiWater(candidate.points, clearanceForContext, context)) {
       logRouteOnce(
         i === 0 ? "[BoatRoute] safe route accepted" : "[BoatRoute] fallback route used",
-        `${config.id}:${candidates[i].id}`,
+        `${config.id}:${candidate.id}`,
       );
-      return candidates[i].points;
+      return candidate.points;
     }
   }
 

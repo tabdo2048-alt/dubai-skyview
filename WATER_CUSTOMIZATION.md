@@ -1,3 +1,16 @@
+> ⚠️ **DEPRECATED / OUT OF DATE.** This guide describes an older, simpler water
+> shader (uniforms like `uShimmer` / `uDistortion`) that has since been fully
+> replaced by the Gerstner wave system. The current water surface is defined by:
+> - `src/lib/mapbox/waterWaveModel.ts` — the canonical Gerstner wave model shared
+>   by the GPU shader and CPU vessel physics.
+> - `src/components/map/WaterLayer.ts` — the custom Mapbox/Three.js water layer.
+>   Actual current shader uniforms: `uTime, uIntensity, uMaxAmp, uCamLocal,
+>   uSunDir, uDeepColor, uShallowColor, uSkyColor, uFoamColor, uOpacity`.
+> - `src/lib/water.ts` — the per-basin water polygons and `waveIntensity` values.
+>
+> Do **not** rely on the uniform names or line numbers below. Kept only for
+> historical context.
+
 # Water Customization Guide
 
 ## Overview

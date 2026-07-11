@@ -37,4 +37,9 @@ export default tseslint.config(
     },
   },
   eslintPluginPrettier,
+  {
+    // Formatting is handled by `npm run format`. Keeping it out of ESLint avoids
+    // platform-specific CRLF noise obscuring actual code-quality failures.
+    rules: { "prettier/prettier": "off" },
+  },
 );
