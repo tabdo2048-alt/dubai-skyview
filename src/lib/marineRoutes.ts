@@ -166,16 +166,16 @@ export function orderedMarineRouteCandidates(id: string, preferredRouteId?: stri
 }
 
 export function defaultSpeedMetersPerSecond(type: ModelType) {
-  // Brisk but believable traffic that remains readable at Dubai-wide zoom.
+  // Fast, energetic traffic — vessels visibly cruise across the map.
   switch (type) {
     case "ship":
-      return 9;
+      return 16;
     case "yacht":
-      return 12;
+      return 22;
     case "boat":
-      return 11;
+      return 20;
     case "abra":
-      return 7.5;
+      return 13;
     default:
       return 0;
   }

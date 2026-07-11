@@ -56,9 +56,11 @@ function subscribeWaterMaskDebug(listener: (enabled: boolean) => void) {
 const SHORE_WAVES_ENABLED = true;
 // Note: the old hand-drawn open-sea white ribbon meshes are retired — open-Gulf
 // crest foam now comes from the water shader itself (see WATER_FRAGMENT).
-const SHORE_WAVE_CYCLE_SECONDS = 4.5;
-const SHORE_RIBBON_OFFSETS = [70, 56, 42, 28, 14] as const;
-const BASE_SHORE_HALF_WIDTH_M = 22;
+// Bigger, faster breaking waves at the shore: a shorter cycle (waves arrive more
+// often), ribbons spread further offshore and wider so the surf reads large.
+const SHORE_WAVE_CYCLE_SECONDS = 3.0;
+const SHORE_RIBBON_OFFSETS = [120, 98, 76, 54, 32, 14] as const;
+const BASE_SHORE_HALF_WIDTH_M = 34;
 const SHORE_SAMPLE_STEP_M = 7;
 const SHORE_Z = 0.62;
 
@@ -75,10 +77,11 @@ type ShorelineGeometryBundle = {
 };
 
 function getShoreWaveWidthMeters(zoom: number): number {
-  if (zoom <= 10) return 30;
-  if (zoom <= 12) return 24;
-  if (zoom <= 14) return 18;
-  return 13;
+  // Wider surf bands than before so the shoreline waves read big at every zoom.
+  if (zoom <= 10) return 48;
+  if (zoom <= 12) return 40;
+  if (zoom <= 14) return 30;
+  return 22;
 }
 
 function hash01(value: number): number {
@@ -245,7 +248,7 @@ const SHORE_FRAGMENT = /* glsl */ `
   void main() {
     float cycleLength = max(uCycleSeconds, 0.1);
     float cycle = mod(uTime, cycleLength) / cycleLength;
-    float ribbonPhase = vRibbon / 5.0;
+    float ribbonPhase = vRibbon / 6.0;
     float localPhase = fract(cycle - ribbonPhase + 0.18);
     float arrival =
       smoothstep(0.04, 0.16, localPhase) *
@@ -284,7 +287,7 @@ function makeShoreMaterial(): THREE.ShaderMaterial {
     uniforms: {
       uTime: { value: 0 },
       uGeneration: { value: 0 },
-      uOpacity: { value: 1.1 },
+      uOpacity: { value: 1.5 },
       uCycleSeconds: { value: SHORE_WAVE_CYCLE_SECONDS },
       uWidthScale: { value: 1 },
       uColor: { value: new THREE.Color(0xffffff) },
