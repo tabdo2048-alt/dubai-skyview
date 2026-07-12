@@ -27,15 +27,15 @@ export type WaterWaveParam = {
 };
 
 // Two broad low-frequency swells, two medium waves, two small detail waves.
-// Tuned restrained: total amplitude ~1.4 m so the Gulf reads alive but never
-// cartoonish at city zoom. `intensity` scales all of this per water body.
+// Broad, clearly visible Gulf motion without becoming a cartoon. `intensity`
+// scales these values down for protected Marina, Creek, and canal water.
 export const WATER_WAVE_PARAMS: WaterWaveParam[] = [
-  { directionDeg: 300, wavelength: 165, amplitude: 0.55, steepness: 0.62, speed: 7.4, phase: 0.0 },
-  { directionDeg: 284, wavelength: 112, amplitude: 0.4, steepness: 0.58, speed: 6.1, phase: 1.7 },
-  { directionDeg: 322, wavelength: 56, amplitude: 0.2, steepness: 0.5, speed: 4.4, phase: 3.1 },
-  { directionDeg: 258, wavelength: 34, amplitude: 0.14, steepness: 0.44, speed: 3.5, phase: 4.6 },
-  { directionDeg: 210, wavelength: 16, amplitude: 0.06, steepness: 0.32, speed: 2.4, phase: 0.9 },
-  { directionDeg: 32, wavelength: 9.5, amplitude: 0.035, steepness: 0.26, speed: 1.8, phase: 5.4 },
+  { directionDeg: 300, wavelength: 165, amplitude: 0.66, steepness: 0.58, speed: 10.2, phase: 0.0 },
+  { directionDeg: 284, wavelength: 112, amplitude: 0.48, steepness: 0.55, speed: 8.4, phase: 1.7 },
+  { directionDeg: 322, wavelength: 56, amplitude: 0.25, steepness: 0.48, speed: 6.0, phase: 3.1 },
+  { directionDeg: 258, wavelength: 34, amplitude: 0.17, steepness: 0.4, speed: 4.8, phase: 4.6 },
+  { directionDeg: 210, wavelength: 16, amplitude: 0.075, steepness: 0.3, speed: 3.3, phase: 0.9 },
+  { directionDeg: 32, wavelength: 9.5, amplitude: 0.045, steepness: 0.24, speed: 2.5, phase: 5.4 },
 ];
 
 type CompiledWave = {
@@ -111,8 +111,7 @@ export function sampleWaterWave(
     ny += w.dirY * ak;
   }
   const out: WaveSample =
-    target ??
-    ({ height: 0, normal: new THREE.Vector3(), slopeX: 0, slopeY: 0 } as WaveSample);
+    target ?? ({ height: 0, normal: new THREE.Vector3(), slopeX: 0, slopeY: 0 } as WaveSample);
   out.height = height;
   out.slopeX = nx;
   out.slopeY = ny;
@@ -151,9 +150,7 @@ export function buildWaterWaveGLSL(): string {
       `  float ${theta} = ${glslFloat(w.k)} * (${glslFloat(w.dirX)} * p.x + ${glslFloat(
         w.dirY,
       )} * p.y) - ${glslFloat(w.omega)} * t + ${glslFloat(w.phase)};`,
-      `  float ak${i} = ${glslFloat(w.amplitude)} * intensity * ${glslFloat(
-        w.k,
-      )} * cos(${theta});`,
+      `  float ak${i} = ${glslFloat(w.amplitude)} * intensity * ${glslFloat(w.k)} * cos(${theta});`,
       `  nx += ${glslFloat(w.dirX)} * ak${i};`,
       `  ny += ${glslFloat(w.dirY)} * ak${i};`,
     );

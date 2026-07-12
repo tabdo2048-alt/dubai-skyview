@@ -142,7 +142,13 @@ export function hashRouteSeed(id: string) {
 }
 
 export function marineRoutesForVesselType(type: ModelType) {
-  if (type === "ship") return MARINE_ROUTES.filter((route) => route.category === "open-sea");
+  // Cargo ships use the separated horizontal Gulf lanes only. The diagonal
+  // routes remain for lighter traffic, keeping large hulls out of crossings.
+  if (type === "ship") {
+    return MARINE_ROUTES.filter(
+      (route) => route.category === "open-sea" && route.layout === "horizontal",
+    );
+  }
   if (type === "abra") return MARINE_ROUTES.filter((route) => route.category === "basin");
   return MARINE_ROUTES;
 }

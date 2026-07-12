@@ -75,21 +75,12 @@ function applyCategory(lines: MetroLine[], isTrain: boolean): MetroLine[] {
   });
 }
 
-// Accurate Red / Green / Tram network, traced from the official RTA maps
-// (station names in real travel order — see metroAccurate.ts). This replaces
-// the old auto-generated KML import, which had scrambled order + placeholders.
+// Accurate RTA network. The generated KML data includes placeholder stations
+// and speculative corridors, so it is deliberately excluded from the live map.
 import { ACCURATE_METRO_LINES } from "./metroAccurate";
-import { IMPORTED_METRO_LINES } from "./metroNetwork.generated";
 
-const FUTURE_METRO_LINES = IMPORTED_METRO_LINES.filter(
-  (line) => !["red", "green"].includes(line.id),
-);
-
-// Accurate RTA network (Red + Green + Tram), recolored + tagged by category.
-export const METRO_LINES: MetroLine[] = applyCategory(
-  [...ACCURATE_METRO_LINES, ...FUTURE_METRO_LINES],
-  false,
-);
+// Only routes with named, verified stations appear in the Metro control.
+export const METRO_LINES: MetroLine[] = applyCategory(ACCURATE_METRO_LINES, false);
 
 // Dubai passenger rail route traced from the user's satellite reference. This
 // stays OUT of the Metro button because it is exported only through TRAIN_LINES.

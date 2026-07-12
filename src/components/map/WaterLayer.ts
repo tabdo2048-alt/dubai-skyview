@@ -58,9 +58,9 @@ const SHORE_WAVES_ENABLED = true;
 // crest foam now comes from the water shader itself (see WATER_FRAGMENT).
 // Bigger, faster breaking waves at the shore: a shorter cycle (waves arrive more
 // often), ribbons spread further offshore and wider so the surf reads large.
-const SHORE_WAVE_CYCLE_SECONDS = 3.0;
-const SHORE_RIBBON_OFFSETS = [120, 98, 76, 54, 32, 14] as const;
-const BASE_SHORE_HALF_WIDTH_M = 34;
+const SHORE_WAVE_CYCLE_SECONDS = 4.6;
+const SHORE_RIBBON_OFFSETS = [42, 30, 20, 12, 6] as const;
+const BASE_SHORE_HALF_WIDTH_M = 9;
 const SHORE_SAMPLE_STEP_M = 7;
 const SHORE_Z = 0.62;
 
@@ -77,11 +77,10 @@ type ShorelineGeometryBundle = {
 };
 
 function getShoreWaveWidthMeters(zoom: number): number {
-  // Wider surf bands than before so the shoreline waves read big at every zoom.
-  if (zoom <= 10) return 48;
-  if (zoom <= 12) return 40;
-  if (zoom <= 14) return 30;
-  return 22;
+  if (zoom <= 10) return 18;
+  if (zoom <= 12) return 14;
+  if (zoom <= 14) return 10;
+  return 7;
 }
 
 function hash01(value: number): number {
@@ -119,8 +118,19 @@ function pointInLocalRing(point: THREE.Vector3, ring: THREE.Vector3[]) {
   return inside;
 }
 
-function pointInAnyLocalWaterRing(point: THREE.Vector3, rings: THREE.Vector3[][]) {
-  return rings.some((ring) => pointInLocalRing(point, ring));
+type LocalWaterMask = {
+  outer: THREE.Vector3[];
+  holes: THREE.Vector3[][];
+};
+
+function pointInLocalWaterMask(point: THREE.Vector3, mask: LocalWaterMask) {
+  return (
+    pointInLocalRing(point, mask.outer) && !mask.holes.some((hole) => pointInLocalRing(point, hole))
+  );
+}
+
+function pointInAnyLocalWaterMask(point: THREE.Vector3, masks: LocalWaterMask[]) {
+  return masks.some((mask) => pointInLocalWaterMask(point, mask));
 }
 
 function subdivide(geometry: THREE.BufferGeometry, levels: number): THREE.BufferGeometry {
@@ -248,7 +258,7 @@ const SHORE_FRAGMENT = /* glsl */ `
   void main() {
     float cycleLength = max(uCycleSeconds, 0.1);
     float cycle = mod(uTime, cycleLength) / cycleLength;
-    float ribbonPhase = vRibbon / 6.0;
+    float ribbonPhase = vRibbon / 5.0;
     float localPhase = fract(cycle - ribbonPhase + 0.18);
     float arrival =
       smoothstep(0.04, 0.16, localPhase) *
@@ -262,7 +272,7 @@ const SHORE_FRAGMENT = /* glsl */ `
     float pulse = 0.72 + 0.24 * sin(uTime * 2.1 + vPhase * 9.0);
     float alpha =
       uOpacity *
-      1.7 *
+      0.92 *
       vIntensity *
       vSegmentMask *
       generationMask *
@@ -287,7 +297,7 @@ function makeShoreMaterial(): THREE.ShaderMaterial {
     uniforms: {
       uTime: { value: 0 },
       uGeneration: { value: 0 },
-      uOpacity: { value: 1.5 },
+      uOpacity: { value: 0.64 },
       uCycleSeconds: { value: SHORE_WAVE_CYCLE_SECONDS },
       uWidthScale: { value: 1 },
       uColor: { value: new THREE.Color(0xffffff) },
@@ -360,12 +370,17 @@ function buildShoreGeometry(ref: MercatorRef): THREE.BufferGeometry {
     pushVert(cx1, cy1, a1, 0, ribbon, phase, intensity, segmentMask, 0, 0);
   };
 
-  const waterRings = WATER_AREAS.map((area) =>
-    area.polygon.map(([lng, lat]) => lngLatToLocal(lng, lat, ref, 0)),
+  const waterMasks: LocalWaterMask[] = WATER_AREAS.filter((area) => area.renderSurface).map(
+    (area) => ({
+      outer: area.polygon.map(([lng, lat]) => lngLatToLocal(lng, lat, ref, 0)),
+      holes: (area.holes ?? []).map((hole) =>
+        hole.map(([lng, lat]) => lngLatToLocal(lng, lat, ref, 0)),
+      ),
+    }),
   );
 
   for (const shoreline of SHORELINE_PATHS) {
-    addShorelinePath(shoreline, ref, waterRings, pushRibbonTri);
+    addShorelinePath(shoreline, ref, waterMasks, pushRibbonTri);
   }
 
   const geo = new THREE.BufferGeometry();
@@ -384,7 +399,7 @@ function buildShoreGeometry(ref: MercatorRef): THREE.BufferGeometry {
 function addShorelinePath(
   shoreline: ShorelinePath,
   ref: MercatorRef,
-  waterRings: THREE.Vector3[][],
+  waterMasks: LocalWaterMask[],
   pushRibbonTri: (
     cx0: number,
     cy0: number,
@@ -416,7 +431,7 @@ function addShorelinePath(
     const ty = dy / segmentLength;
     const preferredNx = -ty * shoreline.waterSide;
     const preferredNy = tx * shoreline.waterSide;
-    const probeOffset = shoreline.offsetMeters + SHORE_RIBBON_OFFSETS[0];
+    const probeOffset = shoreline.offsetMeters + SHORE_RIBBON_OFFSETS[0] + BASE_SHORE_HALF_WIDTH_M;
     const mid = new THREE.Vector3((a.x + b.x) / 2, (a.y + b.y) / 2, 0);
     const preferredProbe = new THREE.Vector3(
       mid.x + preferredNx * probeOffset,
@@ -428,8 +443,8 @@ function addShorelinePath(
       mid.y - preferredNy * probeOffset,
       0,
     );
-    const preferredIsWater = pointInAnyLocalWaterRing(preferredProbe, waterRings);
-    const oppositeIsWater = pointInAnyLocalWaterRing(oppositeProbe, waterRings);
+    const preferredIsWater = pointInAnyLocalWaterMask(preferredProbe, waterMasks);
+    const oppositeIsWater = pointInAnyLocalWaterMask(oppositeProbe, waterMasks);
     const sideCorrection = !preferredIsWater && oppositeIsWater ? -1 : 1;
     const nx = preferredNx * sideCorrection;
     const ny = preferredNy * sideCorrection;
@@ -484,9 +499,14 @@ const WATER_VERTEX = /* glsl */ `
 
   void main() {
     vec2 base = position.xy;
-    vec2 shift = waterWaveDisplaceXY(base, uTime, uIntensity);
+    // Vertical displacement only. Horizontal Gerstner shift is intentionally
+    // NOT applied: adjacent water bodies share boundary rings but run different
+    // uIntensity values, so shifting edge vertices horizontally opened animated
+    // cracks along shared seams (Gulf vs Palm surround) and pushed the water
+    // edge across the shoreline onto beaches. Crest shape still reads correctly
+    // because lighting/foam are computed per-fragment from the wave field.
     float h = waterWaveHeight(base, uTime, uIntensity);
-    vec3 displaced = vec3(base + shift, position.z + h);
+    vec3 displaced = vec3(base, position.z + h);
     vBase = base;
     vLocal = displaced;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
@@ -575,9 +595,13 @@ type WaterMaterialOptions = {
   openSea: boolean;
 };
 
-function makeWaterMaterial({ mode, intensity, openSea }: WaterMaterialOptions): THREE.ShaderMaterial {
+function makeWaterMaterial({
+  mode,
+  intensity,
+  openSea,
+}: WaterMaterialOptions): THREE.ShaderMaterial {
   const satellite = mode === "satellite";
-  const opacity = satellite ? (openSea ? 0.18 : 0.22) : openSea ? 0.24 : 0.28;
+  const opacity = satellite ? (openSea ? 0.22 : 0.2) : openSea ? 0.28 : 0.24;
   return new THREE.ShaderMaterial({
     vertexShader: WATER_VERTEX,
     fragmentShader: WATER_FRAGMENT,
@@ -598,9 +622,9 @@ function makeWaterMaterial({ mode, intensity, openSea }: WaterMaterialOptions): 
       uMaxAmp: { value: MAX_WAVE_AMPLITUDE },
       uCamLocal: { value: new THREE.Vector3() },
       uSunDir: { value: new THREE.Vector3(-0.5, -0.35, 0.79).normalize() },
-      uDeepColor: { value: new THREE.Color(satellite ? 0x19596a : 0x165f72) },
-      uShallowColor: { value: new THREE.Color(satellite ? 0x3c8796 : 0x3b91a2) },
-      uSkyColor: { value: new THREE.Color(satellite ? 0x7cb4c1 : 0x86bdc9) },
+      uDeepColor: { value: new THREE.Color(satellite ? 0x1d7187 : 0x1a6d82) },
+      uShallowColor: { value: new THREE.Color(satellite ? 0x559eaf : 0x4b9cad) },
+      uSkyColor: { value: new THREE.Color(satellite ? 0x84beca : 0x8bc7d2) },
       uFoamColor: { value: new THREE.Color(0xffffff) },
       uOpacity: { value: opacity },
     },

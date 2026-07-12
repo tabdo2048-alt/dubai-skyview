@@ -601,6 +601,42 @@ type ModelInstance = {
   waveSample: WaveSample;
 };
 
+function vesselLengthMeters(config: ModelConfig) {
+  return config.displayLengthMeters ?? WATERCRAFT_DISPLAY_LENGTH_METERS[config.type] ?? 50;
+}
+
+// Keep live traffic separated on shared routes and at route crossings. Same-route
+// followers yield to the vessel ahead; at crossings, the stable id tie-breaker
+// prevents both boats from entering the same water point at once.
+function trafficSpeedScale(inst: ModelInstance, instances: ModelInstance[]) {
+  if (!isWatercraft(inst.config.type) || !inst.routeMetrics) return 1;
+  const ownLength = vesselLengthMeters(inst.config);
+  let scale = 1;
+
+  for (const peer of instances) {
+    if (peer === inst || !isWatercraft(peer.config.type) || !peer.routeMetrics) continue;
+    const separation = (ownLength + vesselLengthMeters(peer.config)) / 2 + 24;
+    const distance = distanceMeters(inst.routeCoord, peer.routeCoord);
+    if (distance >= separation * 2.4) continue;
+
+    const sameRoute = inst.config.routeId && inst.config.routeId === peer.config.routeId;
+    const sameDirection = inst.direction === peer.direction;
+    const peerAhead =
+      sameRoute && sameDirection && (inst.direction === 1 ? peer.t > inst.t : peer.t < inst.t);
+    const mustYield =
+      peerAhead ||
+      ((!sameRoute || !sameDirection) && inst.config.id.localeCompare(peer.config.id) > 0);
+    if (!mustYield) continue;
+
+    // Ease down before the safety envelope, then hold position outside it.
+    const headroom = Math.max(0, distance - separation);
+    scale = Math.min(scale, Math.min(1, headroom / Math.max(separation, 1)));
+    if (scale === 0) return 0;
+  }
+
+  return scale;
+}
+
 // Build the Mapbox custom layer from a registry of model configs.
 export function createModel3DLayer(
   registry: ModelConfig[],
@@ -820,9 +856,11 @@ export function createModel3DLayer(
           const speedMetersPerSecond =
             config.speedMetersPerSecond ??
             (config.speed ?? 0.03) * inst.routeMetrics.totalLengthMeters;
+          const trafficScale = trafficSpeedScale(inst, instances);
           const progressStep =
             inst.routeMetrics.totalLengthMeters > 0
-              ? (speedMetersPerSecond * vesselDt) / inst.routeMetrics.totalLengthMeters
+              ? (speedMetersPerSecond * trafficScale * vesselDt) /
+                inst.routeMetrics.totalLengthMeters
               : 0;
           if (inst.blockedUntil > time) continue;
           const prevT = inst.t;
