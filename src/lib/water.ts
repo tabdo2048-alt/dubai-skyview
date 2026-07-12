@@ -19,6 +19,7 @@ import {
   PALM_JUMEIRAH_SURROUND_RING,
   PALM_JUMEIRAH_TRUNK_FRONDS_CLIPPED,
   PALM_JUMEIRAH_CRESCENT_LAND_CLIPPED,
+  PALM_SURROUND_ISLAND_HOLES,
   GULF_ISLAND_HOLES,
 } from "@/lib/coastline.generated";
 
@@ -209,7 +210,11 @@ export const WATER_AREAS: WaterArea[] = [
     renderSurface: true,
     waveIntensity: 0.6,
     polygon: PALM_JUMEIRAH_SURROUND_RING,
-    holes: [PALM_JUMEIRAH_CRESCENT_LAND_CLIPPED, PALM_JUMEIRAH_TRUNK_FRONDS_CLIPPED],
+    holes: [
+      PALM_JUMEIRAH_CRESCENT_LAND_CLIPPED,
+      PALM_JUMEIRAH_TRUNK_FRONDS_CLIPPED,
+      ...PALM_SURROUND_ISLAND_HOLES,
+    ],
   },
 
   // 5. Palm inner lagoons — sheltered water between the crescent and the

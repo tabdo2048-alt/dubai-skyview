@@ -24,35 +24,46 @@ type VesselOrientation = Pick<
 
 // Each GLB is exported with its own bow axis. These static corrections stay on
 // the child model; Model3DLayer rotates only the parent group along the route.
+// sternOffset values are scaled to match VESSEL_SIZE_BOOST below.
 const VESSEL_ORIENTATIONS: Record<string, VesselOrientation> = {
   "/models/ship.glb": {
     rotation: [Math.PI / 2, 0, 0],
     forwardAxis: "-x",
     headingOffset: 0,
-    sternOffset: 30,
+    sternOffset: 38,
     turnSpeed: 2.2,
   },
   "/models/yacht.glb": {
     rotation: [Math.PI / 2, 0, 0],
     forwardAxis: "+x",
     headingOffset: 0,
-    sternOffset: 22,
+    sternOffset: 34,
     turnSpeed: 3.5,
   },
   "/models/boat.glb": {
     rotation: [Math.PI / 2, 0, 0],
     forwardAxis: "+x",
     headingOffset: 0,
-    sternOffset: 16,
+    sternOffset: 27,
     turnSpeed: 4.8,
   },
   "/models/abra.glb": {
     rotation: [Math.PI / 2, 0, 0],
     forwardAxis: "+x",
     headingOffset: 0,
-    sternOffset: 14,
+    sternOffset: 21,
     turnSpeed: 5.2,
   },
+};
+
+// Global per-type size multiplier applied on top of each entry's hand-tuned
+// scale, so the whole fleet reads at a realistic, clearly visible size from
+// the default city camera without editing every registry entry.
+const VESSEL_SIZE_BOOST: Partial<Record<ModelConfig["type"], number>> = {
+  ship: 1.25,
+  yacht: 1.55,
+  boat: 1.7,
+  abra: 1.5,
 };
 
 function routeIsClosed(route?: [number, number][]) {
@@ -1280,6 +1291,7 @@ function normalizeRegistry(configs: ModelConfig[]) {
       startProgress: normalized.startProgress ?? (hashRouteSeed(normalized.id) % 1000) / 1000,
       speedMetersPerSecond:
         normalized.speedMetersPerSecond ?? defaultSpeedMetersPerSecond(normalized.type),
+      scale: (normalized.scale ?? 1) * (VESSEL_SIZE_BOOST[normalized.type] ?? 1),
     };
     return watercraft;
   });
