@@ -17,8 +17,7 @@
 import {
   GULF_MAINLAND_LAND,
   PALM_JUMEIRAH_SURROUND_RING,
-  PALM_JUMEIRAH_TRUNK_FRONDS_CLIPPED,
-  PALM_JUMEIRAH_CRESCENT_LAND_CLIPPED,
+  PALM_JUMEIRAH_REAL_LAND_HOLES,
   PALM_SURROUND_ISLAND_HOLES,
   GULF_ISLAND_HOLES,
 } from "@/lib/coastline.generated";
@@ -200,9 +199,9 @@ export const WATER_AREAS: WaterArea[] = [
 
   // 4. Water surrounding Palm Jumeirah — seaward side is the stylized design
   // ring, landward side follows the real coastline (shared exactly with the
-  // open-gulf mainland hole so there is no gap and no double-water). Holes
-  // remove the crescent breakwater and the trunk/frond comb (clipped so it
-  // cannot poke through the real-coast boundary).
+  // open-gulf mainland hole so there is no gap and no double-water). Holes are
+  // the REAL palm land rings (trunk, all fronds, crescent segments, islets)
+  // so animated water never covers any part of the real island.
   {
     id: "palm-jumeirah-surrounding",
     name: "Water Surrounding Palm Jumeirah",
@@ -210,11 +209,7 @@ export const WATER_AREAS: WaterArea[] = [
     renderSurface: true,
     waveIntensity: 0.6,
     polygon: PALM_JUMEIRAH_SURROUND_RING,
-    holes: [
-      PALM_JUMEIRAH_CRESCENT_LAND_CLIPPED,
-      PALM_JUMEIRAH_TRUNK_FRONDS_CLIPPED,
-      ...PALM_SURROUND_ISLAND_HOLES,
-    ],
+    holes: [...PALM_JUMEIRAH_REAL_LAND_HOLES, ...PALM_SURROUND_ISLAND_HOLES],
   },
 
   // 5. Palm inner lagoons — sheltered water between the crescent and the

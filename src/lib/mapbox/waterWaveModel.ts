@@ -32,8 +32,8 @@ export type WaterWaveParam = {
 // there. Broad, clearly visible motion without becoming a cartoon. `intensity`
 // scales these values down for protected Marina, Creek, and canal water.
 export const WATER_WAVE_PARAMS: WaterWaveParam[] = [
-  { directionDeg: 310, wavelength: 760, amplitude: 1.3, steepness: 0.16, speed: 34, phase: 5.9 },
-  { directionDeg: 295, wavelength: 420, amplitude: 1.0, steepness: 0.22, speed: 25, phase: 2.3 },
+  { directionDeg: 310, wavelength: 760, amplitude: 0.95, steepness: 0.16, speed: 34, phase: 5.9 },
+  { directionDeg: 295, wavelength: 420, amplitude: 0.75, steepness: 0.22, speed: 25, phase: 2.3 },
   { directionDeg: 300, wavelength: 165, amplitude: 0.66, steepness: 0.58, speed: 10.2, phase: 0.0 },
   { directionDeg: 284, wavelength: 112, amplitude: 0.48, steepness: 0.55, speed: 8.4, phase: 1.7 },
   { directionDeg: 322, wavelength: 56, amplitude: 0.25, steepness: 0.48, speed: 6.0, phase: 3.1 },
