@@ -5,6 +5,8 @@
 //
 // Coordinates are [lng, lat], densely sampled for smooth curves.
 
+import { JUMEIRAH_BEACH_FOAM, DEIRA_COAST_FOAM, JBR_BEACH_FOAM } from "@/lib/coastline.generated";
+
 export type ShorelinePath = {
   id: string;
   name: string;
@@ -18,35 +20,16 @@ export type ShorelinePath = {
   intensity: number;
 };
 
-// Marina walls and JBR beachfront — the northern arc facing open water.
+// JBR beachfront — the real seaward beach strip between the two Dubai Marina
+// entrance channels (OSM-derived; the stylized marina arc it replaced sat
+// ~800 m inland of the actual beach).
 export const MARINA_BEACH_SHORELINE: ShorelinePath = {
   id: "marina-beach",
   name: "Marina Beach & JBR Waterfront",
   intensity: 1.08,
   waterSide: 1,
   offsetMeters: 8,
-  points: [
-    [55.1565, 25.0685], // JBR north (Nakheel Harbour)
-    [55.1548, 25.0693],
-    [55.1531, 25.0701],
-    [55.1514, 25.0708],
-    [55.1497, 25.0714],
-    [55.148, 25.0719],
-    [55.1463, 25.0723],
-    [55.1446, 25.0726],
-    [55.1429, 25.0728],
-    [55.1412, 25.0729],
-    [55.1395, 25.0729],
-    [55.1378, 25.0728],
-    [55.1361, 25.0726],
-    [55.1344, 25.0723],
-    [55.1327, 25.0719],
-    [55.131, 25.0714],
-    [55.1293, 25.0708],
-    [55.1276, 25.0701],
-    [55.1259, 25.0693],
-    [55.1242, 25.0684], // Marina south (The Beach)
-  ],
+  points: JBR_BEACH_FOAM,
 };
 
 // Palm Jumeirah outer crescent — exposed to open Gulf.
@@ -136,51 +119,26 @@ export const CREEK_SHORELINE: ShorelinePath = {
 };
 
 // Dubai mainland beachfront — Jumeirah open-coast beach south of the Palm,
-// facing the open Gulf. This is the long city beach that previously had no foam.
+// facing the open Gulf. Real coastline from OSM (the previous hand trace ran
+// several hundred metres inland and drew foam over the city).
 export const JUMEIRAH_BEACH_SHORELINE: ShorelinePath = {
   id: "jumeirah-beach",
   name: "Jumeirah Open Beach",
   intensity: 1.15,
   waterSide: 1,
   offsetMeters: 8,
-  points: [
-    [55.1585, 25.0975], // near Palm trunk / south of Marina
-    [55.1637, 25.1015],
-    [55.1689, 25.1056],
-    [55.1741, 25.1097],
-    [55.1793, 25.1138],
-    [55.1845, 25.1179],
-    [55.1897, 25.1219],
-    [55.1949, 25.1258],
-    [55.2001, 25.1296],
-    [55.2053, 25.1333],
-    [55.2105, 25.1369],
-    [55.2157, 25.1404],
-    [55.2209, 25.1438], // toward Jumeirah / Canal mouth
-  ],
+  points: JUMEIRAH_BEACH_FOAM,
 };
 
-// Dubai mainland north — Deira / Port Rashid open-coast facing the Gulf,
-// north of the Creek mouth.
+// Dubai mainland north — Deira open coast facing the Gulf, north-east of the
+// Creek mouth. Real coastline from OSM (the previous hand trace ran inland).
 export const DEIRA_COAST_SHORELINE: ShorelinePath = {
   id: "deira-coast",
   name: "Deira & Port Rashid Coast",
   intensity: 1.1,
   waterSide: 1,
   offsetMeters: 8,
-  points: [
-    [55.2711, 25.1611], // Port Rashid
-    [55.2766, 25.1662],
-    [55.2821, 25.1713],
-    [55.2876, 25.1764],
-    [55.2931, 25.1815],
-    [55.2986, 25.1866],
-    [55.3041, 25.1917],
-    [55.3096, 25.1968],
-    [55.3151, 25.2019],
-    [55.3206, 25.207],
-    [55.3261, 25.2121], // toward Creek mouth
-  ],
+  points: DEIRA_COAST_FOAM,
 };
 
 // All active shorelines — only real coastlines, no artificial boundaries.
