@@ -88,8 +88,8 @@ export const PLACEHOLDER_COLORS: Record<ModelType, number> = {
  * legal vessel dimensions. Ordering is enforced here: ship > yacht > boat > abra.
  */
 export const WATERCRAFT_DISPLAY_LENGTH_METERS: Partial<Record<ModelType, number>> = {
-  ship: 180,
-  yacht: 110,
-  boat: 55,
-  abra: 32,
+  ship: 220,
+  yacht: 140,
+  boat: 70,
+  abra: 40,
 };

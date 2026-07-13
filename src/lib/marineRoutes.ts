@@ -172,16 +172,16 @@ export function orderedMarineRouteCandidates(id: string, preferredRouteId?: stri
 }
 
 export function defaultSpeedMetersPerSecond(type: ModelType) {
-  // Fast, energetic traffic — vessels visibly cruise across the map.
+  // Fast, energetic traffic — vessels visibly cruise across the map. Increased for visual impact.
   switch (type) {
     case "ship":
-      return 16;
+      return 24;
     case "yacht":
-      return 22;
+      return 32;
     case "boat":
-      return 20;
+      return 28;
     case "abra":
-      return 13;
+      return 18;
     default:
       return 0;
   }

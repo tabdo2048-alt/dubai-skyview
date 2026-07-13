@@ -563,7 +563,10 @@ export function MapboxView({
   // Build a line-gradient expression that is fully colored up to `progress`
   // (0..1) and transparent afterwards — moving `progress` "draws" the line.
   function lineGradient(color: string, progress: number): Expr {
-    const p = Math.max(0.0001, Math.min(0.9999, progress));
+    // Stops must be strictly ascending. Clamp p so the fade-out stop
+    // (p + 0.02) and the final stop never collapse onto p or onto each other.
+    const p = Math.max(0.0001, Math.min(0.9799, progress));
+    const fadeEnd = Math.min(0.99, p + 0.02);
     return [
       "interpolate",
       ["linear"],
@@ -572,7 +575,7 @@ export function MapboxView({
       color,
       p,
       color,
-      Math.min(1, p + 0.02),
+      fadeEnd,
       "rgba(0,0,0,0)",
       1,
       "rgba(0,0,0,0)",

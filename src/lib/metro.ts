@@ -11,7 +11,7 @@ export type MetroStation = {
 
 // Visual/legend category — drives the premium palette and the guide grouping.
 export type LineCategory =
-  "red" | "green" | "blue" | "yellow" | "pink" | "tram" | "future" | "train";
+  "red" | "green" | "blue" | "yellow" | "pink" | "cyan" | "tram" | "future" | "train";
 
 export type MetroLine = {
   id: string;
@@ -32,6 +32,7 @@ export const CATEGORY_COLORS: Record<LineCategory, string> = {
   blue: "#2D9CDB",
   yellow: "#F2C94C",
   pink: "#D85B8C",
+  cyan: "#26C6DA",
   tram: "#F2994A",
   future: "#B66DFF",
   train: "#050505",
@@ -51,6 +52,7 @@ function lineCategory(line: MetroLine, isTrain: boolean): LineCategory {
     return "red";
   }
   if (line.status === "under-construction" || key.includes("blue")) return "blue";
+  if (key.includes("cyan")) return "cyan";
   if (key.includes("yellow")) return "yellow";
   if (key.includes("pink")) return "pink";
   // Everything else (planned-2030 corridors, future concepts) → purple.
@@ -59,10 +61,8 @@ function lineCategory(line: MetroLine, isTrain: boolean): LineCategory {
 
 // Non-destructively recolor + tag a set of lines by category. The generated
 // data file is never edited by hand; this runs on the imported lists instead.
-function stationConnectedPath(line: MetroLine): [number, number][] {
-  return line.stations.length >= 2 ? line.stations.map((station) => station.coord) : line.path;
-}
-
+// Paths come straight from the KML polylines (real alignments), so they are
+// kept as-is rather than being rebuilt from station-to-station segments.
 function applyCategory(lines: MetroLine[], isTrain: boolean): MetroLine[] {
   return lines.map((line) => {
     const category = lineCategory(line, isTrain);
@@ -70,84 +70,19 @@ function applyCategory(lines: MetroLine[], isTrain: boolean): MetroLine[] {
       ...line,
       category,
       color: CATEGORY_COLORS[category],
-      path: stationConnectedPath(line),
     };
   });
 }
 
-// Accurate RTA network. The generated KML data includes placeholder stations
-// and speculative corridors, so it is deliberately excluded from the live map.
-import { ACCURATE_METRO_LINES } from "./metroAccurate";
+// Network imported from the "Dubai.al 2025-2030 Public Transport Scheme"
+// Google My Map (KML export) — see scripts note in metroImported.generated.ts.
+import { IMPORTED_METRO_LINES, IMPORTED_RAIL_LINES } from "./metroImported.generated";
 
-// Only routes with named, verified stations appear in the Metro control.
-export const METRO_LINES: MetroLine[] = applyCategory(ACCURATE_METRO_LINES, false);
+export const METRO_LINES: MetroLine[] = applyCategory(IMPORTED_METRO_LINES, false);
 
-// Dubai passenger rail route traced from the user's satellite reference. This
-// stays OUT of the Metro button because it is exported only through TRAIN_LINES.
-const DUBAI_TRAIN_MAIN: MetroLine = {
-  id: "dubai-train-main-corridor",
-  name: "Dubai Train Main Corridor",
-  color: CATEGORY_COLORS.train,
-  status: "planned-2030",
-  path: [
-    [55.005, 24.79], // enters from the south-west edge
-    [55.025, 24.815],
-    [55.047, 24.845],
-    [55.073, 24.878],
-    [55.098, 24.912],
-    [55.122, 24.948],
-    [55.146, 24.985],
-    [55.168, 25.018],
-    [55.19, 25.052], // main junction near Dubai Investment Park / JGE side
-    [55.206, 25.086],
-    [55.225, 25.124],
-    [55.255, 25.164],
-    [55.292, 25.196],
-    [55.333, 25.222],
-    [55.374, 25.249], // exits east/north-east like the reference
-  ],
-  stations: [
-    {
-      id: "dubai-train-jge-interchange",
-      name: "Dubai Train Interchange",
-      coord: [55.19, 25.052],
-      interchange: true,
-    },
-  ],
-};
-
-const DUBAI_TRAIN_DUBAI_BRANCH: MetroLine = {
-  id: "dubai-train-dubai-branch",
-  name: "Dubai Train Dubai Branch",
-  color: CATEGORY_COLORS.train,
-  status: "planned-2030",
-  path: [
-    [55.19, 25.052], // branches from the main corridor
-    [55.172, 25.067],
-    [55.148, 25.077],
-    [55.118, 25.078],
-    [55.091, 25.077],
-    [55.071, 25.082],
-    [55.058, 25.095], // short north kink near Jebel Ali Industrial Area
-    [55.074, 25.105],
-    [55.101, 25.107],
-    [55.126, 25.104],
-    [55.148, 25.103], // Dubai branch endpoint from the reference image
-  ],
-  stations: [
-    {
-      id: "dubai-train-dubai-station",
-      name: "Dubai Station",
-      coord: [55.148, 25.103],
-      interchange: true,
-    },
-  ],
-};
-
-export const TRAIN_LINES: MetroLine[] = applyCategory(
-  [DUBAI_TRAIN_MAIN, DUBAI_TRAIN_DUBAI_BRANCH],
-  true,
-);
+// Etihad Rail corridor from the imported map. Stays OUT of the Metro button
+// because it is exported only through TRAIN_LINES.
+export const TRAIN_LINES: MetroLine[] = applyCategory(IMPORTED_RAIL_LINES, true);
 
 // Both networks combined — used for animation/progress bookkeeping.
 export const ALL_RAIL_LINES: MetroLine[] = [...METRO_LINES, ...TRAIN_LINES];

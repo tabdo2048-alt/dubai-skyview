@@ -290,8 +290,11 @@ function makeShoreMaterial(): THREE.ShaderMaterial {
     vertexShader: SHORE_VERTEX,
     fragmentShader: SHORE_FRAGMENT,
     transparent: true,
-    depthTest: false,
+    depthTest: true,
     depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1,
     blending: THREE.NormalBlending,
     side: THREE.DoubleSide,
     uniforms: {
@@ -419,6 +422,19 @@ function addShorelinePath(
   const baseHash = idHash(shoreline.id);
   let accumulated = 0;
 
+  // Narrow, curving basins (creek banks, Palm frond canals) are often
+  // narrower than the full open-coast ribbon spread — probing/drawing that
+  // far can overshoot past the opposite bank onto land, or miss water
+  // entirely on a tight bend. Drop any ribbon ring whose reach would exceed
+  // the path's configured cap, and probe at whichever reach is smaller.
+  const ribbonOffsets = shoreline.maxReachMeters
+    ? SHORE_RIBBON_OFFSETS.filter(
+        (offset) =>
+          shoreline.offsetMeters + offset + BASE_SHORE_HALF_WIDTH_M <= shoreline.maxReachMeters!,
+      )
+    : SHORE_RIBBON_OFFSETS;
+  const widestOffset = ribbonOffsets.length > 0 ? ribbonOffsets[0] : SHORE_RIBBON_OFFSETS[0];
+
   for (let i = 0; i < pts.length - 1; i++) {
     const a = pts[i];
     const b = pts[i + 1];
@@ -431,7 +447,7 @@ function addShorelinePath(
     const ty = dy / segmentLength;
     const preferredNx = -ty * shoreline.waterSide;
     const preferredNy = tx * shoreline.waterSide;
-    const probeOffset = shoreline.offsetMeters + SHORE_RIBBON_OFFSETS[0] + BASE_SHORE_HALF_WIDTH_M;
+    const probeOffset = shoreline.offsetMeters + widestOffset + BASE_SHORE_HALF_WIDTH_M;
     const mid = new THREE.Vector3((a.x + b.x) / 2, (a.y + b.y) / 2, 0);
     const preferredProbe = new THREE.Vector3(
       mid.x + preferredNx * probeOffset,
@@ -459,12 +475,30 @@ function addShorelinePath(
       const phase = hash01(segmentSeed);
       const segmentMask = hash01(segmentSeed + 41) > 0.08 ? 1 : 0;
 
-      for (let ribbonIndex = 0; ribbonIndex < SHORE_RIBBON_OFFSETS.length; ribbonIndex++) {
-        const finalOffset = shoreline.offsetMeters + SHORE_RIBBON_OFFSETS[ribbonIndex];
+      for (let ribbonIndex = 0; ribbonIndex < ribbonOffsets.length; ribbonIndex++) {
+        const finalOffset = shoreline.offsetMeters + ribbonOffsets[ribbonIndex];
         const cx0 = a.x + tx * s0 + nx * finalOffset;
         const cy0 = a.y + ty * s0 + ny * finalOffset;
         const cx1 = a.x + tx * s1 + nx * finalOffset;
         const cy1 = a.y + ty * s1 + ny * finalOffset;
+
+        // Clip to the water mask: pushRibbonTri extends each quad from
+        // (offset - halfWidth) to (offset + halfWidth) along the normal (see
+        // its -wx/+wx corners below), so a point near a sharp coastline curve
+        // (real OSM traces are jagged, e.g. Palm Jumeirah's frond combs) can be
+        // "in water" at the centerline yet have an edge poke onto land. Probe
+        // all four actual corners of the quad about to be emitted and skip it
+        // entirely unless the whole quad is submerged, so foam never bleeds
+        // past the real shoreline.
+        const halfX = nx * BASE_SHORE_HALF_WIDTH_M;
+        const halfY = ny * BASE_SHORE_HALF_WIDTH_M;
+        const quadIsWater =
+          pointInAnyLocalWaterMask(new THREE.Vector3(cx0 - halfX, cy0 - halfY, 0), waterMasks) &&
+          pointInAnyLocalWaterMask(new THREE.Vector3(cx0 + halfX, cy0 + halfY, 0), waterMasks) &&
+          pointInAnyLocalWaterMask(new THREE.Vector3(cx1 - halfX, cy1 - halfY, 0), waterMasks) &&
+          pointInAnyLocalWaterMask(new THREE.Vector3(cx1 + halfX, cy1 + halfY, 0), waterMasks);
+        if (!quadIsWater) continue;
+
         pushRibbonTri(
           cx0,
           cy0,
