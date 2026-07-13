@@ -140,7 +140,7 @@ export const WATER_AREAS: WaterArea[] = [
     id: "jebel-ali-marina-connector",
     name: "Water Between Palm Jebel Ali and Dubai Marina",
     center: [55.075, 25.03],
-    renderSurface: false,
+    renderSurface: true,
     openSea: true,
     waveIntensity: 0.85,
     polygon: [
@@ -159,6 +159,7 @@ export const WATER_AREAS: WaterArea[] = [
       [55.05, 25.005],
       [55.045, 25.009],
     ],
+    holes: [GULF_MAINLAND_LAND],
   },
 
   // 3. JBR offshore water — exposed sea in front of the JBR beachfront.
@@ -166,7 +167,7 @@ export const WATER_AREAS: WaterArea[] = [
     id: "jbr-offshore",
     name: "JBR Offshore Water",
     center: [55.14, 25.06],
-    renderSurface: false,
+    renderSurface: true,
     openSea: true,
     waveIntensity: 0.9,
     polygon: [
@@ -218,7 +219,7 @@ export const WATER_AREAS: WaterArea[] = [
     id: "palm-inner-lagoons",
     name: "Palm Jumeirah Inner Lagoon",
     center: [55.138, 25.116],
-    renderSurface: false,
+    renderSurface: true,
     waveIntensity: 0.25,
     polygon: [
       [55.105, 25.1051],
