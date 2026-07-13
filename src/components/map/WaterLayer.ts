@@ -4,6 +4,7 @@
 import * as THREE from "three";
 import mapboxgl from "mapbox-gl";
 import { WATER_AREAS } from "@/lib/water";
+import { PALM_JUMEIRAH_SURROUND_RING } from "@/lib/coastline.generated";
 import { SHORELINE_PATHS, type ShorelinePath } from "@/lib/shorelines";
 import {
   acquireSharedRenderer,
@@ -118,6 +119,26 @@ function pointInLocalRing(point: THREE.Vector3, ring: THREE.Vector3[]) {
   return inside;
 }
 
+function pointNearLocalRing(point: THREE.Vector3, ring: THREE.Vector3[], toleranceMeters: number) {
+  const toleranceSq = toleranceMeters * toleranceMeters;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const a = ring[j];
+    const b = ring[i];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const lenSq = dx * dx + dy * dy;
+    const t =
+      lenSq > 0
+        ? Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / lenSq))
+        : 0;
+    const px = a.x + dx * t;
+    const py = a.y + dy * t;
+    const distSq = (point.x - px) * (point.x - px) + (point.y - py) * (point.y - py);
+    if (distSq <= toleranceSq) return true;
+  }
+  return false;
+}
+
 type LocalWaterMask = {
   outer: THREE.Vector3[];
   holes: THREE.Vector3[][];
@@ -133,8 +154,166 @@ function pointInAnyLocalWaterMask(point: THREE.Vector3, masks: LocalWaterMask[])
   return masks.some((mask) => pointInLocalWaterMask(point, mask));
 }
 
+function pointInOrOnLocalWaterMask(point: THREE.Vector3, mask: LocalWaterMask) {
+  const onOuterBoundary = pointNearLocalRing(point, mask.outer, 0.75);
+  const insideOuter = onOuterBoundary || pointInLocalRing(point, mask.outer);
+  const insideHole = mask.holes.some(
+    (hole) => pointInLocalRing(point, hole) && !pointNearLocalRing(point, hole, 0.75),
+  );
+  return insideOuter && !insideHole;
+}
+
+function filterGeometryToLocalWaterMask(
+  geometry: THREE.BufferGeometry,
+  mask: LocalWaterMask,
+): THREE.BufferGeometry {
+  const nonIndexed = geometry.index ? geometry.toNonIndexed() : geometry;
+  const positions = nonIndexed.getAttribute("position") as THREE.BufferAttribute | undefined;
+  if (!positions) {
+    return geometry;
+  }
+
+  const source = positions.array;
+  const filtered: number[] = [];
+  const probe = new THREE.Vector3();
+
+  const vertexInside = (index: number) => {
+    probe.set(source[index], source[index + 1], source[index + 2]);
+    return pointInOrOnLocalWaterMask(probe, mask);
+  };
+
+  for (let i = 0; i < source.length; i += 9) {
+    const ax = source[i];
+    const ay = source[i + 1];
+    const az = source[i + 2];
+    const bx = source[i + 3];
+    const by = source[i + 4];
+    const bz = source[i + 5];
+    const cx = source[i + 6];
+    const cy = source[i + 7];
+    const cz = source[i + 8];
+
+    const inside =
+      vertexInside(i) &&
+      vertexInside(i + 3) &&
+      vertexInside(i + 6) &&
+      pointInOrOnLocalWaterMask(probe.set((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2), mask) &&
+      pointInOrOnLocalWaterMask(probe.set((bx + cx) / 2, (by + cy) / 2, (bz + cz) / 2), mask) &&
+      pointInOrOnLocalWaterMask(probe.set((cx + ax) / 2, (cy + ay) / 2, (cz + az) / 2), mask) &&
+      pointInOrOnLocalWaterMask(
+        probe.set((ax + bx + cx) / 3, (ay + by + cy) / 3, (az + bz + cz) / 3),
+        mask,
+      );
+
+    if (inside) filtered.push(ax, ay, az, bx, by, bz, cx, cy, cz);
+  }
+
+  if (nonIndexed !== geometry) nonIndexed.dispose();
+  geometry.dispose();
+
+  const result = new THREE.BufferGeometry();
+  result.setAttribute("position", new THREE.BufferAttribute(new Float32Array(filtered), 3));
+  return result;
+}
+
+// --- Shore distance field ---------------------------------------------------
+// Per-vertex distance (metres) to the nearest REAL coastline segment, used by
+// the water shader for shallow tinting, breaking surf bands, and the crisp
+// waterline. Artificial water-water boundaries (the open-sea clipping
+// rectangle and the Gulf <-> Palm-surround seam ring) are excluded so foam
+// never appears in the middle of open water.
+const SHORE_DIST_MAX_M = 400;
+const SHORE_GRID_CELL_M = 256;
+
+type SegmentGrid = {
+  cells: Map<number, number[]>;
+  ax: number[];
+  ay: number[];
+  bx: number[];
+  by: number[];
+};
+
+function shoreGridKey(ix: number, iy: number): number {
+  return (ix + 2048) * 8192 + (iy + 2048);
+}
+
+function buildShoreSegmentGrid(rings: THREE.Vector3[][]): SegmentGrid {
+  const grid: SegmentGrid = { cells: new Map(), ax: [], ay: [], bx: [], by: [] };
+  for (const ring of rings) {
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const a = ring[j];
+      const b = ring[i];
+      const index = grid.ax.length;
+      grid.ax.push(a.x);
+      grid.ay.push(a.y);
+      grid.bx.push(b.x);
+      grid.by.push(b.y);
+      const minX = Math.floor(Math.min(a.x, b.x) / SHORE_GRID_CELL_M);
+      const maxX = Math.floor(Math.max(a.x, b.x) / SHORE_GRID_CELL_M);
+      const minY = Math.floor(Math.min(a.y, b.y) / SHORE_GRID_CELL_M);
+      const maxY = Math.floor(Math.max(a.y, b.y) / SHORE_GRID_CELL_M);
+      for (let cx = minX; cx <= maxX; cx++) {
+        for (let cy = minY; cy <= maxY; cy++) {
+          const key = shoreGridKey(cx, cy);
+          const bucket = grid.cells.get(key);
+          if (bucket) bucket.push(index);
+          else grid.cells.set(key, [index]);
+        }
+      }
+    }
+  }
+  return grid;
+}
+
+function shoreSegmentDistanceSq(grid: SegmentGrid, index: number, x: number, y: number): number {
+  const ax = grid.ax[index];
+  const ay = grid.ay[index];
+  const dx = grid.bx[index] - ax;
+  const dy = grid.by[index] - ay;
+  const lenSq = dx * dx + dy * dy;
+  const t = lenSq > 0 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / lenSq)) : 0;
+  const px = ax + dx * t;
+  const py = ay + dy * t;
+  return (x - px) * (x - px) + (y - py) * (y - py);
+}
+
+function shoreDistance(grid: SegmentGrid, x: number, y: number): number {
+  const cx = Math.floor(x / SHORE_GRID_CELL_M);
+  const cy = Math.floor(y / SHORE_GRID_CELL_M);
+  const maxRing = Math.ceil(SHORE_DIST_MAX_M / SHORE_GRID_CELL_M) + 1;
+  let bestSq = SHORE_DIST_MAX_M * SHORE_DIST_MAX_M;
+  for (let r = 0; r <= maxRing; r++) {
+    // Once every cell in ring r-1 has been checked, any segment further out is
+    // at least (r-1)*cell metres away — stop when that can't beat the best hit.
+    const ringFloor = (r - 1) * SHORE_GRID_CELL_M;
+    if (ringFloor > 0 && ringFloor * ringFloor > bestSq) break;
+    for (let ix = cx - r; ix <= cx + r; ix++) {
+      for (let iy = cy - r; iy <= cy + r; iy++) {
+        if (r > 0 && ix !== cx - r && ix !== cx + r && iy !== cy - r && iy !== cy + r) continue;
+        const bucket = grid.cells.get(shoreGridKey(ix, iy));
+        if (!bucket) continue;
+        for (const seg of bucket) {
+          const d = shoreSegmentDistanceSq(grid, seg, x, y);
+          if (d < bestSq) bestSq = d;
+        }
+      }
+    }
+  }
+  return Math.sqrt(bestSq);
+}
+
+function attachShoreDistances(geometry: THREE.BufferGeometry, grid: SegmentGrid) {
+  const positions = geometry.getAttribute("position") as THREE.BufferAttribute;
+  const source = positions.array;
+  const dists = new Float32Array(positions.count);
+  for (let i = 0; i < positions.count; i++) {
+    dists[i] = shoreDistance(grid, source[i * 3], source[i * 3 + 1]);
+  }
+  geometry.setAttribute("aShoreDist", new THREE.BufferAttribute(dists, 1));
+}
+
 function subdivide(geometry: THREE.BufferGeometry, levels: number): THREE.BufferGeometry {
-  const nonIndexed = geometry.toNonIndexed();
+  const nonIndexed = geometry.index ? geometry.toNonIndexed() : geometry;
   let verts = Array.from((nonIndexed.getAttribute("position") as THREE.BufferAttribute).array);
   nonIndexed.dispose();
 
@@ -526,10 +705,12 @@ const WAVE_GLSL = buildWaterWaveGLSL();
 
 const WATER_VERTEX = /* glsl */ `
   ${WAVE_GLSL}
+  attribute float aShoreDist;
   uniform float uTime;
   uniform float uIntensity;
   varying vec3 vLocal;
   varying vec2 vBase;
+  varying float vShoreDist;
 
   void main() {
     vec2 base = position.xy;
@@ -540,9 +721,13 @@ const WATER_VERTEX = /* glsl */ `
     // edge across the shoreline onto beaches. Crest shape still reads correctly
     // because lighting/foam are computed per-fragment from the wave field.
     float h = waterWaveHeight(base, uTime, uIntensity);
+    // Shoaling: flatten crests over the last metres before the coastline so
+    // animated water never visually laps past the shore polygon edge.
+    h *= smoothstep(0.0, 30.0, aShoreDist);
     vec3 displaced = vec3(base, position.z + h);
     vBase = base;
     vLocal = displaced;
+    vShoreDist = aShoreDist;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
   }
 `;
@@ -552,6 +737,7 @@ const WATER_FRAGMENT = /* glsl */ `
   ${WAVE_GLSL}
   varying vec3 vLocal;
   varying vec2 vBase;
+  varying float vShoreDist;
   uniform float uTime;
   uniform float uIntensity;
   uniform float uMaxAmp;
@@ -590,35 +776,58 @@ const WATER_FRAGMENT = /* glsl */ `
 
     // Distance-based detail reduction: near water gets fine ripples, far water
     // settles so the surface never shimmers into aliasing at the horizon.
-    float detail = 1.0 - smoothstep(400.0, 2600.0, dist);
+    float detail = 1.0 - smoothstep(250.0, 2000.0, dist);
     vec2 np = vLocal.xy * 0.09 + uTime * 0.12;
-    float n = valueNoise(np) + 0.5 * valueNoise(np * 2.3 - uTime * 0.07);
-    vec3 normal = normalize(waveNormal + vec3((n - 0.75) * 0.28 * detail, (valueNoise(np.yx) - 0.5) * 0.28 * detail, 0.0));
+    float n = valueNoise(np)
+      + 0.5 * valueNoise(np * 2.3 - uTime * 0.07)
+      + 0.25 * valueNoise(np * 5.7 + uTime * 0.21);
+    vec3 normal = normalize(waveNormal + vec3((n - 0.875) * 0.42 * detail, (valueNoise(np.yx * 1.31) - 0.5) * 0.42 * detail, 0.0));
 
     // Fresnel: grazing angles reflect the sky, steep angles show water color.
     float fres = pow(clamp(1.0 - max(dot(normal, viewDir), 0.0), 0.0, 1.0), 5.0);
     fres = mix(0.02, 1.0, fres);
 
-    // Directional sun specular highlight.
+    // Sun glint: broad warm sheen + tight glitter-modulated sparkle lobe.
     vec3 halfDir = normalize(uSunDir + viewDir);
-    float spec = pow(max(dot(normal, halfDir), 0.0), 220.0) * 1.4;
+    float specDot = max(dot(normal, halfDir), 0.0);
+    float glitter = 0.35 + 0.65 * valueNoise(vLocal.xy * 1.7 + uTime * 0.9);
+    float spec = pow(specDot, 48.0) * 0.16 + pow(specDot, 360.0) * 2.4 * glitter;
 
-    // Deep vs shallow water color driven by surface facing + crest height.
+    // Deep vs shallow water color: true shore proximity drives the turquoise
+    // shallows, with surface facing + crest height adding local variation.
     float facing = clamp(dot(normal, vec3(0.0, 0.0, 1.0)), 0.0, 1.0);
     float crest = clamp(height / max(uMaxAmp * uIntensity, 0.001), -1.0, 1.0);
-    float depthMix = clamp(facing * 0.7 + crest * 0.3 + 0.15, 0.0, 1.0);
+    float shoreNear = 1.0 - smoothstep(0.0, 140.0, vShoreDist);
+    float depthMix = clamp(facing * 0.45 + crest * 0.2 + 0.1 + shoreNear * 0.6, 0.0, 1.0);
     vec3 water = mix(uDeepColor, uShallowColor, depthMix);
 
     // Sky reflection via Fresnel, then warm sun glint.
-    vec3 color = mix(water, uSkyColor, fres * 0.6);
+    vec3 color = mix(water, uSkyColor, fres * 0.7);
     color += vec3(1.0, 0.96, 0.86) * spec;
 
-    // Subtle foam ONLY on the sharpest, highest crests — never full-surface.
+    // Whitecaps ONLY on the sharpest, highest open-water crests.
     float foam = smoothstep(0.72, 0.98, crest) * smoothstep(0.35, 0.9, 1.0 - facing);
     foam *= 0.5 + 0.5 * valueNoise(vLocal.xy * 0.5 + uTime * 0.4);
-    color = mix(color, uFoamColor, clamp(foam * uIntensity, 0.0, 0.6));
+    foam *= uIntensity;
 
-    float alpha = uOpacity * (0.82 + fres * 0.18) + spec * 0.15 + foam * 0.25;
+    // Breaking surf: foam bands rolling toward every real coastline, fading
+    // out ~95 m offshore. Band phase decreases with time so crests advance
+    // shoreward; noise breaks the bands so they aren't ruler-straight.
+    float surfZone = 1.0 - smoothstep(8.0, 95.0, vShoreDist);
+    float bandPhase = fract(vShoreDist / 26.0 + uTime / 7.5);
+    float band = smoothstep(0.68, 0.84, bandPhase) * (1.0 - smoothstep(0.84, 0.98, bandPhase));
+    float surf = band * surfZone * (0.5 + 0.5 * valueNoise(vLocal.xy * 0.11 + uTime * 0.18));
+    surf *= clamp(uIntensity, 0.0, 1.0);
+
+    // Crisp waterline: solid bright foam edge hugging the shore polygon
+    // boundary, with an alpha boost so the coast reads as a sharp line.
+    float edgeFoam = 1.0 - smoothstep(1.5, 4.5, vShoreDist);
+
+    float foamTotal = clamp(foam * 0.6 + surf * 0.9 + edgeFoam, 0.0, 1.0);
+    color = mix(color, uFoamColor, foamTotal * 0.85);
+
+    float alpha = uOpacity * (0.82 + fres * 0.18) + spec * 0.12 + foamTotal * 0.3;
+    alpha = mix(alpha, 0.92, edgeFoam * 0.8);
     gl_FragColor = vec4(color, clamp(alpha, 0.0, 1.0));
   }
 `;
@@ -694,9 +903,29 @@ function buildWaterGeometry(
   }
 
   // Bigger, exposed areas need more subdivision for clean crests; sheltered
-  // basins stay light. openSea areas are large → 3 levels, others → 2.
+  // basins stay light. openSea areas are large -> 3 levels, others -> 2.
   const levels = area.openSea ? 3 : 2;
-  return subdivide(new THREE.ShapeGeometry(shape), levels);
+  const mask: LocalWaterMask = {
+    outer: area.polygon.map(([lng, lat]) => lngLatToLocal(lng, lat, ref, 0)),
+    holes: (area.holes ?? []).map((hole) =>
+      hole.map(([lng, lat]) => lngLatToLocal(lng, lat, ref, 0)),
+    ),
+  };
+  const clippedGeometry = filterGeometryToLocalWaterMask(new THREE.ShapeGeometry(shape), mask);
+  const refined = subdivide(clippedGeometry, levels);
+
+  // Shore-distance attribute: only REAL coastline rings count as shore. The
+  // open-sea outer ring is an artificial clipping rectangle, and the palm
+  // surround ring is a water-water seam shared between the Gulf and the Palm
+  // surround area — foam along either would sit in the middle of open water.
+  const holes = area.holes ?? [];
+  const shoreRings: THREE.Vector3[][] = [];
+  if (!area.openSea && area.polygon !== PALM_JUMEIRAH_SURROUND_RING) shoreRings.push(mask.outer);
+  for (let i = 0; i < holes.length; i++) {
+    if (holes[i] !== PALM_JUMEIRAH_SURROUND_RING) shoreRings.push(mask.holes[i]);
+  }
+  attachShoreDistances(refined, buildShoreSegmentGrid(shoreRings));
+  return refined;
 }
 
 // Builds a closed line loop from a [lng, lat] ring for WATER_MASK_DEBUG

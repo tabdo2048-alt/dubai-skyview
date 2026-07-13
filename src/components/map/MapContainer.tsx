@@ -11,6 +11,7 @@ import {
   Sunset,
   Moon,
   ChevronDown,
+  Waves,
 } from "lucide-react";
 import type mapboxgl from "mapbox-gl";
 import { MapboxView, type LightPreset } from "./MapboxView";
@@ -71,7 +72,9 @@ export function MapContainer() {
   // Track when the active map instance is ready (tiles + heavy layers loaded)
   const [mapReady, setMapReady] = useState(false);
   // Dev-only: the live map for the active view, handed to the Water Debug Editor.
-  const waterEditorEnabled = useMemo(() => shouldShowWaterDebugEditor(), []);
+  // Starts from the env/localStorage gate, but the navbar button (dev builds
+  // only) can flip it on/off for the rest of the session without a console command.
+  const [waterEditorEnabled, setWaterEditorEnabled] = useState(() => shouldShowWaterDebugEditor());
   const [editorMap, setEditorMap] = useState<mapboxgl.Map | null>(null);
 
   const filtered = useMemo(() => filterProjects(projects, filters), [projects, filters]);
@@ -198,6 +201,16 @@ export function MapContainer() {
         >
           <TramFront className="mr-1.5 h-4 w-4" /> Train
         </Button>
+        {/* Dev-only: toggles the Water Debug Editor panel without a console command. */}
+        {import.meta.env.DEV && (
+          <Button
+            size="sm"
+            onClick={() => setWaterEditorEnabled((on) => !on)}
+            className={`glass gold-hairline rounded-full px-4 ${waterEditorEnabled ? "bg-gold text-gold-foreground" : "text-cream"}`}
+          >
+            <Waves className="mr-1.5 h-4 w-4" /> Water Editor
+          </Button>
+        )}
       </div>
 
       {/* Light preset switcher — Mapbox Standard's built-in day/dawn/dusk/night */}
