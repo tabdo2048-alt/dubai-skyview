@@ -18,6 +18,7 @@ import {
   GULF_MAINLAND_LAND,
   PALM_JUMEIRAH_SURROUND_RING,
   PALM_JUMEIRAH_REAL_LAND_HOLES,
+  PALM_JUMEIRAH_TRUNK_FRONDS_CLIPPED,
   PALM_SURROUND_ISLAND_HOLES,
   GULF_ISLAND_HOLES,
 } from "@/lib/coastline.generated";
@@ -98,17 +99,34 @@ const PALM_JUMEIRAH_TRUNK_FRONDS: [number, number][] = [
   [55.1388, 25.091],
 ];
 
-// Mainland coastline strip along Marina/JBR — used as a hole so open water
-// polygons never spill onto the beachfront/promenade.
+// Mainland coastline strip along Marina/JBR — used as a hole so the jbr-offshore
+// water surface never spills onto the beachfront/promenade. The seaward edge
+// follows the REAL JBR beach trace (same OSM-derived points as JBR_BEACH_FOAM,
+// ordered SW -> NE); the inland edge closes the ring well south of the coast so
+// the whole mainland band is excluded. The previous version was a coarse box
+// that stopped ~800 m short of the real coast (lat 25.075 vs the real 25.092),
+// leaving the water surface painted over the JBR/Marina towers and promenade.
 const MARINA_JBR_MAINLAND: [number, number][] = [
-  [55.12, 25.06],
-  [55.135, 25.062],
-  [55.15, 25.066],
-  [55.16, 25.07],
+  // Seaward edge — real JBR beachfront, south-west entrance to north-east tip.
+  [55.125227, 25.073428],
+  [55.12581, 25.075447],
+  [55.127277, 25.074693],
+  [55.131713, 25.078592],
+  [55.135687, 25.084118],
+  [55.136546, 25.088363],
+  [55.135183, 25.088707],
+  [55.133779, 25.089426],
+  [55.134162, 25.091951],
+  [55.135669, 25.092168],
+  [55.137557, 25.091696],
+  [55.143433, 25.086957],
+  // Inland edge — close the ring south of the coast so the mainland band is
+  // fully removed without clipping any real offshore water.
   [55.166, 25.075],
-  [55.166, 25.06],
-  [55.12, 25.055],
-  [55.12, 25.06],
+  [55.166, 25.05],
+  [55.1, 25.05],
+  [55.115, 25.06],
+  [55.123, 25.068],
 ];
 
 export const WATER_AREAS: WaterArea[] = [
@@ -210,7 +228,14 @@ export const WATER_AREAS: WaterArea[] = [
     renderSurface: true,
     waveIntensity: 0.6,
     polygon: PALM_JUMEIRAH_SURROUND_RING,
-    holes: [...PALM_JUMEIRAH_REAL_LAND_HOLES, ...PALM_SURROUND_ISLAND_HOLES],
+    // The clipped trunk/frond comb is punched out too: PALM_JUMEIRAH_REAL_LAND_HOLES
+    // covers the crescent and upper trunk but leaves the trunk base (~lat 25.104)
+    // uncovered, so the surround water was painting over the base of the trunk.
+    holes: [
+      ...PALM_JUMEIRAH_REAL_LAND_HOLES,
+      PALM_JUMEIRAH_TRUNK_FRONDS_CLIPPED,
+      ...PALM_SURROUND_ISLAND_HOLES,
+    ],
   },
 
   // 5. Palm inner lagoons — sheltered water between the crescent and the

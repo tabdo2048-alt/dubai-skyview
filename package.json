@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "validate:marine": "esbuild scripts/validateMarineSystem.ts --bundle --platform=node --format=cjs --outfile=.output/marine-validation.cjs && node .output/marine-validation.cjs",
+    "validate:water": "esbuild scripts/auditWaterOverlap.ts --bundle --platform=node --format=cjs --outfile=.output/audit-water.cjs && node .output/audit-water.cjs",
     "format": "prettier --write ."
   },
   "dependencies": {
