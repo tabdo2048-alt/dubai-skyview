@@ -35,3 +35,6 @@ dist-ssr
 .env
 .env.*
 !.env.example
+
+# Claude Code local config (machine-specific: permissions, locks, symlinked skills)
+.claude/

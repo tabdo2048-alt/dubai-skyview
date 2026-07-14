@@ -185,20 +185,10 @@ export function MapboxView({
           console.warn("neutralizeRoadColors failed (non-fatal)", err);
         }
 
-        // Terrain
-        try {
-          if (!map.getSource("mapbox-dem")) {
-            map.addSource("mapbox-dem", {
-              type: "raster-dem",
-              url: "mapbox://mapbox.mapbox-terrain-dem-v1",
-              tileSize: 512,
-              maxzoom: 14,
-            });
-            map.setTerrain({ source: "mapbox-dem", exaggeration: 1.2 });
-          }
-        } catch (err) {
-          console.warn("terrain setup failed (non-fatal)", err);
-        }
+        // No DEM terrain: raising the draped imagery misregisters every custom
+        // layer (water, boats, foam render at ellipsoid z=0), so tilting the
+        // camera slid the water off the coastline. Dubai's coast is nearly
+        // flat — the exaggerated terrain added nothing visually.
       } else {
         try {
           neutralizeRoadColors(map);

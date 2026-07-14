@@ -95,11 +95,18 @@ function idHash(id: string): number {
   return h;
 }
 
+// Global alignment nudge in local metres for calibrating the whole water
+// stack (surfaces, masks, foam — they all pass through lngLatToLocal, so they
+// move together) against satellite-imagery georegistration. Leave at zero
+// unless a uniform residual offset is measured with the Water Debug Editor
+// click log; signs follow the local axes used below.
+const WATER_ALIGN_OFFSET_M = { x: 0, y: 0 };
+
 function lngLatToLocal(lng: number, lat: number, ref: MercatorRef, altitude = 0): THREE.Vector3 {
   const m = mapboxgl.MercatorCoordinate.fromLngLat([lng, lat], altitude);
   return new THREE.Vector3(
-    (m.x - ref.x) / ref.scale,
-    (m.y - ref.y) / ref.scale,
+    (m.x - ref.x) / ref.scale + WATER_ALIGN_OFFSET_M.x,
+    (m.y - ref.y) / ref.scale + WATER_ALIGN_OFFSET_M.y,
     (m.z - ref.z) / ref.scale,
   );
 }
@@ -119,26 +126,6 @@ function pointInLocalRing(point: THREE.Vector3, ring: THREE.Vector3[]) {
   return inside;
 }
 
-function pointNearLocalRing(point: THREE.Vector3, ring: THREE.Vector3[], toleranceMeters: number) {
-  const toleranceSq = toleranceMeters * toleranceMeters;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const a = ring[j];
-    const b = ring[i];
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const lenSq = dx * dx + dy * dy;
-    const t =
-      lenSq > 0
-        ? Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / lenSq))
-        : 0;
-    const px = a.x + dx * t;
-    const py = a.y + dy * t;
-    const distSq = (point.x - px) * (point.x - px) + (point.y - py) * (point.y - py);
-    if (distSq <= toleranceSq) return true;
-  }
-  return false;
-}
-
 type LocalWaterMask = {
   outer: THREE.Vector3[];
   holes: THREE.Vector3[][];
@@ -152,68 +139,6 @@ function pointInLocalWaterMask(point: THREE.Vector3, mask: LocalWaterMask) {
 
 function pointInAnyLocalWaterMask(point: THREE.Vector3, masks: LocalWaterMask[]) {
   return masks.some((mask) => pointInLocalWaterMask(point, mask));
-}
-
-function pointInOrOnLocalWaterMask(point: THREE.Vector3, mask: LocalWaterMask) {
-  const onOuterBoundary = pointNearLocalRing(point, mask.outer, 0.75);
-  const insideOuter = onOuterBoundary || pointInLocalRing(point, mask.outer);
-  const insideHole = mask.holes.some(
-    (hole) => pointInLocalRing(point, hole) && !pointNearLocalRing(point, hole, 0.75),
-  );
-  return insideOuter && !insideHole;
-}
-
-function filterGeometryToLocalWaterMask(
-  geometry: THREE.BufferGeometry,
-  mask: LocalWaterMask,
-): THREE.BufferGeometry {
-  const nonIndexed = geometry.index ? geometry.toNonIndexed() : geometry;
-  const positions = nonIndexed.getAttribute("position") as THREE.BufferAttribute | undefined;
-  if (!positions) {
-    return geometry;
-  }
-
-  const source = positions.array;
-  const filtered: number[] = [];
-  const probe = new THREE.Vector3();
-
-  const vertexInside = (index: number) => {
-    probe.set(source[index], source[index + 1], source[index + 2]);
-    return pointInOrOnLocalWaterMask(probe, mask);
-  };
-
-  for (let i = 0; i < source.length; i += 9) {
-    const ax = source[i];
-    const ay = source[i + 1];
-    const az = source[i + 2];
-    const bx = source[i + 3];
-    const by = source[i + 4];
-    const bz = source[i + 5];
-    const cx = source[i + 6];
-    const cy = source[i + 7];
-    const cz = source[i + 8];
-
-    const inside =
-      vertexInside(i) &&
-      vertexInside(i + 3) &&
-      vertexInside(i + 6) &&
-      pointInOrOnLocalWaterMask(probe.set((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2), mask) &&
-      pointInOrOnLocalWaterMask(probe.set((bx + cx) / 2, (by + cy) / 2, (bz + cz) / 2), mask) &&
-      pointInOrOnLocalWaterMask(probe.set((cx + ax) / 2, (cy + ay) / 2, (cz + az) / 2), mask) &&
-      pointInOrOnLocalWaterMask(
-        probe.set((ax + bx + cx) / 3, (ay + by + cy) / 3, (az + bz + cz) / 3),
-        mask,
-      );
-
-    if (inside) filtered.push(ax, ay, az, bx, by, bz, cx, cy, cz);
-  }
-
-  if (nonIndexed !== geometry) nonIndexed.dispose();
-  geometry.dispose();
-
-  const result = new THREE.BufferGeometry();
-  result.setAttribute("position", new THREE.BufferAttribute(new Float32Array(filtered), 3));
-  return result;
 }
 
 // --- Shore distance field ---------------------------------------------------
@@ -300,6 +225,72 @@ function shoreDistance(grid: SegmentGrid, x: number, y: number): number {
     }
   }
   return Math.sqrt(bestSq);
+}
+
+// Adaptive refinement: split triangles near the coastline so the interpolated
+// shore-distance field (and the crisp waterline band) hugs the real boundary
+// instead of smearing across big earcut slivers. Thresholds shrink per pass so
+// refinement stays confined to the coastal band; already-tiny triangles are
+// left alone.
+const SHORE_REFINE_THRESHOLDS_M = [220, 110, 55] as const;
+const SHORE_REFINE_MIN_EDGE_M = 12;
+
+function subdivideNearShore(
+  geometry: THREE.BufferGeometry,
+  grid: SegmentGrid,
+): THREE.BufferGeometry {
+  let verts = Array.from((geometry.getAttribute("position") as THREE.BufferAttribute).array);
+  geometry.dispose();
+  const minEdgeSq = SHORE_REFINE_MIN_EDGE_M * SHORE_REFINE_MIN_EDGE_M;
+
+  for (const threshold of SHORE_REFINE_THRESHOLDS_M) {
+    const out: number[] = [];
+    for (let i = 0; i < verts.length; i += 9) {
+      const ax = verts[i],
+        ay = verts[i + 1],
+        az = verts[i + 2];
+      const bx = verts[i + 3],
+        by = verts[i + 4],
+        bz = verts[i + 5];
+      const cx = verts[i + 6],
+        cy = verts[i + 7],
+        cz = verts[i + 8];
+
+      const longestEdgeSq = Math.max(
+        (bx - ax) * (bx - ax) + (by - ay) * (by - ay),
+        (cx - bx) * (cx - bx) + (cy - by) * (cy - by),
+        (ax - cx) * (ax - cx) + (ay - cy) * (ay - cy),
+      );
+      const near =
+        longestEdgeSq > minEdgeSq &&
+        (shoreDistance(grid, ax, ay) < threshold ||
+          shoreDistance(grid, bx, by) < threshold ||
+          shoreDistance(grid, cx, cy) < threshold);
+      if (!near) {
+        out.push(ax, ay, az, bx, by, bz, cx, cy, cz);
+        continue;
+      }
+
+      const abx = (ax + bx) / 2,
+        aby = (ay + by) / 2,
+        abz = (az + bz) / 2;
+      const bcx = (bx + cx) / 2,
+        bcy = (by + cy) / 2,
+        bcz = (bz + cz) / 2;
+      const cax = (cx + ax) / 2,
+        cay = (cy + ay) / 2,
+        caz = (cz + az) / 2;
+      out.push(ax, ay, az, abx, aby, abz, cax, cay, caz);
+      out.push(abx, aby, abz, bx, by, bz, bcx, bcy, bcz);
+      out.push(cax, cay, caz, bcx, bcy, bcz, cx, cy, cz);
+      out.push(abx, aby, abz, bcx, bcy, bcz, cax, cay, caz);
+    }
+    verts = out;
+  }
+
+  const result = new THREE.BufferGeometry();
+  result.setAttribute("position", new THREE.BufferAttribute(new Float32Array(verts), 3));
+  return result;
 }
 
 function attachShoreDistances(geometry: THREE.BufferGeometry, grid: SegmentGrid) {
@@ -820,14 +811,17 @@ const WATER_FRAGMENT = /* glsl */ `
     surf *= clamp(uIntensity, 0.0, 1.0);
 
     // Crisp waterline: solid bright foam edge hugging the shore polygon
-    // boundary, with an alpha boost so the coast reads as a sharp line.
-    float edgeFoam = 1.0 - smoothstep(1.5, 4.5, vShoreDist);
+    // boundary. Band width scales with camera distance so the line stays a
+    // couple of pixels wide at every zoom — never sub-pixel shimmer far out,
+    // never a fat blurry ribbon up close.
+    float edgeHalfWidth = clamp(dist * 0.004, 2.0, 22.0);
+    float edgeFoam = 1.0 - smoothstep(edgeHalfWidth * 0.4, edgeHalfWidth, vShoreDist);
 
     float foamTotal = clamp(foam * 0.6 + surf * 0.9 + edgeFoam, 0.0, 1.0);
     color = mix(color, uFoamColor, foamTotal * 0.85);
 
     float alpha = uOpacity * (0.82 + fres * 0.18) + spec * 0.12 + foamTotal * 0.3;
-    alpha = mix(alpha, 0.92, edgeFoam * 0.8);
+    alpha = mix(alpha, 0.95, edgeFoam * 0.85);
     gl_FragColor = vec4(color, clamp(alpha, 0.0, 1.0));
   }
 `;
@@ -911,9 +905,6 @@ function buildWaterGeometry(
       hole.map(([lng, lat]) => lngLatToLocal(lng, lat, ref, 0)),
     ),
   };
-  const clippedGeometry = filterGeometryToLocalWaterMask(new THREE.ShapeGeometry(shape), mask);
-  const refined = subdivide(clippedGeometry, levels);
-
   // Shore-distance attribute: only REAL coastline rings count as shore. The
   // open-sea outer ring is an artificial clipping rectangle, and the palm
   // surround ring is a water-water seam shared between the Gulf and the Palm
@@ -924,7 +915,10 @@ function buildWaterGeometry(
   for (let i = 0; i < holes.length; i++) {
     if (holes[i] !== PALM_JUMEIRAH_SURROUND_RING) shoreRings.push(mask.holes[i]);
   }
-  attachShoreDistances(refined, buildShoreSegmentGrid(shoreRings));
+  const grid = buildShoreSegmentGrid(shoreRings);
+
+  const refined = subdivideNearShore(subdivide(new THREE.ShapeGeometry(shape), levels), grid);
+  attachShoreDistances(refined, grid);
   return refined;
 }
 
