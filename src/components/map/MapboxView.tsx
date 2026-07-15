@@ -486,7 +486,6 @@ export function MapboxView({
     if (map.getLayer("metro-stations-3d")) map.setFilter("metro-stations-3d", filter);
     if (map.getLayer("metro-station-halo")) map.setFilter("metro-station-halo", filter);
     if (map.getLayer("metro-station-core")) map.setFilter("metro-station-core", filter);
-    if (map.getLayer("metro-station-sign")) map.setFilter("metro-station-sign", filter);
     if (map.getLayer("metro-stations-label")) map.setFilter("metro-stations-label", filter);
   }
 
@@ -764,26 +763,6 @@ export function MapboxView({
           "circle-radius": ["interpolate", ["linear"], ["zoom"], 11, 1.6, 16, 4],
           "circle-color": ["get", "color"],
           "circle-opacity": 0.95,
-        },
-      });
-    }
-    if (!map.getLayer("metro-station-sign")) {
-      addLayerSafe(map, {
-        id: "metro-station-sign",
-        type: "symbol",
-        source: "metro-station-points",
-        minzoom: 12,
-        filter: stationFilter(),
-        layout: {
-          "text-field": "SN",
-          "text-size": ["interpolate", ["linear"], ["zoom"], 12, 7, 16, 10],
-          "text-font": ["DIN Pro Bold", "Arial Unicode MS Bold"],
-          "text-allow-overlap": true,
-          "text-ignore-placement": true,
-        },
-        paint: {
-          "text-color": "#18211f",
-          "text-opacity": ["interpolate", ["linear"], ["zoom"], 12, 0.4, 13, 1],
         },
       });
     }

@@ -40,6 +40,7 @@ const RAIL_GUIDE: { category: keyof typeof CATEGORY_COLORS; name: string; status
   { category: "green", name: "Green Line", status: "Operational" },
   { category: "blue", name: "Blue Line", status: "2029" },
   { category: "yellow", name: "Yellow Line", status: "2030" },
+  { category: "cyan", name: "Cyan Line", status: "Future" },
   { category: "pink", name: "Pink Line", status: "Future" },
   { category: "tram", name: "Dubai Tram", status: "Operational" },
 ];

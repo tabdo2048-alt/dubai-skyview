@@ -77,8 +77,9 @@ function applyCategory(lines: MetroLine[], isTrain: boolean): MetroLine[] {
 // Network imported from the "Dubai.al 2025-2030 Public Transport Scheme"
 // Google My Map (KML export) — see scripts note in metroImported.generated.ts.
 import { IMPORTED_METRO_LINES, IMPORTED_RAIL_LINES } from "./metroImported.generated";
+import { DUBAI_TRAM } from "./tram";
 
-export const METRO_LINES: MetroLine[] = applyCategory(IMPORTED_METRO_LINES, false);
+export const METRO_LINES: MetroLine[] = applyCategory([...IMPORTED_METRO_LINES, DUBAI_TRAM], false);
 
 // Etihad Rail corridor from the imported map. Stays OUT of the Metro button
 // because it is exported only through TRAIN_LINES.
