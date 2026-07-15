@@ -35,7 +35,7 @@ import {
   waterRouteForDisplay,
   type RouteContext,
 } from "./waterRouteGuards";
-import { getMarineRoute, getMarineRouteByPoints } from "@/lib/marineRoutes";
+import { getMarineRoute, getMarineRouteByPoints, waveIntensityForMarineRoute } from "@/lib/marineRoutes";
 import { sampleWaterWave, waterTimeSeconds, type WaveSample } from "./waterWaveModel";
 
 type MercatorRef = { x: number; y: number; z: number; scale: number };
@@ -599,6 +599,8 @@ type ModelInstance = {
   wakeDistanceAccumulator: number;
   bobOffset: number;
   waveSample: WaveSample;
+  /** Matches the water surface's per-basin Gerstner amplitude (see waveIntensityForMarineRoute). */
+  waveIntensity: number;
 };
 
 function vesselLengthMeters(config: ModelConfig) {
@@ -761,6 +763,9 @@ export function createModel3DLayer(
           wakeDistanceAccumulator: 0,
           bobOffset: instances.length * 1.3,
           waveSample: { height: 0, normal: new THREE.Vector3(), slopeX: 0, slopeY: 0 },
+          waveIntensity: isWatercraft(config.type)
+            ? waveIntensityForMarineRoute(config.routeId)
+            : 1,
         };
         if (inst.routeMetrics && config.route) {
           routePointAt(config.route, inst.routeMetrics, initialT, inst.routeCoord);
@@ -925,7 +930,7 @@ export function createModel3DLayer(
             config.altitude,
           );
           const waveTime = waterTimeSeconds();
-          sampleWaterWave(pos.x, pos.y, waveTime, 1, inst.waveSample);
+          sampleWaterWave(pos.x, pos.y, waveTime, inst.waveIntensity, inst.waveSample);
           const floatOffset = config.type === "ship" ? 1.2 : config.type === "abra" ? 0.45 : 0.8;
           pos.z += floatOffset + inst.waveSample.height;
           inst.group.position.copy(pos);

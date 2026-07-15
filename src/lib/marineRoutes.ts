@@ -6,6 +6,7 @@ import {
 } from "./navigationWater";
 import { BASIN_CORRIDORS, type BasinId } from "./navigationBasins";
 import type { ModelType } from "./mapbox/modelTypes";
+import { WATER_AREAS } from "./water";
 
 type BasinRouteId =
   | "marina-inner-channel"
@@ -68,6 +69,7 @@ const ROUTE_BASIN: Partial<Record<BasinRouteId, BasinId>> = {
   "creek-northbound-lane": "creek-north",
   "creek-southbound-lane": "creek-south",
   "business-bay-canal": "business-bay",
+  "jbr-offshore-lane": "jbr",
 };
 
 const basinCenterlineById = new Map(
@@ -82,15 +84,7 @@ function basinRoutePoints(id: BasinRouteId): [number, number][] {
       id === "creek-southbound-lane" || id === "marina-entrance-lane" || id === "palm-inner-lagoon";
     return reversed ? [...centerline].reverse() : [...centerline];
   }
-  // jbr-offshore-lane: deep water off JBR/Marina, inside the open-gulf navigation
-  // polygon (the beachfront itself is too close to shore for moving vessels).
-  return [
-    [55.1, 25.182],
-    [55.09, 25.186],
-    [55.078, 25.19],
-    [55.066, 25.193],
-    [55.054, 25.195],
-  ];
+  return [];
 }
 
 function numberedRoute(
@@ -156,6 +150,32 @@ export function marineRoutesForVesselType(type: ModelType) {
 export function defaultMarineRouteIdForVessel(id: string, type: ModelType): MarineRouteId {
   const candidates = marineRoutesForVesselType(type);
   return candidates[hashRouteSeed(id) % candidates.length].id;
+}
+
+const waterAreaById = new Map(WATER_AREAS.map((area) => [area.id, area]));
+const basinWaterAreaById = new Map(BASIN_CORRIDORS.map((c) => [c.id, c.waterAreaId]));
+const waveIntensityCache = new Map<string, number>();
+
+// A vessel's wave-bob amplitude should match the animated water surface it's
+// actually floating on, not a flat full-intensity default — the surface mesh
+// scales Gerstner wave height per basin (see WaterArea.waveIntensity in
+// water.ts: sheltered Marina/lagoon/canal basins move far less than the open
+// Gulf). A route's basin never changes mid-lifetime, so this is computed once
+// per route id and cached rather than looked up per frame.
+export function waveIntensityForMarineRoute(routeId: string | undefined): number {
+  if (!routeId) return 1;
+  const cached = waveIntensityCache.get(routeId);
+  if (cached !== undefined) return cached;
+
+  const route = getMarineRoute(routeId);
+  let intensity = 1;
+  if (route?.basinId) {
+    const waterAreaId = basinWaterAreaById.get(route.basinId);
+    intensity = (waterAreaId && waterAreaById.get(waterAreaId)?.waveIntensity) ?? 1;
+  }
+
+  waveIntensityCache.set(routeId, intensity);
+  return intensity;
 }
 
 export function orderedMarineRouteCandidates(id: string, preferredRouteId?: string) {

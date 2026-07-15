@@ -24,46 +24,40 @@ type VesselOrientation = Pick<
 
 // Each GLB is exported with its own bow axis. These static corrections stay on
 // the child model; Model3DLayer rotates only the parent group along the route.
-// sternOffset values are scaled to match VESSEL_SIZE_BOOST below.
+// sternOffset is ~45% of WATERCRAFT_DISPLAY_LENGTH_METERS for the type (see
+// modelTypes.ts) — the actual rendered size, since fitModelToDisplaySize()
+// derives scale from that table directly and ignores config.scale for
+// watercraft (a stale per-type multiplier here would silently do nothing —
+// see git history for the VESSEL_SIZE_BOOST this file used to carry).
 const VESSEL_ORIENTATIONS: Record<string, VesselOrientation> = {
   "/models/ship.glb": {
     rotation: [Math.PI / 2, 0, 0],
     forwardAxis: "-x",
     headingOffset: 0,
-    sternOffset: 38,
+    sternOffset: 80,
     turnSpeed: 2.2,
   },
   "/models/yacht.glb": {
     rotation: [Math.PI / 2, 0, 0],
     forwardAxis: "+x",
     headingOffset: 0,
-    sternOffset: 34,
+    sternOffset: 27,
     turnSpeed: 3.5,
   },
   "/models/boat.glb": {
     rotation: [Math.PI / 2, 0, 0],
     forwardAxis: "+x",
     headingOffset: 0,
-    sternOffset: 27,
+    sternOffset: 8,
     turnSpeed: 4.8,
   },
   "/models/abra.glb": {
     rotation: [Math.PI / 2, 0, 0],
     forwardAxis: "+x",
     headingOffset: 0,
-    sternOffset: 21,
+    sternOffset: 4.5,
     turnSpeed: 5.2,
   },
-};
-
-// Global per-type size multiplier applied on top of each entry's hand-tuned
-// scale, so the whole fleet reads at a realistic, clearly visible size from
-// the default city camera without editing every registry entry.
-const VESSEL_SIZE_BOOST: Partial<Record<ModelConfig["type"], number>> = {
-  ship: 1.25,
-  yacht: 1.55,
-  boat: 1.7,
-  abra: 1.5,
 };
 
 function routeIsClosed(route?: [number, number][]) {
@@ -76,6 +70,34 @@ function routeIsClosed(route?: [number, number][]) {
 function isWatercraftType(type: ModelConfig["type"]) {
   return type === "boat" || type === "yacht" || type === "ship" || type === "abra";
 }
+
+// Landmark basin a vessel belongs to, read off its id prefix (every
+// BASE_MODEL_REGISTRY entry follows "<basin>-<type>-NN") — this is where the
+// hand-authored intent behind each vessel's original lng/lat/route actually
+// lives, so route-pool selection in distributeFleetEvenly can honor it
+// without reviving the raw (unvalidated) route arrays themselves.
+type HomeArea = "marina" | "palm" | "jbr-harbour" | "creek" | "business-bay" | "offshore";
+
+function homeAreaForVesselId(id: string): HomeArea {
+  if (id.startsWith("marina-")) return "marina";
+  if (id.startsWith("palm-")) return "palm";
+  if (id.startsWith("jbr-") || id.startsWith("harbour-")) return "jbr-harbour";
+  if (id.startsWith("creek-")) return "creek";
+  if (id.startsWith("business-bay-")) return "business-bay";
+  return "offshore";
+}
+
+// Named routes (marineRoutes.ts) each home area should prefer. Empty pool =
+// no basin route fits this area/type combo; distributeFleetEvenly falls back
+// to marineRoutesForVesselType(type) (the full open-sea + basin pool).
+const HOME_AREA_ROUTE_POOLS: Record<HomeArea, string[]> = {
+  marina: ["marina-inner-channel", "marina-entrance-lane"],
+  palm: ["palm-outer-clockwise", "palm-inner-lagoon"],
+  "jbr-harbour": ["jbr-offshore-lane", "marina-entrance-lane"],
+  creek: ["creek-northbound-lane", "creek-southbound-lane"],
+  "business-bay": ["business-bay-canal"],
+  offshore: [],
+};
 
 // Routes hug the real basins (Marina, Palm, Gulf, Creek, Business Bay canal)
 // so boats stay on water and never cross land.
@@ -1258,6 +1280,7 @@ function expandFleetForEnterpriseTraffic(configs: ModelConfig[]) {
         color: palette[i % palette.length] ?? template.color,
         lng: template.lng,
         lat: template.lat,
+        homeArea: template.homeArea ?? homeAreaForVesselId(template.id),
         route: undefined,
         routeId: defaultMarineRouteIdForVessel(id, type),
         routeMode: "pingpong",
@@ -1291,7 +1314,8 @@ function normalizeRegistry(configs: ModelConfig[]) {
       startProgress: normalized.startProgress ?? (hashRouteSeed(normalized.id) % 1000) / 1000,
       speedMetersPerSecond:
         normalized.speedMetersPerSecond ?? defaultSpeedMetersPerSecond(normalized.type),
-      scale: (normalized.scale ?? 1) * (VESSEL_SIZE_BOOST[normalized.type] ?? 1),
+      homeArea: normalized.homeArea ?? homeAreaForVesselId(normalized.id),
+      scale: normalized.scale ?? 1,
     };
     return watercraft;
   });
@@ -1302,13 +1326,35 @@ function distributeFleetEvenly(configs: ModelConfig[]) {
 
   for (const type of ["ship", "yacht", "boat", "abra"] as const) {
     const vessels = distributed.filter((config) => config.type === type);
-    const routes = marineRoutesForVesselType(type);
-    vessels.forEach((vessel, index) => {
-      const route = routes[index % routes.length];
-      vessel.routeId = route.id;
-      vessel.routeMode =
-        route.points.length > 2 && routeIsClosed(route.points) ? "loop" : "pingpong";
-    });
+    const fallbackRoutes = marineRoutesForVesselType(type);
+
+    // Group by home area so each landmark basin gets a guaranteed contingent
+    // instead of every vessel being interchangeably scattered across the
+    // whole city (most of which is empty open-sea lanes far from any basin).
+    const byArea = new Map<HomeArea, ModelConfig[]>();
+    for (const vessel of vessels) {
+      const area = (vessel.homeArea as HomeArea | undefined) ?? homeAreaForVesselId(vessel.id);
+      const group = byArea.get(area) ?? [];
+      group.push(vessel);
+      byArea.set(area, group);
+    }
+
+    for (const [area, group] of byArea) {
+      const homeRouteIds = HOME_AREA_ROUTE_POOLS[area];
+      const homeRoutes = homeRouteIds
+        .map((id) => getMarineRoute(id))
+        .filter((route): route is NonNullable<typeof route> => !!route)
+        .filter((route) => fallbackRoutes.some((r) => r.id === route.id));
+      // Empty intersection (e.g. ships have no basin routes at all) falls
+      // back to the full per-type pool so nothing goes unassigned.
+      const routes = homeRoutes.length > 0 ? homeRoutes : fallbackRoutes;
+      group.forEach((vessel, index) => {
+        const route = routes[index % routes.length];
+        vessel.routeId = route.id;
+        vessel.routeMode =
+          route.points.length > 2 && routeIsClosed(route.points) ? "loop" : "pingpong";
+      });
+    }
   }
 
   const routeGroups = new Map<string, ModelConfig[]>();

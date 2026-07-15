@@ -55,6 +55,13 @@ export type ModelConfig = {
   animate: boolean;
   /** Reusable named route from marineRoutes.ts. Preferred for all watercraft. */
   routeId?: string;
+  /**
+   * Landmark basin this vessel belongs to (derived from its id prefix if
+   * absent — see homeAreaForVesselId in modelRegistry.ts). Drives route-pool
+   * selection in distributeFleetEvenly so vessels sail near the area they
+   * were authored for instead of an anonymous city-wide round-robin.
+   */
+  homeArea?: string;
   /** Initial 0..1 progress along the named/legacy route. */
   startProgress?: number;
   /** Physical vessel speed. Preferred over legacy normalized `speed`. */
@@ -86,10 +93,16 @@ export const PLACEHOLDER_COLORS: Record<ModelType, number> = {
  * Visual target LENGTH (bow→stern) in metres for each watercraft type on the
  * map. These are display sizes tuned for readability at city zoom, not exact
  * legal vessel dimensions. Ordering is enforced here: ship > yacht > boat > abra.
+ *
+ * Sized for a luxury Palm/Marina context — these vessels are meant to read as
+ * the yachts/boats a resident would actually own or see, not naval/megaship
+ * scale: small cruise/feeder ship, flagship superyacht (the largest craft
+ * actually berthed in Dubai Marina/Harbour), tour boat/speedboat, real Creek
+ * abra (~8-10m in life).
  */
 export const WATERCRAFT_DISPLAY_LENGTH_METERS: Partial<Record<ModelType, number>> = {
-  ship: 220,
-  yacht: 140,
-  boat: 70,
-  abra: 40,
+  ship: 180,
+  yacht: 60,
+  boat: 18,
+  abra: 10,
 };

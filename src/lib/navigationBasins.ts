@@ -26,7 +26,7 @@ import { WATER_AREAS, type WaterArea } from "@/lib/water";
 // The Dubai Creek water polygon pinches nearly shut around lat 25.227, so the
 // creek is modelled as two independent corridors (south of the pinch, north of
 // it) rather than one that would have to squeeze through a ~4m gap.
-export type BasinId = "marina" | "palm-lagoon" | "creek-south" | "creek-north" | "business-bay";
+export type BasinId = "marina" | "palm-lagoon" | "creek-south" | "creek-north" | "business-bay" | "jbr";
 
 export type BasinCorridor = {
   id: BasinId;
@@ -337,6 +337,50 @@ export const BASIN_CORRIDORS: BasinCorridor[] = [
       [55.33043, 25.20504],
     ],
     halfWidthMeters: 22,
+  },
+  {
+    id: "jbr",
+    name: "JBR Offshore Water",
+    waterAreaId: "jbr-offshore",
+    // Mid-channel line sampled from the real jbr-offshore water polygon
+    // (water.ts), offset west of the real JBR beachfront within its real
+    // lat band — replaces a route that used to validate against the sparse
+    // deep-open-Gulf mask instead of this basin's own real water area, which
+    // placed it ~8km away near Jebel Ali instead of off JBR.
+    centerline: [
+      [55.11332, 25.073],
+      [55.1132, 25.07363],
+      [55.11304, 25.07427],
+      [55.11284, 25.0749],
+      [55.11408, 25.07553],
+      [55.11444, 25.07617],
+      [55.1148, 25.0768],
+      [55.11516, 25.07743],
+      [55.11552, 25.07807],
+      [55.11588, 25.0787],
+      [55.11612, 25.07933],
+      [55.11632, 25.07997],
+      [55.11656, 25.0806],
+      [55.1168, 25.08123],
+      [55.117, 25.08187],
+      [55.11724, 25.0825],
+      [55.11748, 25.08313],
+      [55.11768, 25.08377],
+      [55.11784, 25.0844],
+      [55.11792, 25.08503],
+      [55.118, 25.08567],
+      [55.11804, 25.0863],
+      [55.11812, 25.08693],
+      [55.11816, 25.08757],
+      [55.11824, 25.0882],
+      [55.11744, 25.08883],
+      [55.11688, 25.08947],
+      [55.11692, 25.0901],
+      [55.11696, 25.09073],
+      [55.117, 25.09137],
+      [55.11724, 25.092],
+    ],
+    halfWidthMeters: 200,
   },
 ];
 
