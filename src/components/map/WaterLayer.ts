@@ -917,9 +917,71 @@ function buildWaterGeometry(
   }
   const grid = buildShoreSegmentGrid(shoreRings);
 
-  const refined = subdivideNearShore(subdivide(new THREE.ShapeGeometry(shape), levels), grid);
+  const shapeGeometry = new THREE.ShapeGeometry(shape);
+  warnIfTriangulationFailed(area.id, shapeGeometry, mask);
+
+  const refined = subdivideNearShore(subdivide(shapeGeometry, levels), grid);
   attachShoreDistances(refined, grid);
   return refined;
+}
+
+// Ring shoelace area in local metres. Used only to sanity-check triangulation
+// output, not for rendering.
+function ringAreaLocal(ring: THREE.Vector3[]): number {
+  let sum = 0;
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i];
+    const b = ring[(i + 1) % ring.length];
+    sum += a.x * b.y - b.x * a.y;
+  }
+  return Math.abs(sum) / 2;
+}
+
+// Earcut (via THREE.ShapeGeometry) can silently drop triangles or fail to
+// close around a hole when the input ring is malformed (e.g. self-intersecting
+// segments in hand-traced/OSM-sourced coastline data — see GULF_MAINLAND_LAND
+// history). A ring with zero triangles, or whose meshed area is far short of
+// the polygon-minus-holes area computed directly from the same points, means
+// the water surface has a silent gap that would otherwise only show up as an
+// unexplained patch of un-animated satellite water. Warn loudly so a bad
+// coastline edit is caught at build/dev time instead of a screenshot review.
+function warnIfTriangulationFailed(areaId: string, geometry: THREE.BufferGeometry, mask: LocalWaterMask) {
+  const positions = geometry.getAttribute("position");
+  // ShapeGeometry is indexed (shared vertices at triangle edges) — the
+  // triangle list lives in the index buffer, not in sequential position
+  // triples. Reading positions sequentially without the index would compute
+  // garbage "triangles" from unrelated neighbouring vertices.
+  const index = geometry.getIndex();
+  const triangleCount = index ? index.count / 3 : positions ? positions.count / 3 : 0;
+
+  let meshArea = 0;
+  if (positions && index) {
+    for (let i = 0; i < index.count; i += 3) {
+      const ia = index.getX(i), ib = index.getX(i + 1), ic = index.getX(i + 2);
+      const ax = positions.getX(ia), ay = positions.getY(ia);
+      const bx = positions.getX(ib), by = positions.getY(ib);
+      const cx = positions.getX(ic), cy = positions.getY(ic);
+      meshArea += Math.abs((bx - ax) * (cy - ay) - (cx - ax) * (by - ay)) / 2;
+    }
+  } else if (positions) {
+    for (let i = 0; i < positions.count; i += 3) {
+      const ax = positions.getX(i), ay = positions.getY(i);
+      const bx = positions.getX(i + 1), by = positions.getY(i + 1);
+      const cx = positions.getX(i + 2), cy = positions.getY(i + 2);
+      meshArea += Math.abs((bx - ax) * (cy - ay) - (cx - ax) * (by - ay)) / 2;
+    }
+  }
+
+  const expectedArea =
+    ringAreaLocal(mask.outer) - mask.holes.reduce((sum, hole) => sum + ringAreaLocal(hole), 0);
+
+  if (triangleCount === 0) {
+    console.error(`[WaterLayer] "${areaId}" triangulated to 0 triangles — water surface is missing entirely.`);
+  } else if (expectedArea > 0 && meshArea < expectedArea * 0.5) {
+    console.error(
+      `[WaterLayer] "${areaId}" mesh area (${meshArea.toFixed(0)} m²) is far short of the expected polygon area (${expectedArea.toFixed(0)} m²) — earcut likely dropped triangles around a malformed ring.`,
+    );
+  }
 }
 
 // Builds a closed line loop from a [lng, lat] ring for WATER_MASK_DEBUG

@@ -137,12 +137,17 @@ const MARINA_JBR_MAINLAND: [number, number][] = [
 ];
 
 export const WATER_AREAS: WaterArea[] = [
-  // 1. Full Arabian Gulf coverage. The boundary is outside the normal camera;
-  // holes remove the real mainland coastline (OSM-derived, including Palm Jebel
-  // Ali which is attached to the mainland), the Palm Jumeirah water tile, and
-  // real offshore islands (Deira Islands, Bluewaters, Burj Al Arab, ...). The
-  // mainland hole bridges the Creek/Canal/Marina entrances with short chords —
-  // those basins have their own real-coordinate water surfaces below.
+  // 1. Full Arabian Gulf coverage. The boundary exceeds DUBAI_BOUNDS (dubai.ts,
+  // the map's maxBounds) on every side with margin, so the sea never runs out
+  // before the pannable edge of the map — a previous [54.65,24.7]-[55.5,25.45]
+  // rectangle fell short of DUBAI_BOUNDS' east (55.65) and north (25.55) edges
+  // by 10-15km, leaving flat unanimated satellite water visible near those
+  // corners. Holes remove the real mainland coastline (OSM-derived, including
+  // Palm Jebel Ali which is attached to the mainland), the Palm Jumeirah water
+  // tile, and real offshore islands (Deira Islands, Bluewaters, Burj Al Arab,
+  // ...). The mainland hole bridges the Creek/Canal/Marina entrances with
+  // short chords — those basins have their own real-coordinate water surfaces
+  // below.
   {
     id: "open-arabian-gulf",
     name: "Open Arabian Gulf",
@@ -151,11 +156,11 @@ export const WATER_AREAS: WaterArea[] = [
     openSea: true,
     waveIntensity: 1,
     polygon: [
-      [54.65, 24.7],
-      [54.65, 25.45],
-      [55.5, 25.45],
-      [55.5, 24.7],
-      [54.65, 24.7],
+      [54.6, 24.6],
+      [54.6, 25.7],
+      [55.8, 25.7],
+      [55.8, 24.6],
+      [54.6, 24.6],
     ],
     holes: [GULF_MAINLAND_LAND, PALM_JUMEIRAH_SURROUND_RING, ...GULF_ISLAND_HOLES],
   },
