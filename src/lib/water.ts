@@ -10,9 +10,12 @@
 // coastline so animated water never renders over land, islands, piers, docks,
 // breakwaters, or beaches.
 //
-// Coordinates are best-effort satellite tracing and may need further
-// refinement — use WATER_MASK_DEBUG in WaterLayer.ts to visualize boundaries
-// and click the map to print exact [lng, lat] pairs for correction.
+// Marina/Creek/Business Bay Canal now use real OSM water-body geometry (see
+// coastline.generated.ts). Remaining hand-traced boundaries (palm-inner-lagoons,
+// the two open-sea connectors' offshore edges) are best-effort satellite
+// tracing and may need further refinement — use WATER_MASK_DEBUG in
+// WaterLayer.ts to visualize boundaries and click the map to print exact
+// [lng, lat] pairs for correction.
 
 import {
   GULF_MAINLAND_LAND,
@@ -21,6 +24,10 @@ import {
   PALM_JUMEIRAH_TRUNK_FRONDS_CLIPPED,
   PALM_SURROUND_ISLAND_HOLES,
   GULF_ISLAND_HOLES,
+  DUBAI_MARINA_REAL_RING,
+  DUBAI_CREEK_REAL_RING,
+  DUBAI_CREEK_ISLAND_HOLES,
+  DUBAI_WATER_CANAL_REAL_RING,
 } from "@/lib/coastline.generated";
 
 export type WaterArea = {
@@ -135,7 +142,7 @@ export const WATER_AREAS: WaterArea[] = [
   // Ali which is attached to the mainland), the Palm Jumeirah water tile, and
   // real offshore islands (Deira Islands, Bluewaters, Burj Al Arab, ...). The
   // mainland hole bridges the Creek/Canal/Marina entrances with short chords —
-  // those basins keep their own hand-tuned water surfaces below.
+  // those basins have their own real-coordinate water surfaces below.
   {
     id: "open-arabian-gulf",
     name: "Open Arabian Gulf",
@@ -282,138 +289,39 @@ export const WATER_AREAS: WaterArea[] = [
   },
 
   // 6. Dubai Marina channels — the developed marina basin itself (distinct
-  // from the open JBR sea in front of it).
+  // from the open JBR sea in front of it). Real OSM data (relation 6200028,
+  // leisure=marina), replacing the previous hand-traced approximation.
   {
     id: "marina-channels",
     name: "Dubai Marina Channels",
     center: [55.138, 25.078],
     renderSurface: true,
     waveIntensity: 0.35,
-    polygon: [
-      [55.1565, 25.0685],
-      [55.1548, 25.0693],
-      [55.1531, 25.0701],
-      [55.1514, 25.0708],
-      [55.1497, 25.0714],
-      [55.148, 25.0719],
-      [55.1463, 25.0723],
-      [55.1446, 25.0726],
-      [55.1429, 25.0728],
-      [55.1412, 25.0729],
-      [55.1395, 25.0729],
-      [55.1378, 25.0728],
-      [55.1361, 25.0726],
-      [55.1344, 25.0723],
-      [55.1327, 25.0719],
-      [55.131, 25.0714],
-      [55.1293, 25.0708],
-      [55.1276, 25.0701],
-      [55.1259, 25.0693],
-      [55.1242, 25.0684],
-      [55.1242, 25.0664],
-      [55.1259, 25.0673],
-      [55.1276, 25.0681],
-      [55.1293, 25.0688],
-      [55.131, 25.0694],
-      [55.1327, 25.0699],
-      [55.1344, 25.0703],
-      [55.1361, 25.0706],
-      [55.1378, 25.0708],
-      [55.1395, 25.0709],
-      [55.1412, 25.0709],
-      [55.1429, 25.0708],
-      [55.1446, 25.0706],
-      [55.1463, 25.0703],
-      [55.148, 25.0699],
-      [55.1497, 25.0694],
-      [55.1514, 25.0688],
-      [55.1531, 25.0681],
-      [55.1548, 25.0673],
-      [55.1565, 25.0665],
-      [55.1565, 25.065],
-      [55.1555, 25.064],
-      [55.1545, 25.063],
-      [55.1535, 25.062],
-      [55.1525, 25.061],
-      [55.1515, 25.061],
-      [55.1505, 25.062],
-      [55.1495, 25.063],
-      [55.1485, 25.064],
-      [55.1475, 25.065],
-      [55.1475, 25.0665],
-      [55.1485, 25.0656],
-      [55.1495, 25.0647],
-      [55.1505, 25.064],
-      [55.1515, 25.0639],
-      [55.1525, 25.064],
-      [55.1535, 25.0648],
-      [55.1545, 25.0656],
-      [55.1555, 25.0665],
-      [55.1565, 25.0675],
-    ],
+    polygon: DUBAI_MARINA_REAL_RING,
   },
 
-  // 7. Dubai Creek — narrow tidal estuary, both banks traced.
+  // 7. Dubai Creek — real tidal estuary from the Gulf mouth to Ras Al Khor
+  // (OSM relation 6525149, "خور دبي"), both banks stitched into one ring;
+  // replaces the previous hand-traced short mid-creek stretch.
   {
     id: "dubai-creek",
     name: "Dubai Creek",
     center: [55.32, 25.235],
     renderSurface: true,
     waveIntensity: 0.3,
-    polygon: [
-      [55.3388, 25.2138],
-      [55.3385, 25.2161],
-      [55.3382, 25.2184],
-      [55.3378, 25.2207],
-      [55.3373, 25.223],
-      [55.3367, 25.2253],
-      [55.3361, 25.2276],
-      [55.3354, 25.2299],
-      [55.3347, 25.2322],
-      [55.3339, 25.2345],
-      [55.3331, 25.2368],
-      [55.3322, 25.2391],
-      [55.3312, 25.2414],
-      [55.3301, 25.2437],
-      [55.3289, 25.246],
-      [55.3298, 25.245],
-      [55.3308, 25.2428],
-      [55.3318, 25.2405],
-      [55.3328, 25.2382],
-      [55.3337, 25.2359],
-      [55.3345, 25.2336],
-      [55.3352, 25.2313],
-      [55.3358, 25.229],
-      [55.3363, 25.2267],
-      [55.3368, 25.2244],
-      [55.3372, 25.2221],
-      [55.3375, 25.2198],
-      [55.3378, 25.2175],
-      [55.338, 25.2152],
-      [55.3382, 25.2129],
-    ],
+    polygon: DUBAI_CREEK_REAL_RING,
+    holes: DUBAI_CREEK_ISLAND_HOLES,
   },
 
-  // 8. Dubai Water Canal & Business Bay — narrow urban canal, calm water.
+  // 8. Dubai Water Canal & Business Bay — real OSM data (way 532459082,
+  // "Dubai Canal"), replacing the previous hand-traced approximation.
   {
     id: "business-bay-canal",
     name: "Dubai Water Canal & Business Bay",
     center: [55.26, 25.185],
     renderSurface: true,
     waveIntensity: 0.22,
-    polygon: [
-      [55.2665, 25.1665],
-      [55.2648, 25.1725],
-      [55.2662, 25.1785],
-      [55.269, 25.1845],
-      [55.2724, 25.1885],
-      [55.2742, 25.1875],
-      [55.271, 25.1835],
-      [55.2682, 25.1775],
-      [55.2668, 25.1715],
-      [55.2685, 25.1665],
-      [55.2665, 25.1665],
-    ],
+    polygon: DUBAI_WATER_CANAL_REAL_RING,
   },
 ];
 
