@@ -38,12 +38,13 @@ type LngLat = [number, number];
 
 const REFRESH = process.argv.includes("--refresh");
 
-// Coverage rectangle — strictly larger than DUBAI_BOUNDS (dubai.ts: S24.79 /
-// W54.89 / N25.55 / E55.65) so the sea never runs out before the pannable edge.
-// Hugs the map's maxBounds (54.89–55.65 / 24.79–25.55) with a small margin.
-// A larger rect pulls in the Abu Dhabi + Sharjah coastlines and open-Gulf
-// ambiguity, fragmenting the sea; the map can't pan past maxBounds anyway.
-const COVERAGE = { west: 54.85, south: 24.75, east: 55.7, north: 25.6 };
+// Coverage rectangle — must extend WELL beyond DUBAI_BOUNDS (dubai.ts: S24.79 /
+// W54.89 / N25.55 / E55.65). In the pitched 3-D view the camera sees far past
+// maxBounds toward the horizon, so a rect that merely hugs maxBounds leaves flat
+// un-animated sea visible near the edges. This generous rect (≈20–30 km margin
+// on every side) covers the whole visible Gulf; the coastline is fetched across
+// the same bbox so real desert (Abu Dhabi/Sharjah) is still excluded as land.
+const COVERAGE = { west: 54.6, south: 24.6, east: 55.85, north: 25.72 };
 const COVERAGE_RECT: LngLat[] = [
   [COVERAGE.west, COVERAGE.south],
   [COVERAGE.east, COVERAGE.south],
@@ -891,6 +892,9 @@ async function main() {
   const waterProbes: LngLat[] = [
     [55.05, 25.15], [54.95, 25.3], [55.25, 25.35], [55.117, 25.14],
     [55.3, 25.45], [54.88, 25.57], [55.1, 25.1], [55.08, 25.12],
+    // Open-Gulf margin corners (the whole point of the big rect): sea must
+    // reach the pannable/horizon edges.
+    [54.65, 25.68], [54.65, 25.2], [55.2, 25.7], [54.7, 25.5],
   ];
   for (const p of waterProbes) {
     assertProbe(`sea covers ${JSON.stringify(p)}`, pointInRings(p, seaOuter, seaHoles));
