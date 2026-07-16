@@ -168,6 +168,45 @@ function simplifyRing(ring: LngLat[]): LngLat[] {
   return s.geometry.coordinates[0].map((p) => [p[0], p[1]] as LngLat);
 }
 
+// Region-aware coast simplify: fine tolerance inside the Palm bbox (preserves
+// the trunk neck), coarse elsewhere. Simplifying only the short in-Palm run
+// keeps the closure ring's self-intersection count — and unkink cost — low.
+const PALM_DETAIL_BBOX = { west: 55.1, south: 25.09, east: 55.16, north: 25.14 };
+function regionSimplifyCoast(raw: LngLat[]): LngLat[] {
+  const inPalm = (p: LngLat) =>
+    p[0] >= PALM_DETAIL_BBOX.west &&
+    p[0] <= PALM_DETAIL_BBOX.east &&
+    p[1] >= PALM_DETAIL_BBOX.south &&
+    p[1] <= PALM_DETAIL_BBOX.north;
+  const simplifyRun = (run: LngLat[], tol: number): LngLat[] => {
+    if (run.length < 3) return run;
+    const s = turf.simplify(turf.lineString(run.map((p) => [p[0], p[1]] as Position)), {
+      tolerance: tol,
+      highQuality: true,
+    });
+    return s.geometry.coordinates.map((p) => [p[0], p[1]] as LngLat);
+  };
+  const out: LngLat[] = [];
+  let run: LngLat[] = [raw[0]];
+  let runPalm = inPalm(raw[0]);
+  const flush = () => {
+    const pts = simplifyRun(run, runPalm ? 0.00005 : 0.0004);
+    if (out.length && samePoint(out[out.length - 1], pts[0])) out.push(...pts.slice(1));
+    else out.push(...pts);
+  };
+  for (let i = 1; i < raw.length; i++) {
+    if (inPalm(raw[i]) === runPalm) {
+      run.push(raw[i]);
+    } else {
+      flush();
+      run = [run[run.length - 1], raw[i]];
+      runPalm = inPalm(raw[i]);
+    }
+  }
+  flush();
+  return out;
+}
+
 // Extract every outer ring (as LngLat[]) from a (Multi)Polygon feature.
 function outerRings(feat: Feature<Polygon | MultiPolygon>): LngLat[][] {
   if (feat.geometry.type === "Polygon") {
@@ -601,14 +640,12 @@ async function main() {
       if (cRaw.length < 2) continue;
       // Simplify the mainland coast before closing it: the closure ring of a
       // 500 km, 14 k-point coast self-intersects everywhere and unkink can't
-      // recover the desert cleanly. The mainland surface needs no frond-scale
-      // detail (islands carry that as separate loops), so a ~40 m tolerance
-      // yields a near-simple ring while keeping the coastline shape.
-      const simp = turf.simplify(turf.lineString(cRaw.map((p) => [p[0], p[1]] as Position)), {
-        tolerance: 0.0004,
-        highQuality: true,
-      });
-      const c: LngLat[] = simp.geometry.coordinates.map((p) => [p[0], p[1]] as LngLat);
+      // recover the desert cleanly. Region-aware: keep FINE detail only inside
+      // the Palm Jumeirah bbox (so the narrow trunk/mainland neck survives and
+      // the sea doesn't paint the trunk base) and coarse elsewhere, where
+      // frond-scale detail is carried by separate island loops. Fine detail on
+      // only the short Palm run keeps unkink tractable.
+      const c: LngLat[] = regionSimplifyCoast(cRaw);
       if (c.length < 2) continue;
       const lenKm = turf.length(turf.lineString(c.map((p) => [p[0], p[1]] as Position)), {
         units: "kilometers",
@@ -746,7 +783,11 @@ async function main() {
   const palmRect = turf.bboxPolygon([PALM_BBOX.west, PALM_BBOX.south, PALM_BBOX.east, PALM_BBOX.north]);
   let palmLagoonRing: LngLat[] = [];
   let palmLagoonHoles: LngLat[][] = [];
-  const lagoon = turf.intersect(turf.featureCollection([palmRect, sea]));
+  let lagoon = turf.intersect(turf.featureCollection([palmRect, sea]));
+  // turf.intersect can drop the sea's island holes, so the Palm trunk/fronds
+  // land leaks back into the lagoon. Explicitly re-subtract the full land
+  // (mainland + islands) so no calm-water tongue paints the trunk base or fronds.
+  if (lagoon) lagoon = turf.difference(turf.featureCollection([lagoon, land])) ?? lagoon;
   if (lagoon) {
     const parts: Position[][][] =
       lagoon.geometry.type === "Polygon"
@@ -891,9 +932,9 @@ export const SEA_OUTER_RING: [number, number][] = ${fmtRing(seaOuter)};
 
 export const SEA_LAND_HOLES: [number, number][][] = ${fmtRings(seaHoles)};
 
-export const PALM_LAGOON_RING: [number, number][] = ${fmtRing(simplifyRing(palmLagoonRing))};
+export const PALM_LAGOON_RING: [number, number][] = ${fmtRing(palmLagoonRing)};
 
-export const PALM_LAGOON_HOLES: [number, number][][] = ${fmtRings(palmLagoonHoles.map(simplifyRing).filter((r) => r.length >= 4))};
+export const PALM_LAGOON_HOLES: [number, number][][] = ${fmtRings(palmLagoonHoles)};
 
 export const MARINA_RING: [number, number][] = ${fmtRing(simplifyRing(marina.outer))};
 
