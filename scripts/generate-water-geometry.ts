@@ -151,6 +151,23 @@ function toPolygon(ring: LngLat[]): Feature<Polygon> {
   return turf.polygon([closeRing(ring).map((p) => [p[0], p[1]] as Position)]);
 }
 
+// Simplify to cut vertex count (keeps map-scale shape) — the water meshes are
+// earcut-triangulated + shore-refined at runtime, so raw OSM detail is wasted
+// cost. ~9 m tolerance.
+const SIMPLIFY_TOL = 0.00008;
+function simplifyPoly(poly: Feature<Polygon>): Feature<Polygon> {
+  try {
+    const s = turf.simplify(poly, { tolerance: SIMPLIFY_TOL, highQuality: true }) as Feature<Polygon>;
+    return s.geometry.coordinates[0].length >= 4 ? s : poly;
+  } catch {
+    return poly;
+  }
+}
+function simplifyRing(ring: LngLat[]): LngLat[] {
+  const s = simplifyPoly(toPolygon(ring));
+  return s.geometry.coordinates[0].map((p) => [p[0], p[1]] as LngLat);
+}
+
 // Extract every outer ring (as LngLat[]) from a (Multi)Polygon feature.
 function outerRings(feat: Feature<Polygon | MultiPolygon>): LngLat[][] {
   if (feat.geometry.type === "Polygon") {
@@ -686,22 +703,29 @@ async function main() {
   const islandPolys: Feature<Polygon>[] = [];
   const inRect = (b: number[]) =>
     b[2] >= COVERAGE.west && b[0] <= COVERAGE.east && b[3] >= COVERAGE.south && b[1] <= COVERAGE.north;
-  for (const ring of closed) {
-    if (ring.length < 4) continue;
-    const poly = turf.cleanCoords(toPolygon(ring)) as Feature<Polygon>;
-    if (!inRect(turf.bbox(poly))) continue; // island outside the (shrunk) rect
+  // Minimum island area to keep as a hole. Tiny islets (e.g. the ~300 sub-
+  // islands of The World) are invisible at map scale but each adds an earcut
+  // hole + shore-refined subdivision, which together blow up the open-sea mesh
+  // build (it hangs the main thread). Drop them; keep real landmasks.
+  const MIN_ISLAND_AREA = 40_000; // m² (~200 m across)
+  const addIsland = (poly: Feature<Polygon>) => {
+    if (!inRect(turf.bbox(poly))) return; // outside the (shrunk) rect
     const a = turf.area(poly);
-    if (a < 500) continue; // stitching artifact
+    if (a < MIN_ISLAND_AREA) return;
     if (a > 0.05 * RECT_AREA) {
       throw new Error(`giant island loop ${(a / 1e6).toFixed(0)}km² — likely mis-stitched mainland`);
     }
-    islandPolys.push(poly);
+    islandPolys.push(simplifyPoly(poly));
+  };
+  for (const ring of closed) {
+    if (ring.length < 4) continue;
+    addIsland(turf.cleanCoords(toPolygon(ring)) as Feature<Polygon>);
   }
   const islandGj = osmtogeojson(islandsOsm);
   for (const f of islandGj.features) {
-    if (f.geometry?.type === "Polygon") islandPolys.push(turf.polygon(f.geometry.coordinates));
+    if (f.geometry?.type === "Polygon") addIsland(turf.polygon(f.geometry.coordinates));
     else if (f.geometry?.type === "MultiPolygon") {
-      for (const c of f.geometry.coordinates) islandPolys.push(turf.polygon(c));
+      for (const c of f.geometry.coordinates) addIsland(turf.polygon(c));
     }
   }
 
@@ -758,8 +782,12 @@ async function main() {
       seaPoly = poly;
     }
   }
-  const seaOuter: LngLat[] = seaPoly[0].map((p) => [p[0], p[1]] as LngLat);
-  const seaHoles: LngLat[][] = seaPoly.slice(1).map((r) => r.map((p) => [p[0], p[1]] as LngLat));
+  const seaOuter: LngLat[] = simplifyRing(seaPoly[0].map((p) => [p[0], p[1]] as LngLat));
+  // Drop hole slivers that simplify below a triangle; keep the rest simplified.
+  const seaHoles: LngLat[][] = seaPoly
+    .slice(1)
+    .map((r) => simplifyRing(r.map((p) => [p[0], p[1]] as LngLat)))
+    .filter((r) => r.length >= 4);
 
   if (palmLagoonRing.length < 4) {
     palmLagoonRing = [
@@ -775,7 +803,20 @@ async function main() {
   // Foam: real coastline polylines, clipped to named lat/lng windows.
   // -------------------------------------------------------------------------
   const allCoast: LngLat[][] = [...open.map(clipLineToRect), ...closed];
-  const landWaterEdges = allCoast.filter((l) => l.length >= 2);
+  const landWaterEdges = allCoast
+    .filter((l) => l.length >= 2)
+    .map((l) => {
+      try {
+        const s = turf.simplify(turf.lineString(l.map((p) => [p[0], p[1]] as Position)), {
+          tolerance: SIMPLIFY_TOL,
+          highQuality: true,
+        });
+        return s.geometry.coordinates.map((p) => [p[0], p[1]] as LngLat);
+      } catch {
+        return l;
+      }
+    })
+    .filter((l) => l.length >= 2);
 
   function foamWindow(w: { west: number; south: number; east: number; north: number }): LngLat[] {
     // Concatenate coastline vertices inside the window, ordered by the longest
@@ -850,17 +891,17 @@ export const SEA_OUTER_RING: [number, number][] = ${fmtRing(seaOuter)};
 
 export const SEA_LAND_HOLES: [number, number][][] = ${fmtRings(seaHoles)};
 
-export const PALM_LAGOON_RING: [number, number][] = ${fmtRing(palmLagoonRing)};
+export const PALM_LAGOON_RING: [number, number][] = ${fmtRing(simplifyRing(palmLagoonRing))};
 
-export const PALM_LAGOON_HOLES: [number, number][][] = ${fmtRings(palmLagoonHoles)};
+export const PALM_LAGOON_HOLES: [number, number][][] = ${fmtRings(palmLagoonHoles.map(simplifyRing).filter((r) => r.length >= 4))};
 
-export const MARINA_RING: [number, number][] = ${fmtRing(marina.outer)};
+export const MARINA_RING: [number, number][] = ${fmtRing(simplifyRing(marina.outer))};
 
-export const CREEK_RING: [number, number][] = ${fmtRing(creek.outer)};
+export const CREEK_RING: [number, number][] = ${fmtRing(simplifyRing(creek.outer))};
 
-export const CREEK_ISLAND_HOLES: [number, number][][] = ${fmtRings(creek.holes)};
+export const CREEK_ISLAND_HOLES: [number, number][][] = ${fmtRings(creek.holes.map(simplifyRing).filter((r) => r.length >= 4))};
 
-export const CANAL_RING: [number, number][] = ${fmtRing(canal.outer)};
+export const CANAL_RING: [number, number][] = ${fmtRing(simplifyRing(canal.outer))};
 
 export const LAND_WATER_EDGES: [number, number][][] = ${fmtRings(landWaterEdges)};
 
