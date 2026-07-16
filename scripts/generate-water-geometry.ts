@@ -38,13 +38,16 @@ type LngLat = [number, number];
 
 const REFRESH = process.argv.includes("--refresh");
 
-// Coverage rectangle — must extend WELL beyond DUBAI_BOUNDS (dubai.ts: S24.79 /
-// W54.89 / N25.55 / E55.65). In the pitched 3-D view the camera sees far past
-// maxBounds toward the horizon, so a rect that merely hugs maxBounds leaves flat
-// un-animated sea visible near the edges. This generous rect (≈20–30 km margin
-// on every side) covers the whole visible Gulf; the coastline is fetched across
-// the same bbox so real desert (Abu Dhabi/Sharjah) is still excluded as land.
-const COVERAGE = { west: 54.6, south: 24.6, east: 55.85, north: 25.72 };
+// The map's maxBounds (dubai.ts DUBAI_BOUNDS: S24.79 / W54.89 / N25.55 / E55.65).
+const DUBAI_BOUNDS = { west: 54.89, south: 24.79, east: 55.65, north: 25.55 };
+
+// Coverage rectangle — DUBAI_BOUNDS padded by 50% of its width/height on every
+// side so the animated water mesh reaches well past maxBounds. (The pitched
+// camera can see even farther toward the horizon; that far field is covered by
+// tinting the basemap's own water to the sea colour in MapboxView, so nothing
+// beyond COVER shows black.) The coastline is fetched across this same bbox so
+// real desert (Abu Dhabi/Sharjah) is still excluded as land.
+const COVERAGE = { west: 54.51, south: 24.41, east: 56.03, north: 25.93 };
 const COVERAGE_RECT: LngLat[] = [
   [COVERAGE.west, COVERAGE.south],
   [COVERAGE.east, COVERAGE.south],
@@ -604,12 +607,15 @@ async function main() {
   console.log("Building land by perimeter closure…");
   const rectPoly = toPolygon(COVERAGE_RECT);
   const RECT_AREA = turf.area(rectPoly);
+  // Clearly-open-Gulf points (NW/N/W of the coast) for picking the sea side of
+  // each chain closure and the main sea component. Kept away from the Sharjah/
+  // RAK coast, which the enlarged rect now reaches.
   const SEA_ANCHORS: LngLat[] = [
     [55.05, 25.15],
     [54.95, 25.3],
     [55.25, 25.35],
-    [55.62, 25.52],
     [54.88, 25.57],
+    [54.6, 25.8],
   ];
   // Deep-desert anchors, well inland of the coast and clear of the creek/canal
   // loops — unambiguous land for calibrating the mainland closure.
@@ -884,23 +890,40 @@ async function main() {
   // Gates
   // -------------------------------------------------------------------------
   console.log("Running gates…");
-  const seaArea = turf.area(toPolygon(seaOuter));
-  const rectArea = turf.area(rectPoly);
-  const frac = seaArea / rectArea;
-  assertProbe(`sea area fraction ${(frac * 100).toFixed(1)}% in [35,70]`, frac >= 0.35 && frac <= 0.7);
+  // Sea fraction measured over DUBAI_BOUNDS (invariant to COVER resizes) — the
+  // Emirate is roughly half Gulf. Only catches catastrophic land/sea inversion;
+  // the corner probes below do the precision work.
+  const dubaiRect = toPolygon([
+    [DUBAI_BOUNDS.west, DUBAI_BOUNDS.south],
+    [DUBAI_BOUNDS.east, DUBAI_BOUNDS.south],
+    [DUBAI_BOUNDS.east, DUBAI_BOUNDS.north],
+    [DUBAI_BOUNDS.west, DUBAI_BOUNDS.north],
+    [DUBAI_BOUNDS.west, DUBAI_BOUNDS.south],
+  ]);
+  const seaPolyFeat = turf.polygon([
+    closeRing(seaOuter).map((p) => [p[0], p[1]] as Position),
+    ...seaHoles.map((h) => closeRing(h).map((p) => [p[0], p[1]] as Position)),
+  ]);
+  const seaInBounds = turf.intersect(turf.featureCollection([dubaiRect, seaPolyFeat]));
+  const frac = (seaInBounds ? turf.area(seaInBounds) : 0) / turf.area(dubaiRect);
+  assertProbe(`sea fraction of DUBAI_BOUNDS ${(frac * 100).toFixed(1)}% in [30,65]`, frac >= 0.3 && frac <= 0.65);
 
   const waterProbes: LngLat[] = [
+    // Dubai open sea.
     [55.05, 25.15], [54.95, 25.3], [55.25, 25.35], [55.117, 25.14],
-    [55.3, 25.45], [54.88, 25.57], [55.1, 25.1], [55.08, 25.12],
-    // Open-Gulf margin corners (the whole point of the big rect): sea must
-    // reach the pannable/horizon edges.
-    [54.65, 25.68], [54.65, 25.2], [55.2, 25.7], [54.7, 25.5],
+    [55.3, 25.45], [55.1, 25.1], [55.08, 25.12],
+    // COVER open-Gulf edges (NW / N / W) — sea must reach the visible margin.
+    [54.55, 25.89], [55.0, 25.89], [55.6, 25.89], [55.8, 25.89],
+    [54.55, 25.3], [54.55, 24.95],
   ];
   for (const p of waterProbes) {
     assertProbe(`sea covers ${JSON.stringify(p)}`, pointInRings(p, seaOuter, seaHoles));
   }
   const landProbes: LngLat[] = [
     [55.27, 25.2], [55.36, 25.27], [55.139, 25.112], [55.152, 25.079], [55.132, 25.005],
+    // COVER desert edges (S / E) must NOT be sea. SE corner is the blue-desert gate.
+    [55.99, 24.45], [55.4, 24.45], [55.8, 24.45], [55.99, 24.9], [55.99, 25.4],
+    [54.7, 24.45], [55.3, 24.9],
   ];
   for (const p of landProbes) {
     assertProbe(`land not sea ${JSON.stringify(p)}`, !pointInRings(p, seaOuter, seaHoles));

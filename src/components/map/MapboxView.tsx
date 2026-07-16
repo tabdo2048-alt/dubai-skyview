@@ -203,6 +203,31 @@ export function MapboxView({
 
       styleLoadedRef.current = true;
 
+      // Far-field water: the animated water mesh only covers the COVER rectangle
+      // (a bounded area around Dubai), but at pitch the camera sees the Gulf far
+      // past maxBounds toward the horizon — beyond the mesh that showed as a
+      // black/empty void. Tint the basemap's own worldwide water (and the style
+      // background) to the mesh's base sea colour so everything past the mesh
+      // reads as continuous sea instead of black. The animated mesh sits on top
+      // within COVER; the seam is tens of km out and foreshortened at pitch.
+      try {
+        const seaHex = mode === "satellite" ? "#1d7187" : "#1a6d82";
+        for (const layer of map.getStyle().layers ?? []) {
+          const isWater =
+            layer.id === "water" ||
+            layer.id.startsWith("water") ||
+            ("source-layer" in layer && (layer as { "source-layer"?: string })["source-layer"] === "water");
+          if (isWater && layer.type === "fill") {
+            map.setPaintProperty(layer.id, "fill-color", seaHex);
+          }
+          if (layer.type === "background") {
+            map.setPaintProperty(layer.id, "background-color", seaHex);
+          }
+        }
+      } catch (err) {
+        console.warn("basemap water tint failed (non-fatal)", err);
+      }
+
       // Fallback: if idle arrives late (or already fired) the water still gets
       // added shortly after the style loads, so satellite mode shows animated
       // water without waiting on tiles. Duplicate-guarded inside addHeavyLayers.

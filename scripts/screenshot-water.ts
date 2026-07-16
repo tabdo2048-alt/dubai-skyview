@@ -23,7 +23,7 @@ async function main() {
   const errors: string[] = [];
   page.on("console", (msg) => {
     const t = msg.text();
-    if (/\[WaterLayer\]|\[Water\]|\[Boats?\]|\[ShoreWaves\]|skip/i.test(t)) logs.push(`${msg.type()}: ${t}`);
+    if (/\[WaterLayer\]|\[Water\]|\[Boats?\]|\[ShoreWaves\]|\[Metro\]|metro|station|MapLayers|skip/i.test(t)) logs.push(`${msg.type()}: ${t}`);
     if (msg.type() === "error" || /mapbox|token|webgl|failed/i.test(t)) errors.push(`${msg.type()}: ${t}`);
   });
   page.on("pageerror", (err) => errors.push(`pageerror: ${err.message}`));
@@ -40,27 +40,43 @@ async function main() {
   await page.goto(URL, { waitUntil: "domcontentloaded", timeout: 60_000 });
 
   // Give Mapbox + the deferred heavy layers (water/vessels) time to build.
-  await page.waitForTimeout(40_000);
+  await page.waitForTimeout(35_000);
 
-  // Probe render state in-page (headless Mapbox can stall on tiles).
+  // The "Loading Dubai" overlay never clears in headless (map idle doesn't
+  // fire), but the WebGL canvas underneath keeps rendering the map + water.
+  // Hide every fixed/absolute overlay so the map shows, then screenshot.
   const state = await page.evaluate(() => {
-    const canvas = document.querySelector("canvas");
-    const gl = canvas ? (canvas.getContext("webgl2") || canvas.getContext("webgl")) : null;
+    // Hide loading overlays.
+    for (const el of Array.from(document.querySelectorAll("div"))) {
+      const t = (el.textContent || "").trim();
+      if (/^Loading Dubai/i.test(t) && el.children.length < 4) {
+        (el as HTMLElement).style.display = "none";
+        let p = el.parentElement;
+        for (let i = 0; i < 3 && p; i++) {
+          const cs = getComputedStyle(p);
+          if (cs.position === "fixed" || cs.position === "absolute") (p as HTMLElement).style.opacity = "0";
+          p = p.parentElement;
+        }
+      }
+    }
+    const canvas = document.querySelector("canvas") as HTMLCanvasElement | null;
     return {
-      loadingVisible: /Loading Dubai/i.test(document.body.innerText || ""),
       hasCanvas: !!canvas,
-      canvasSize: canvas ? `${(canvas as HTMLCanvasElement).width}x${(canvas as HTMLCanvasElement).height}` : "none",
-      hasWebGL: !!gl,
+      canvasSize: canvas ? `${canvas.width}x${canvas.height}` : "none",
     };
   });
   console.log("\n=== page state ===");
   console.log(JSON.stringify(state, null, 2));
+  await page.waitForTimeout(3_000);
 
+  console.log("\n=== water/vessel/metro console lines ===");
+  for (const l of logs.slice(0, 60)) console.log(l);
   console.log("\n=== errors / mapbox / webgl ===");
-  for (const l of errors.slice(0, 40)) console.log(l);
+  for (const l of errors.slice(0, 30)) console.log(l);
 
   try {
-    await page.screenshot({ path: join(OUT, "01-default.png"), timeout: 15_000 });
+    await page.screenshot({ path: join(OUT, "01-default.png"), timeout: 20_000 });
+    console.log("screenshot saved");
   } catch (e) {
     console.log(`screenshot failed: ${(e as Error).message}`);
   }
