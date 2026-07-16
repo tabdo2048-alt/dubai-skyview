@@ -5,7 +5,14 @@
 //
 // Coordinates are [lng, lat], densely sampled for smooth curves.
 
-import { JUMEIRAH_BEACH_FOAM, DEIRA_COAST_FOAM, JBR_BEACH_FOAM } from "@/lib/coastline.generated";
+import {
+  JUMEIRAH_BEACH_FOAM,
+  DEIRA_COAST_FOAM,
+  JBR_BEACH_FOAM,
+  PALM_OUTER_FOAM,
+  PALM_FRONDS_FOAM,
+  CREEK_FOAM,
+} from "@/lib/coastline.generated";
 
 export type ShorelinePath = {
   id: string;
@@ -49,31 +56,7 @@ export const PALM_OUTER_SHORELINE: ShorelinePath = {
   waterSide: 1,
   offsetMeters: 8,
   maxReachMeters: 48,
-  points: [
-    [55.1048, 25.1278], // North tip
-    [55.1078, 25.1289],
-    [55.1109, 25.1298],
-    [55.1141, 25.1304],
-    [55.1173, 25.1308],
-    [55.1205, 25.131],
-    [55.1237, 25.131],
-    [55.1269, 25.1308],
-    [55.1301, 25.1304],
-    [55.1332, 25.1298],
-    [55.1363, 25.129],
-    [55.1393, 25.128],
-    [55.1422, 25.1268],
-    [55.1449, 25.1254],
-    [55.1475, 25.1238],
-    [55.1498, 25.122],
-    [55.1519, 25.12],
-    [55.1537, 25.1178],
-    [55.1552, 25.1154],
-    [55.1564, 25.1128],
-    [55.1572, 25.11],
-    [55.1577, 25.107],
-    [55.1577, 25.1039], // South tip
-  ],
+  points: PALM_OUTER_FOAM,
 };
 
 // Palm fronds — the radial canals with inner-lagoon shorelines (calmer water).
@@ -87,23 +70,7 @@ export const PALM_FRONDS_SHORELINE: ShorelinePath = {
   waterSide: 1,
   offsetMeters: 5,
   maxReachMeters: 44,
-  points: [
-    [55.1185, 25.108], // West frond inner
-    [55.1205, 25.1095],
-    [55.1225, 25.1109],
-    [55.1245, 25.1122],
-    [55.1265, 25.1134],
-    [55.1285, 25.1145],
-    [55.1305, 25.1155],
-    [55.1325, 25.1164],
-    [55.1345, 25.1172],
-    [55.1365, 25.1179],
-    [55.1385, 25.1185],
-    [55.1404, 25.119],
-    [55.1423, 25.1194],
-    [55.1441, 25.1197],
-    [55.1458, 25.1198], // Central lagoon
-  ],
+  points: PALM_FRONDS_FOAM,
 };
 
 // Dubai Creek — narrow tidal estuary, subtle waves. The channel is only
@@ -116,23 +83,7 @@ export const CREEK_SHORELINE: ShorelinePath = {
   waterSide: -1,
   offsetMeters: 7,
   maxReachMeters: 25,
-  points: [
-    [55.3388, 25.2138], // Creek mouth (south)
-    [55.3385, 25.2161],
-    [55.3382, 25.2184],
-    [55.3378, 25.2207],
-    [55.3373, 25.223],
-    [55.3367, 25.2253],
-    [55.3361, 25.2276],
-    [55.3354, 25.2299],
-    [55.3347, 25.2322],
-    [55.3339, 25.2345],
-    [55.3331, 25.2368],
-    [55.3322, 25.2391],
-    [55.3312, 25.2414],
-    [55.3301, 25.2437],
-    [55.3289, 25.246], // Creek north
-  ],
+  points: CREEK_FOAM,
 };
 
 // Dubai mainland beachfront — Jumeirah open-coast beach south of the Palm,

@@ -12,6 +12,17 @@
 // by scripts/generate-water-geometry.ts) so animated water covers the entire sea
 // inside the map bounds, clipped exactly to the real coastline and islands.
 
+import {
+  SEA_OUTER_RING,
+  SEA_LAND_HOLES,
+  PALM_LAGOON_RING,
+  PALM_LAGOON_HOLES,
+  MARINA_RING,
+  CREEK_RING,
+  CREEK_ISLAND_HOLES,
+  CANAL_RING,
+} from "@/lib/coastline.generated";
+
 export type WaterArea = {
   id: string;
   name: string;
@@ -27,15 +38,69 @@ export type WaterArea = {
   // When true, this basin is open sea (not a real coastline) so shoreline foam
   // lines are NOT drawn around it. Defaults to false.
   openSea?: boolean;
+  // When true, the OUTER ring is a water-water seam (e.g. the Palm lagoon meets
+  // the open sea at the crescent openings), so no shoreline foam is drawn along
+  // it — but the area's HOLES (real land) still get foam. Generalizes the old
+  // PALM_JUMEIRAH_SURROUND_RING identity hack. Defaults to false.
+  suppressOuterFoam?: boolean;
   // Per-area wave energy fed to the shared Gerstner model: 1 = exposed open
   // Gulf, lower = sheltered Marina/Creek/lagoon. Defaults to 1.
   waveIntensity?: number;
 };
 
-// The hand-traced water geometry has been removed. WATER_AREAS is refilled from
-// the OSM-derived generator output in a subsequent step; an empty list here is
-// the intentional intermediate state (repo builds, no water renders yet).
-export const WATER_AREAS: WaterArea[] = [];
+// Five rendered basins, all from OSM-derived geometry:
+//   1. open-sea — the whole Gulf inside the map bounds, minus real land/islands.
+//   2. palm-lagoon — calm sheltered water inside the Palm Jumeirah crescent.
+//   3-5. marina / creek / canal — the developed basins (own OSM relations).
+export const WATER_AREAS: WaterArea[] = [
+  {
+    id: "open-sea",
+    name: "Arabian Gulf",
+    center: [55.05, 25.2],
+    renderSurface: true,
+    openSea: true,
+    waveIntensity: 1,
+    polygon: SEA_OUTER_RING,
+    holes: SEA_LAND_HOLES,
+  },
+  {
+    id: "palm-lagoon",
+    name: "Palm Jumeirah Inner Lagoon",
+    center: [55.13, 25.11],
+    renderSurface: true,
+    waveIntensity: 0.25,
+    // Outer ring meets the open sea at the crescent openings — a water-water
+    // seam, so suppress foam there; the frond/land holes still get foam.
+    suppressOuterFoam: true,
+    polygon: PALM_LAGOON_RING,
+    holes: PALM_LAGOON_HOLES,
+  },
+  {
+    id: "marina-channels",
+    name: "Dubai Marina Channels",
+    center: [55.14, 25.08],
+    renderSurface: true,
+    waveIntensity: 0.35,
+    polygon: MARINA_RING,
+  },
+  {
+    id: "dubai-creek",
+    name: "Dubai Creek",
+    center: [55.33, 25.24],
+    renderSurface: true,
+    waveIntensity: 0.3,
+    polygon: CREEK_RING,
+    holes: CREEK_ISLAND_HOLES,
+  },
+  {
+    id: "business-bay-canal",
+    name: "Dubai Water Canal & Business Bay",
+    center: [55.26, 25.185],
+    renderSurface: true,
+    waveIntensity: 0.22,
+    polygon: CANAL_RING,
+  },
+];
 
 // --- Clouds ---
 export type CloudSpec = {

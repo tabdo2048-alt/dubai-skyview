@@ -4,7 +4,6 @@
 import * as THREE from "three";
 import mapboxgl from "mapbox-gl";
 import { WATER_AREAS } from "@/lib/water";
-import { PALM_JUMEIRAH_SURROUND_RING } from "@/lib/coastline.generated";
 import { SHORELINE_PATHS, type ShorelinePath } from "@/lib/shorelines";
 import {
   acquireSharedRenderer,
@@ -906,15 +905,14 @@ function buildWaterGeometry(
     ),
   };
   // Shore-distance attribute: only REAL coastline rings count as shore. The
-  // open-sea outer ring is an artificial clipping rectangle, and the palm
-  // surround ring is a water-water seam shared between the Gulf and the Palm
-  // surround area — foam along either would sit in the middle of open water.
+  // open-sea outer ring is the artificial map-bounds clip, and a suppressOuterFoam
+  // basin's outer ring (the Palm lagoon) is a water-water seam with the open sea —
+  // foam along either would sit in the middle of open water. Land holes always
+  // get foam.
   const holes = area.holes ?? [];
   const shoreRings: THREE.Vector3[][] = [];
-  if (!area.openSea && area.polygon !== PALM_JUMEIRAH_SURROUND_RING) shoreRings.push(mask.outer);
-  for (let i = 0; i < holes.length; i++) {
-    if (holes[i] !== PALM_JUMEIRAH_SURROUND_RING) shoreRings.push(mask.holes[i]);
-  }
+  if (!area.openSea && !area.suppressOuterFoam) shoreRings.push(mask.outer);
+  for (let i = 0; i < holes.length; i++) shoreRings.push(mask.holes[i]);
   const grid = buildShoreSegmentGrid(shoreRings);
 
   const shapeGeometry = new THREE.ShapeGeometry(shape);
@@ -975,11 +973,14 @@ function warnIfTriangulationFailed(areaId: string, geometry: THREE.BufferGeometr
   const expectedArea =
     ringAreaLocal(mask.outer) - mask.holes.reduce((sum, hole) => sum + ringAreaLocal(hole), 0);
 
+  const shape = `outer ${mask.outer.length} pts, ${mask.holes.length} holes`;
   if (triangleCount === 0) {
-    console.error(`[WaterLayer] "${areaId}" triangulated to 0 triangles — water surface is missing entirely.`);
-  } else if (expectedArea > 0 && meshArea < expectedArea * 0.5) {
     console.error(
-      `[WaterLayer] "${areaId}" mesh area (${meshArea.toFixed(0)} m²) is far short of the expected polygon area (${expectedArea.toFixed(0)} m²) — earcut likely dropped triangles around a malformed ring.`,
+      `[WaterLayer] "${areaId}" triangulated to 0 triangles — water surface is missing entirely (${shape}).`,
+    );
+  } else if (expectedArea > 0 && meshArea < expectedArea * 0.99) {
+    console.error(
+      `[WaterLayer] "${areaId}" mesh area (${meshArea.toFixed(0)} m²) is short of the expected polygon area (${expectedArea.toFixed(0)} m², ${((meshArea / expectedArea) * 100).toFixed(1)}%) — earcut likely dropped triangles around a malformed ring (${shape}).`,
     );
   }
 }
@@ -1017,6 +1018,12 @@ export function createWaterLayer(
   // Every mask-debug object (tri-wire + ring/hole lines) so their visibility can
   // be toggled together at runtime by the Water Debug Editor.
   const maskDebugObjects: THREE.Object3D[] = [];
+  // Areas built so far (across the chunked build queue), kept so mask-debug
+  // geometry can be built lazily/retroactively when debug is first enabled.
+  const builtAreas: { area: (typeof WATER_AREAS)[number]; geometry: THREE.BufferGeometry }[] = [];
+  const maskDebugBuiltFor = new Set<string>();
+  let disposed = false;
+  let buildTimeout: number | null = null;
   let ref: MercatorRef;
   let clock: THREE.Clock;
   let onResize: (() => void) | null = null;
@@ -1062,14 +1069,89 @@ export function createWaterLayer(
         scale: origin.meterInMercatorCoordinateUnits(),
       };
 
+      renderer = acquireSharedRenderer(map.getCanvas(), gl);
+      console.log("[Water] shared renderer acquired");
+      onResize = () => syncSharedRendererSize(map.getCanvas());
+      map.on("resize", onResize);
+
+      // Apply a mask-debug enabled/disabled state to this layer's objects and
+      // its console click-logger. Called on init and whenever the runtime flag
+      // flips (via the Water Debug Editor's toggle). Also builds mask-debug
+      // geometry lazily for any area built before debug was first enabled —
+      // see buildMaskDebugForArea below.
+      const applyMaskDebug = (enabled: boolean) => {
+        if (enabled) {
+          for (const { area, geometry } of builtAreas) {
+            if (!maskDebugBuiltFor.has(area.id)) buildMaskDebugForArea(area, geometry);
+          }
+        }
+        for (const obj of maskDebugObjects) obj.visible = enabled;
+        if (enabled && !onMaskDebugClick) {
+          onMaskDebugClick = (e: mapboxgl.MapMouseEvent) => {
+            const { lng, lat } = e.lngLat;
+            console.log("[WaterMaskDebug]", `[${lng.toFixed(6)}, ${lat.toFixed(6)}]`);
+          };
+          map.on("click", onMaskDebugClick);
+          console.log("[WaterMaskDebug] click the map to print [lng, lat] coordinates");
+        } else if (!enabled && onMaskDebugClick) {
+          map.off("click", onMaskDebugClick);
+          onMaskDebugClick = null;
+        }
+        map.triggerRepaint();
+      };
+
+      // Mask-debug geometry (green triangulation wireframe + cyan/red ring
+      // outlines) used to be built unconditionally for every area, hidden
+      // behind `visible = false` — a large, pure-overhead pass (WireframeGeometry
+      // over the full refined mesh) paid on every load even though the Water
+      // Debug Editor is off in production. Build it lazily instead: only when
+      // debug is actually enabled, either at build time (if already on) or
+      // retroactively via applyMaskDebug above (if enabled later).
+      function buildMaskDebugForArea(area: (typeof WATER_AREAS)[number], geometry: THREE.BufferGeometry) {
+        maskDebugBuiltFor.add(area.id);
+        const triWire = new THREE.WireframeGeometry(geometry);
+        const triLine = new THREE.LineSegments(
+          triWire,
+          new THREE.LineBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.35 }),
+        );
+        triLine.position.z = 0.45;
+        triLine.renderOrder = 5;
+        triLine.frustumCulled = false;
+        triLine.visible = waterMaskDebugEnabled;
+        scene.add(triLine);
+        debugLines.push(triLine);
+        maskDebugObjects.push(triLine);
+
+        // Outer ring in cyan.
+        const outer = buildRingLine(area.polygon, ref, 0x00ffff, 0.55);
+        outer.visible = waterMaskDebugEnabled;
+        scene.add(outer);
+        maskDebugLines.push(outer);
+        maskDebugObjects.push(outer);
+
+        // Holes (excluded land) in red.
+        for (const hole of area.holes ?? []) {
+          const holeLine = buildRingLine(hole, ref, 0xff0000, 0.58);
+          holeLine.visible = waterMaskDebugEnabled;
+          scene.add(holeLine);
+          maskDebugLines.push(holeLine);
+          maskDebugObjects.push(holeLine);
+        }
+      }
+
       // One mesh + material per water body so each carries its own wave
       // intensity (calm Marina/Creek/canal, small Palm lagoon, full open Gulf).
-      for (const area of WATER_AREAS) {
-        if (!area.renderSurface) {
-          console.log("[Water] surface skipped", area.id);
-          continue;
-        }
+      // Built one area per macrotask instead of all 8 synchronously in one go —
+      // the biggest areas (open-arabian-gulf, dubai-creek) each triangulate and
+      // shore-refine thousands of points, and doing all 8 back to back was the
+      // single longest-running task on the main thread during initial load
+      // (blocking input/paint/CDP for the whole duration). Spreading it over
+      // several macrotasks costs nothing visually — the loading overlay is
+      // already gone by the time this runs, so areas simply finish populating
+      // over a few extra frames instead of all appearing in one frame.
+      const buildQueue = WATER_AREAS.filter((area) => area.renderSurface);
 
+      function buildArea(area: (typeof WATER_AREAS)[number]) {
         const valid =
           Array.isArray(area.polygon) &&
           area.polygon.length >= 3 &&
@@ -1079,7 +1161,7 @@ export function createWaterLayer(
           );
         if (!valid) {
           console.warn("[Water] invalid polygon skipped", area.id);
-          continue;
+          return;
         }
 
         const material = makeWaterMaterial({
@@ -1097,6 +1179,7 @@ export function createWaterLayer(
         waterMaterials.push(material);
         waters.push(water);
         scene.add(water);
+        builtAreas.push({ area, geometry });
 
         if (WATER_DEBUG) {
           const wire = new THREE.WireframeGeometry(geometry);
@@ -1111,84 +1194,38 @@ export function createWaterLayer(
           scene.add(line);
         }
 
-        // Mask-debug geometry is always built but hidden until enabled at
-        // runtime by the Water Debug Editor (setWaterMaskDebug).
-        {
-          // Triangulated mesh edges in green — confirms triangulation matches
-          // the outer ring + holes with no stray/degenerate triangles.
-          const triWire = new THREE.WireframeGeometry(geometry);
-          const triLine = new THREE.LineSegments(
-            triWire,
-            new THREE.LineBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.35 }),
+        if (waterMaskDebugEnabled) buildMaskDebugForArea(area, geometry);
+      }
+
+      function buildNext() {
+        if (disposed) return;
+        const area = buildQueue.shift();
+        if (!area) {
+          console.log(
+            "[Water] rendered surface ids:",
+            WATER_AREAS.filter((a) => a.renderSurface).map((a) => a.id),
           );
-          triLine.position.z = 0.45;
-          triLine.renderOrder = 5;
-          triLine.frustumCulled = false;
-          triLine.visible = waterMaskDebugEnabled;
-          scene.add(triLine);
-          debugLines.push(triLine);
-          maskDebugObjects.push(triLine);
-
-          // Outer ring in cyan.
-          const outer = buildRingLine(area.polygon, ref, 0x00ffff, 0.55);
-          outer.visible = waterMaskDebugEnabled;
-          scene.add(outer);
-          maskDebugLines.push(outer);
-          maskDebugObjects.push(outer);
-
-          // Holes (excluded land) in red.
-          for (const hole of area.holes ?? []) {
-            const holeLine = buildRingLine(hole, ref, 0xff0000, 0.58);
-            holeLine.visible = waterMaskDebugEnabled;
-            scene.add(holeLine);
-            maskDebugLines.push(holeLine);
-            maskDebugObjects.push(holeLine);
+          if (SHORE_WAVES_ENABLED) {
+            console.log("[ShoreWaves] using dedicated shoreline paths");
+            console.log(
+              "[ShoreWaves] active paths:",
+              SHORELINE_PATHS.map((shoreline) => shoreline.id),
+            );
+            const bundle = createShorelineBundle();
+            shoreMesh = bundle.mesh;
+            shoreMaterial = bundle.material;
+            scene.add(shoreMesh);
+            console.log("[ShoreWaves] geometry created once");
           }
+          console.log("[Water] total areas:", waters.length);
+          buildTimeout = null;
+          return;
         }
-      }
-
-      console.log(
-        "[Water] rendered surface ids:",
-        WATER_AREAS.filter((area) => area.renderSurface).map((area) => area.id),
-      );
-
-      if (SHORE_WAVES_ENABLED) {
-        console.log("[ShoreWaves] using dedicated shoreline paths");
-        console.log(
-          "[ShoreWaves] active paths:",
-          SHORELINE_PATHS.map((shoreline) => shoreline.id),
-        );
-        const bundle = createShorelineBundle();
-        shoreMesh = bundle.mesh;
-        shoreMaterial = bundle.material;
-        scene.add(shoreMesh);
-        console.log("[ShoreWaves] geometry created once");
-      }
-
-      renderer = acquireSharedRenderer(map.getCanvas(), gl);
-      console.log("[Water] shared renderer acquired");
-      onResize = () => syncSharedRendererSize(map.getCanvas());
-      map.on("resize", onResize);
-      console.log("[Water] total areas:", waters.length);
-
-      // Apply a mask-debug enabled/disabled state to this layer's objects and
-      // its console click-logger. Called on init and whenever the runtime flag
-      // flips (via the Water Debug Editor's toggle).
-      const applyMaskDebug = (enabled: boolean) => {
-        for (const obj of maskDebugObjects) obj.visible = enabled;
-        if (enabled && !onMaskDebugClick) {
-          onMaskDebugClick = (e: mapboxgl.MapMouseEvent) => {
-            const { lng, lat } = e.lngLat;
-            console.log("[WaterMaskDebug]", `[${lng.toFixed(6)}, ${lat.toFixed(6)}]`);
-          };
-          map.on("click", onMaskDebugClick);
-          console.log("[WaterMaskDebug] click the map to print [lng, lat] coordinates");
-        } else if (!enabled && onMaskDebugClick) {
-          map.off("click", onMaskDebugClick);
-          onMaskDebugClick = null;
-        }
+        buildArea(area);
         map.triggerRepaint();
-      };
+        buildTimeout = window.setTimeout(buildNext, 0);
+      }
+      buildTimeout = window.setTimeout(buildNext, 0);
 
       applyMaskDebug(waterMaskDebugEnabled);
       unsubscribeMaskDebug = subscribeWaterMaskDebug(applyMaskDebug);
@@ -1254,6 +1291,11 @@ export function createWaterLayer(
     },
 
     onRemove() {
+      disposed = true;
+      if (buildTimeout != null) {
+        clearTimeout(buildTimeout);
+        buildTimeout = null;
+      }
       if (onResize) map.off("resize", onResize);
       onResize = null;
       if (unsubscribeMaskDebug) unsubscribeMaskDebug();
@@ -1287,6 +1329,8 @@ export function createWaterLayer(
       }
       shoreMaterial?.dispose();
       shoreMaterial = null;
+      builtAreas.length = 0;
+      maskDebugBuiltFor.clear();
       releaseSharedRenderer();
       renderer = null;
     },

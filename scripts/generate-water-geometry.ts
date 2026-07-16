@@ -23,12 +23,11 @@
 // uses only node built-ins + @turf/turf + osmtogeojson, with relative imports
 // (tsconfig excludes scripts/).
 
+/* eslint-disable @typescript-eslint/no-explicit-any -- raw Overpass JSON is untyped */
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import * as turf from "@turf/turf";
 import type { Feature, Polygon, MultiPolygon, Position } from "geojson";
-// osmtogeojson has no bundled types; declare a minimal signature.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 import osmtogeojson from "osmtogeojson";
 
 // ---------------------------------------------------------------------------
@@ -716,7 +715,10 @@ async function main() {
   // the two water surfaces are disjoint (no coplanar z-fighting). The straight
   // bbox edges where the lagoon meets open sea are the accepted, foam-suppressed
   // water-water seam at the crescent openings.
-  const PALM_BBOX = { west: 55.1, south: 25.09, east: 55.16, north: 25.135 };
+  // Tight to the crescent interior so the lagoon does not swallow the open sea
+  // south of the Palm (off JBR) or the trunk base — only the sheltered ring of
+  // water between the crescent and the trunk/fronds.
+  const PALM_BBOX = { west: 55.108, south: 25.101, east: 55.155, north: 25.132 };
   const palmRect = turf.bboxPolygon([PALM_BBOX.west, PALM_BBOX.south, PALM_BBOX.east, PALM_BBOX.north]);
   let palmLagoonRing: LngLat[] = [];
   let palmLagoonHoles: LngLat[][] = [];
