@@ -47,7 +47,25 @@ const DUBAI_BOUNDS = { west: 54.89, south: 24.79, east: 55.65, north: 25.55 };
 // tinting the basemap's own water to the sea colour in MapboxView, so nothing
 // beyond COVER shows black.) The coastline is fetched across this same bbox so
 // real desert (Abu Dhabi/Sharjah) is still excluded as land.
-const COVERAGE = { west: 54.51, south: 24.41, east: 56.03, north: 25.93 };
+const SEA_COVER = { west: 54.51, south: 24.41, east: 56.03, north: 25.93 };
+const SEA_COVER_RECT: LngLat[] = [
+  [SEA_COVER.west, SEA_COVER.south],
+  [SEA_COVER.east, SEA_COVER.south],
+  [SEA_COVER.east, SEA_COVER.north],
+  [SEA_COVER.west, SEA_COVER.north],
+  [SEA_COVER.west, SEA_COVER.south],
+];
+// COVERAGE is the fetch + closure rect: SEA_COVER padded so edge coastline ways
+// are fetched complete (an Overpass bbox cuts ways at its boundary, and the
+// dangling ends make the closure eat into the sea on that side). Land is closed
+// on this bigger rect; the sea is then differenced against SEA_COVER.
+const FETCH_PAD = 0.12;
+const COVERAGE = {
+  west: SEA_COVER.west - FETCH_PAD,
+  south: SEA_COVER.south - FETCH_PAD,
+  east: SEA_COVER.east + FETCH_PAD,
+  north: SEA_COVER.north + FETCH_PAD,
+};
 const COVERAGE_RECT: LngLat[] = [
   [COVERAGE.west, COVERAGE.south],
   [COVERAGE.east, COVERAGE.south],
@@ -605,7 +623,7 @@ async function main() {
   const canal = largestPolygonRings(canalOsm);
 
   console.log("Building land by perimeter closure…");
-  const rectPoly = toPolygon(COVERAGE_RECT);
+  const rectPoly = toPolygon(SEA_COVER_RECT);
   const RECT_AREA = turf.area(rectPoly);
   // Clearly-open-Gulf points (NW/N/W of the coast) for picking the sea side of
   // each chain closure and the main sea component. Kept away from the Sharjah/
@@ -816,26 +834,61 @@ async function main() {
     if (carved) sea = carved;
   }
 
-  // Main sea component = the part holding the most open-sea anchors.
+  // Sea components: the Gulf inside COVER can be split by the coast (e.g. a
+  // RAK/Sharjah headland capping the connection at the north edge) into a western
+  // and an eastern lobe. Both are real open sea and must render, so keep EVERY
+  // component above a meaningful fraction of the largest, not just the biggest.
   const seaParts: Position[][][] =
     sea.geometry.type === "Polygon" ? [sea.geometry.coordinates] : (sea.geometry as MultiPolygon).coordinates;
-  let seaPoly = seaParts[0];
-  let bestVotes = -1;
-  for (const poly of seaParts) {
-    const votes = SEA_ANCHORS.filter((p) =>
-      turf.booleanPointInPolygon(turf.point(p), turf.polygon(poly)),
-    ).length;
-    if (votes > bestVotes) {
-      bestVotes = votes;
-      seaPoly = poly;
-    }
+  let seaBestArea = 0;
+  for (const poly of seaParts) seaBestArea = Math.max(seaBestArea, turf.area(turf.polygon(poly)));
+  const seaComponents = seaParts.filter((poly) => turf.area(turf.polygon(poly)) >= 0.02 * seaBestArea);
+  let seaPoly = seaComponents[0];
+  for (const poly of seaComponents) {
+    if (turf.area(turf.polygon(poly)) > turf.area(turf.polygon(seaPoly))) seaPoly = poly;
   }
+  console.log("  sea components kept: " + seaComponents.length + " (largest " + (seaBestArea / 1e6).toFixed(0) + "km2)");
   const seaOuter: LngLat[] = simplifyRing(seaPoly[0].map((p) => [p[0], p[1]] as LngLat));
   // Drop hole slivers that simplify below a triangle; keep the rest simplified.
   const seaHoles: LngLat[][] = seaPoly
     .slice(1)
     .map((r) => simplifyRing(r.map((p) => [p[0], p[1]] as LngLat)))
     .filter((r) => r.length >= 4);
+
+  // Every kept sea component (largest first) as simplified outer+holes, emitted
+  // as SEA_POLYGONS so every real lobe of the Gulf renders, not just the biggest.
+  const seaPolygons = seaComponents
+    .slice()
+    .sort((a, b) => turf.area(turf.polygon(b)) - turf.area(turf.polygon(a)))
+    .map((poly) => ({
+      outer: simplifyRing(poly[0].map((p) => [p[0], p[1]] as LngLat)),
+      holes: poly
+        .slice(1)
+        .map((r) => simplifyRing(r.map((p) => [p[0], p[1]] as LngLat)))
+        .filter((r) => r.length >= 4),
+    }))
+    .filter((sp) => sp.outer.length >= 4);
+  const inAnySea = (p: LngLat) => seaPolygons.some((sp) => pointInRings(p, sp.outer, sp.holes));
+
+  {
+    const sb = turf.bbox(turf.polygon([closeRing(seaOuter).map((p) => [p[0], p[1]] as Position)]));
+    console.log(
+      "  sea bbox W=" + sb[0].toFixed(3) + " S=" + sb[1].toFixed(3) + " E=" + sb[2].toFixed(3) + " N=" + sb[3].toFixed(3) +
+        " | SEA_COVER W=" + SEA_COVER.west + " S=" + SEA_COVER.south + " E=" + SEA_COVER.east + " N=" + SEA_COVER.north,
+    );
+    const edgeChecks: [string, LngLat][] = [
+      ["maxBounds-N mid", [55.27, 25.55]],
+      ["maxBounds-N west", [55.0, 25.55]],
+      ["maxBounds-N east", [55.55, 25.55]],
+      ["maxBounds-W mid", [54.89, 25.2]],
+      ["maxBounds-W low", [54.89, 25.0]],
+      ["maxBounds-E north", [55.65, 25.45]],
+      ["maxBounds-E mid", [55.65, 25.3]],
+    ];
+    for (const [name, p] of edgeChecks) {
+      console.log("  edge " + name + " " + JSON.stringify(p) + " sea=" + inAnySea(p));
+    }
+  }
 
   if (palmLagoonRing.length < 4) {
     palmLagoonRing = [
@@ -917,7 +970,7 @@ async function main() {
     [54.55, 25.3], [54.55, 24.95],
   ];
   for (const p of waterProbes) {
-    assertProbe(`sea covers ${JSON.stringify(p)}`, pointInRings(p, seaOuter, seaHoles));
+    assertProbe(`sea covers ${JSON.stringify(p)}`, inAnySea(p));
   }
   const landProbes: LngLat[] = [
     [55.27, 25.2], [55.36, 25.27], [55.139, 25.112], [55.152, 25.079], [55.132, 25.005],
@@ -926,7 +979,7 @@ async function main() {
     [54.7, 24.45], [55.3, 24.9],
   ];
   for (const p of landProbes) {
-    assertProbe(`land not sea ${JSON.stringify(p)}`, !pointInRings(p, seaOuter, seaHoles));
+    assertProbe(`land not sea ${JSON.stringify(p)}`, !inAnySea(p));
   }
 
   assertProbe("marina ring valid", turf.kinks(toPolygon(marina.outer)).features.length === 0);
@@ -954,10 +1007,19 @@ async function main() {
 // Coordinates are [lng, lat].
 `;
 
+  const seaPolygonsStr =
+    "[\n" +
+    seaPolygons
+      .map((sp) => "{ outer: " + fmtRing(sp.outer) + ", holes: " + fmtRings(sp.holes) + " }")
+      .join(",\n") +
+    "\n]";
+
   const body = `${banner}
 export const SEA_OUTER_RING: [number, number][] = ${fmtRing(seaOuter)};
 
 export const SEA_LAND_HOLES: [number, number][][] = ${fmtRings(seaHoles)};
+
+export const SEA_POLYGONS: { outer: [number, number][]; holes: [number, number][][] }[] = ${seaPolygonsStr};
 
 export const PALM_LAGOON_RING: [number, number][] = ${fmtRing(palmLagoonRing)};
 

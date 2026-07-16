@@ -13,8 +13,7 @@
 // inside the map bounds, clipped exactly to the real coastline and islands.
 
 import {
-  SEA_OUTER_RING,
-  SEA_LAND_HOLES,
+  SEA_POLYGONS,
   PALM_LAGOON_RING,
   PALM_LAGOON_HOLES,
   MARINA_RING,
@@ -53,16 +52,19 @@ export type WaterArea = {
 //   2. palm-lagoon — calm sheltered water inside the Palm Jumeirah crescent.
 //   3-5. marina / creek / canal — the developed basins (own OSM relations).
 export const WATER_AREAS: WaterArea[] = [
-  {
-    id: "open-sea",
-    name: "Arabian Gulf",
-    center: [55.05, 25.2],
+  // One open-sea surface per sea lobe. The Gulf inside COVER can be split by the
+  // coast (e.g. the RAK/Sharjah headland caps the north edge) into a western and
+  // an eastern lobe; both render so water reaches every map edge.
+  ...SEA_POLYGONS.map((sp, i): WaterArea => ({
+    id: i === 0 ? "open-sea" : `open-sea-${i}`,
+    name: i === 0 ? "Arabian Gulf" : `Arabian Gulf (lobe ${i + 1})`,
+    center: sp.outer[0],
     renderSurface: true,
     openSea: true,
     waveIntensity: 1,
-    polygon: SEA_OUTER_RING,
-    holes: SEA_LAND_HOLES,
-  },
+    polygon: sp.outer,
+    holes: sp.holes,
+  })),
   {
     id: "palm-lagoon",
     name: "Palm Jumeirah Inner Lagoon",
