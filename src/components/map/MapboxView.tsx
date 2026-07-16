@@ -101,6 +101,10 @@ export function MapboxView({
   const heavyLayerFallbackTimeoutRef = useRef<number | null>(null);
   const deferredLayerTimeoutsRef = useRef<number[]>([]);
   const deferredLayersScheduledRef = useRef(false);
+  // Set when this instance is inactive at load time, so heavy layers (water,
+  // vessels) are skipped until it actually becomes visible — the hidden
+  // instance doesn't need to pay that cost during the initial load window.
+  const pendingHeavyLayersRef = useRef<mapboxgl.Map | null>(null);
   // Ensures the map-ready signal (setMapReady + onReady) fires exactly once,
   // whether the idle handler or the style.load fallback timeout gets there first.
   const readySignaledRef = useRef(false);
@@ -234,6 +238,7 @@ export function MapboxView({
       styleLoadedRef.current = false;
       stationInteractionAddedRef.current = false;
       readySignaledRef.current = false;
+      pendingHeavyLayersRef.current = null;
       map.remove();
       mapRef.current = null;
       projectMarkers.clear();
@@ -368,29 +373,52 @@ export function MapboxView({
       if (trainModeRef.current) playNetworkSequence(map, TRAIN_LINES, "train");
     });
 
-    schedule(420, () => {
-      addHeavyLayers(map);
-    });
+    // Water/vessels are the expensive part of load (building the animated
+    // water mesh for every basin, measuring every vessel model). Only the
+    // active instance needs them during the initial load window — the hidden
+    // instance (satellite+3D both mount eagerly, see MapContainer) builds
+    // them on first activation instead, masked by the mode-switch transition.
+    if (!isActiveRef.current) {
+      pendingHeavyLayersRef.current = map;
+      return;
+    }
+    scheduleHeavyLayers(map, [420, 650, 880]);
   }
 
-  // Add the heavy Three.js custom layers. Called on idle and by a style.load
-  // fallback so satellite mode gets animated water even if idle arrives late.
-  // Every add is guarded against duplicates.
-  function addHeavyLayers(map: mapboxgl.Map) {
-    // Controller object passed to custom layers so they can gate their render loops
-    // based on whether this instance is active and the tab is visible.
-    const renderController = {
-      shouldRender: () => isActiveRef.current && isVisibleRef.current,
+  // Each heavy layer gets its own schedule slot so no single deferred task
+  // does all of water+boats+models back to back — WaterLayer itself further
+  // chunks its per-basin builds (see WaterLayer.ts onAdd).
+  function scheduleHeavyLayers(map: mapboxgl.Map, delays: [number, number, number]) {
+    const schedule = (delay: number, task: () => void) => {
+      const timeout = window.setTimeout(() => {
+        if (!mapRef.current || mapRef.current !== map) return;
+        task();
+      }, delay);
+      deferredLayerTimeoutsRef.current.push(timeout);
     };
-    if (!map.getLayer("dubai-water-3d")) {
-      try {
-        if (mode === "satellite") console.log("[Water] satellite layer requested");
-        map.addLayer(createWaterLayer(renderController, mode));
-        console.log("[Water] layer added");
-      } catch (err) {
-        console.error("Failed to add water wave layer", err);
-      }
+    schedule(delays[0], () => addWaterLayer(map));
+    schedule(delays[1], () => addVesselLayers(map));
+    schedule(delays[2], () => logCustomLayerOrder(map));
+  }
+
+  // Controller object passed to custom layers so they can gate their render loops
+  // based on whether this instance is active and the tab is visible.
+  function makeRenderController() {
+    return { shouldRender: () => isActiveRef.current && isVisibleRef.current };
+  }
+
+  function addWaterLayer(map: mapboxgl.Map) {
+    if (map.getLayer("dubai-water-3d")) return;
+    try {
+      if (mode === "satellite") console.log("[Water] satellite layer requested");
+      map.addLayer(createWaterLayer(makeRenderController(), mode));
+      console.log("[Water] layer added");
+    } catch (err) {
+      console.error("Failed to add water wave layer", err);
     }
+  }
+
+  function addVesselLayers(map: mapboxgl.Map) {
     try {
       addBoatRouteLayers(map);
     } catch (err) {
@@ -405,13 +433,16 @@ export function MapboxView({
     }
     if (show3DModelsRef.current && !map.getLayer("dubai-3d-models")) {
       try {
-        map.addLayer(createModel3DLayer(MODEL_REGISTRY, renderController));
+        map.addLayer(createModel3DLayer(MODEL_REGISTRY, makeRenderController()));
         modelsAddedRef.current = true;
         console.log("[Boats]", MODEL_REGISTRY.length, "boat models loaded in", mode, "mode");
       } catch (err) {
         console.error("Failed to add 3D model layer", err);
       }
     }
+  }
+
+  function logCustomLayerOrder(map: mapboxgl.Map) {
     console.log(
       "[MapLayers] custom layer order",
       map
@@ -1122,6 +1153,12 @@ export function MapboxView({
       const r2 = setTimeout(() => map.resize(), 900);
       // Kick the custom layers' render loops back on (they were paused while inactive).
       map.triggerRepaint();
+      // This instance skipped water/vessels at load because it was hidden —
+      // build them now, masked by the cinematic transition just kicked off.
+      if (pendingHeavyLayersRef.current === map) {
+        pendingHeavyLayersRef.current = null;
+        scheduleHeavyLayers(map, [0, 200, 400]);
+      }
       if (isMobile) {
         return () => {
           clearTimeout(r0);
