@@ -31,8 +31,22 @@ export type BasinId = "marina" | "palm-lagoon" | "creek-south" | "creek-north" |
 export type BasinCorridor = {
   id: BasinId;
   name: string;
-  /** Id of the source water polygon in water.ts this corridor is clipped to. */
-  waterAreaId: string;
+  /**
+   * Id of the source water polygon in water.ts this corridor is clipped to.
+   * Optional: corridors whose rendered basin was removed/replaced by the OSM
+   * water rebuild carry their own `waterRing`/`waterHoles` instead (below).
+   */
+  waterAreaId?: string;
+  /**
+   * Self-contained navigation water polygon for this corridor, decoupled from
+   * the visual WATER_AREAS. When present it overrides the `waterAreaId` lookup
+   * in `isInsideBasinWater`. Used for the palm-lagoon and jbr corridors, whose
+   * centerlines were sampled/validated against these exact rings before the
+   * OSM water rebuild collapsed/replaced their rendered basins.
+   */
+  waterRing?: [number, number][];
+  /** Island/land holes punched out of `waterRing`. */
+  waterHoles?: [number, number][][];
   /** Centerline the corridor is built around; also the vessel route spine. */
   centerline: [number, number][];
   /** Half-width of the navigable corridor in metres (full width = 2×). */
@@ -40,6 +54,146 @@ export type BasinCorridor = {
 };
 
 const METERS_PER_LATITUDE_DEGREE = 111_320;
+
+// --- Self-contained navigation masks ----------------------------------------
+// These are the water polygons the palm-lagoon and jbr corridors were sampled
+// and validated against. They are kept here — deliberately separate from the
+// visual WATER_AREAS, exactly like navigationWater.ts — so the OSM water
+// geometry rebuild (which replaces the rendered jbr sea with the unified open
+// sea and re-derives the Palm lagoon from OSM) cannot move a bank out from
+// under a routed vessel. Copied verbatim from the pre-rebuild water.ts.
+
+// Simplified trunk + frond comb for Palm Jumeirah (5 fronds per side).
+const PALM_LAGOON_NAV_TRUNK_FRONDS: [number, number][] = [
+  [55.1388, 25.091],
+  [55.1388, 25.098],
+  [55.134, 25.098],
+  [55.134, 25.101],
+  [55.1388, 25.101],
+  [55.1388, 25.107],
+  [55.134, 25.107],
+  [55.134, 25.11],
+  [55.1388, 25.11],
+  [55.1388, 25.116],
+  [55.134, 25.116],
+  [55.134, 25.119],
+  [55.1388, 25.119],
+  [55.1388, 25.125],
+  [55.134, 25.125],
+  [55.134, 25.128],
+  [55.1388, 25.128],
+  [55.1388, 25.134],
+  [55.134, 25.134],
+  [55.134, 25.137],
+  [55.1388, 25.137],
+  [55.1388, 25.144],
+  [55.1412, 25.144],
+  [55.1412, 25.137],
+  [55.147, 25.137],
+  [55.147, 25.134],
+  [55.1412, 25.134],
+  [55.1412, 25.128],
+  [55.147, 25.128],
+  [55.147, 25.125],
+  [55.1412, 25.125],
+  [55.1412, 25.119],
+  [55.147, 25.119],
+  [55.147, 25.116],
+  [55.1412, 25.116],
+  [55.1412, 25.11],
+  [55.147, 25.11],
+  [55.147, 25.107],
+  [55.1412, 25.107],
+  [55.1412, 25.101],
+  [55.147, 25.101],
+  [55.147, 25.098],
+  [55.1412, 25.098],
+  [55.1412, 25.091],
+  [55.1388, 25.091],
+];
+
+// Palm Jumeirah inner lagoon water ring (between crescent and trunk/fronds).
+const PALM_LAGOON_NAV_RING: [number, number][] = [
+  [55.105, 25.1051],
+  [55.1057, 25.1067],
+  [55.1068, 25.1082],
+  [55.1083, 25.1096],
+  [55.1101, 25.1109],
+  [55.1123, 25.1121],
+  [55.1148, 25.1131],
+  [55.1175, 25.1139],
+  [55.1205, 25.1146],
+  [55.1236, 25.1151],
+  [55.1269, 25.1154],
+  [55.1302, 25.1156],
+  [55.1335, 25.1156],
+  [55.1368, 25.1154],
+  [55.14, 25.115],
+  [55.1431, 25.1144],
+  [55.146, 25.1135],
+  [55.1486, 25.1124],
+  [55.151, 25.111],
+  [55.1531, 25.1094],
+  [55.1549, 25.1075],
+  [55.1564, 25.1053],
+  [55.1577, 25.1039],
+  [55.155, 25.1],
+  [55.15, 25.096],
+  [55.14, 25.093],
+  [55.13, 25.093],
+  [55.12, 25.096],
+  [55.11, 25.1],
+  [55.105, 25.1051],
+];
+
+// Mainland coastline strip along Marina/JBR — hole so the jbr corridor never
+// spills onto the beachfront/promenade.
+const JBR_NAV_MAINLAND: [number, number][] = [
+  [55.125227, 25.073428],
+  [55.12581, 25.075447],
+  [55.127277, 25.074693],
+  [55.131713, 25.078592],
+  [55.135687, 25.084118],
+  [55.136546, 25.088363],
+  [55.135183, 25.088707],
+  [55.133779, 25.089426],
+  [55.134162, 25.091951],
+  [55.135669, 25.092168],
+  [55.137557, 25.091696],
+  [55.143433, 25.086957],
+  [55.166, 25.075],
+  [55.166, 25.05],
+  [55.1, 25.05],
+  [55.115, 25.06],
+  [55.123, 25.068],
+];
+
+// JBR offshore water ring — exposed sea in front of the JBR beachfront.
+const JBR_NAV_RING: [number, number][] = [
+  [55.115, 25.058],
+  [55.108, 25.065],
+  [55.1, 25.075],
+  [55.095, 25.086],
+  [55.093, 25.098],
+  [55.097, 25.113],
+  [55.099, 25.108],
+  [55.102, 25.104],
+  [55.106, 25.1005],
+  [55.111, 25.0975],
+  [55.117, 25.0955],
+  [55.124, 25.0945],
+  [55.132, 25.094],
+  [55.14, 25.094],
+  [55.148, 25.094],
+  [55.155, 25.0945],
+  [55.161, 25.0955],
+  [55.166, 25.07],
+  [55.16, 25.066],
+  [55.15, 25.062],
+  [55.135, 25.058],
+  [55.12, 25.055],
+  [55.115, 25.058],
+];
 
 // Centerlines run mid-channel through each basin's water polygon (water.ts).
 // Half-widths are sized to the basin: wide for the Marina/Palm lagoon, tight for
@@ -166,7 +320,11 @@ export const BASIN_CORRIDORS: BasinCorridor[] = [
   {
     id: "palm-lagoon",
     name: "Palm Jumeirah Inner Lagoon",
-    waterAreaId: "palm-inner-lagoons",
+    // Rendered basin id kept for wave-intensity matching (calm 0.25 lagoon);
+    // clipping uses the self-contained ring below, not the rebuilt geometry.
+    waterAreaId: "palm-lagoon",
+    waterRing: PALM_LAGOON_NAV_RING,
+    waterHoles: [PALM_LAGOON_NAV_TRUNK_FRONDS],
     // A gentle arc through the lagoon between the crescent and the fronds, kept
     // clear of the trunk/frond comb (the polygon hole).
     centerline: [
@@ -341,12 +499,12 @@ export const BASIN_CORRIDORS: BasinCorridor[] = [
   {
     id: "jbr",
     name: "JBR Offshore Water",
-    waterAreaId: "jbr-offshore",
-    // Mid-channel line sampled from the real jbr-offshore water polygon
-    // (water.ts), offset west of the real JBR beachfront within its real
-    // lat band — replaces a route that used to validate against the sparse
-    // deep-open-Gulf mask instead of this basin's own real water area, which
-    // placed it ~8km away near Jebel Ali instead of off JBR.
+    // No rendered basin after the rebuild — JBR water is part of the unified
+    // open sea. Clip to the self-contained ring; wave intensity falls to the
+    // open-sea default (1). Centerline sampled from the pre-rebuild
+    // jbr-offshore polygon, offset west of the real JBR beachfront.
+    waterRing: JBR_NAV_RING,
+    waterHoles: [JBR_NAV_MAINLAND],
     centerline: [
       [55.11332, 25.073],
       [55.1132, 25.07363],
@@ -425,11 +583,21 @@ const waterAreaById = new Map<string, WaterArea>(WATER_AREAS.map((area) => [area
 
 /** True when the point sits inside the given basin's source water polygon. */
 function isInsideBasinWater(point: [number, number], corridor: BasinCorridor) {
-  const area = waterAreaById.get(corridor.waterAreaId);
-  if (!area) return false;
-  if (!pointInRing(point, area.polygon)) return false;
+  let ring: [number, number][];
+  let holes: [number, number][][];
+  if (corridor.waterRing) {
+    // Self-contained nav mask (palm-lagoon, jbr) — decoupled from WATER_AREAS.
+    ring = corridor.waterRing;
+    holes = corridor.waterHoles ?? [];
+  } else {
+    const area = corridor.waterAreaId ? waterAreaById.get(corridor.waterAreaId) : undefined;
+    if (!area) return false;
+    ring = area.polygon;
+    holes = area.holes ?? [];
+  }
+  if (!pointInRing(point, ring)) return false;
   // Reject anything inside a hole (island/land punched out of the basin).
-  for (const hole of area.holes ?? []) {
+  for (const hole of holes) {
     if (pointInRing(point, hole)) return false;
   }
   return true;
