@@ -3,6 +3,7 @@
 
 import * as THREE from "three";
 import mapboxgl from "mapbox-gl";
+import { DUBAI_CENTER } from "@/lib/dubai";
 import { WATER_AREAS } from "@/lib/water";
 import { SHORELINE_PATHS, type ShorelinePath } from "@/lib/shorelines";
 import {
@@ -1060,7 +1061,7 @@ export function createWaterLayer(
 
       console.log("[Water] creating layer", { mode });
 
-      const originLngLat: [number, number] = [55.138, 25.1];
+      const originLngLat: [number, number] = [DUBAI_CENTER.lng, DUBAI_CENTER.lat];
       const origin = mapboxgl.MercatorCoordinate.fromLngLat(originLngLat, 0);
       ref = {
         x: origin.x,
@@ -1243,10 +1244,9 @@ export function createWaterLayer(
       const cam = map.getFreeCameraOptions().position;
       if (cam) {
         camMercator.set(cam.x, cam.y, cam.z);
-        // Inverse of localToMercator (which negates Y via mercatorScale.y).
         camLocal.set(
           (camMercator.x - ref.x) / ref.scale,
-          -(camMercator.y - ref.y) / ref.scale,
+          (camMercator.y - ref.y) / ref.scale,
           (camMercator.z - ref.z) / ref.scale,
         );
       }
@@ -1276,9 +1276,11 @@ export function createWaterLayer(
         return;
       }
 
-      mercatorScale.set(ref.scale, -ref.scale, ref.scale);
+      mercatorScale.set(ref.scale, ref.scale, ref.scale);
       localToMercator.makeTranslation(ref.x, ref.y, ref.z).scale(mercatorScale);
-      camera.projectionMatrix = projectionMatrix.fromArray(mArr).multiply(localToMercator);
+      camera.matrixWorld.identity();
+      camera.matrixWorldInverse.identity();
+      camera.projectionMatrix.copy(projectionMatrix.fromArray(mArr).multiply(localToMercator));
 
       renderer.resetState();
       renderer.render(scene, camera);
