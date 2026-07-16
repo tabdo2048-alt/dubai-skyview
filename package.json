@@ -9,6 +9,7 @@
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",
+    "generate:water": "esbuild scripts/generate-water-geometry.ts --bundle --platform=node --format=cjs --outfile=.output/generate-water.cjs && node .output/generate-water.cjs",
     "validate:marine": "esbuild scripts/validateMarineSystem.ts --bundle --platform=node --format=cjs --outfile=.output/marine-validation.cjs && node .output/marine-validation.cjs",
     "validate:water": "esbuild scripts/auditWaterOverlap.ts --bundle --platform=node --format=cjs --outfile=.output/audit-water.cjs && node .output/audit-water.cjs",
     "validate:metro": "esbuild scripts/validateMetro.ts --bundle --platform=node --format=cjs --outfile=.output/metro-validation.cjs && node .output/metro-validation.cjs",
@@ -78,6 +79,7 @@
   "devDependencies": {
     "@eslint/js": "^9.32.0",
     "@lovable.dev/vite-tanstack-config": "2.7.1",
+    "@turf/turf": "^7.3.5",
     "@types/node": "^22.16.5",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
@@ -91,6 +93,7 @@
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^15.15.0",
     "nitro": "3.0.260603-beta",
+    "osmtogeojson": "^3.0.0-beta.5",
     "playwright": "^1.61.1",
     "prettier": "^3.7.3",
     "typescript": "^5.8.3",
