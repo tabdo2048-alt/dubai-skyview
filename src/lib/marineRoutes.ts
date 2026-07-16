@@ -171,7 +171,8 @@ export function waveIntensityForMarineRoute(routeId: string | undefined): number
   let intensity = 1;
   if (route?.basinId) {
     const waterAreaId = basinWaterAreaById.get(route.basinId);
-    intensity = (waterAreaId && waterAreaById.get(waterAreaId)?.waveIntensity) ?? 1;
+    const area = waterAreaId ? waterAreaById.get(waterAreaId) : undefined;
+    intensity = area?.waveIntensity ?? 1;
   }
 
   waveIntensityCache.set(routeId, intensity);
