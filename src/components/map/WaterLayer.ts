@@ -749,6 +749,9 @@ const WATER_FRAGMENT = /* glsl */ `
   uniform vec3 uSkyColor;
   uniform vec3 uFoamColor;
   uniform float uOpacity;
+  // 1.0 in satellite (top-down) mode, 0.0 in 3D. Drives the top-down wave
+  // legibility terms below and is exactly 0 in 3D, so 3D rendering is unchanged.
+  uniform float uTopDown;
 
   // Cheap value noise for restrained high-frequency normal detail.
   float hash(vec2 p) {
@@ -823,11 +826,22 @@ const WATER_FRAGMENT = /* glsl */ `
     vec3 color = mix(water, skyRefl, fres * 0.72);
     color += vec3(1.0, 0.96, 0.86) * spec;
 
+    // Top-down wave legibility (satellite only): at pitch 0 the vertical crest
+    // relief projects to ~nothing, so encode the moving wave field as albedo
+    // contrast — crests brighten, troughs darken — making the swell visibly move
+    // from straight overhead. uTopDown is 0 in 3D, so this is a no-op there.
+    color *= 1.0 + crest * 0.22 * uTopDown;
+
     // Whitecaps on the tall open-water crests. crest is normalized by the scaled
-    // uMaxAmp, so this threshold tracks WAVE_HEIGHT_SCALE automatically.
-    float foam = smoothstep(0.66, 0.95, crest) * smoothstep(0.35, 0.9, 1.0 - facing);
+    // uMaxAmp, so this threshold tracks WAVE_HEIGHT_SCALE automatically. The 3D
+    // gate needs a steep (side-lit) face; from straight overhead that gate is ~0,
+    // so in satellite gate on crest height instead and lift the amount — otherwise
+    // no whitecap ever shows top-down.
+    float whitecapGate = mix(smoothstep(0.35, 0.9, 1.0 - facing), 1.0, uTopDown);
+    float foam = smoothstep(0.66, 0.95, crest) * whitecapGate;
     foam *= 0.5 + 0.5 * valueNoise(vLocal.xy * 0.5 + uTime * 0.4);
     foam *= uIntensity;
+    foam *= mix(1.0, 1.6, uTopDown);
 
     // Breaking surf: foam bands rolling toward every real coastline, fading
     // out ~95 m offshore. Band phase decreases with time so crests advance
@@ -849,6 +863,10 @@ const WATER_FRAGMENT = /* glsl */ `
     color = mix(color, uFoamColor, foamTotal * 0.85);
 
     float alpha = uOpacity * (0.82 + fres * 0.18) + spec * 0.12 + foamTotal * 0.3;
+    // Satellite-only: crests read a touch more opaque, troughs more transparent,
+    // so the moving swell shows through the low base opacity over the imagery.
+    // No-op in 3D (uTopDown = 0).
+    alpha += crest * 0.12 * uTopDown;
     alpha = mix(alpha, 0.95, edgeFoam * 0.85);
     gl_FragColor = vec4(color, clamp(alpha, 0.0, 1.0));
   }
@@ -896,6 +914,9 @@ function makeWaterMaterial({
       uSkyColor: { value: new THREE.Color(satellite ? 0x8fc9d6 : 0x8bc7d2) },
       uFoamColor: { value: new THREE.Color(0xffffff) },
       uOpacity: { value: opacity },
+      // Satellite view is top-down (pitch 0) — turn on the wave-legibility terms
+      // in the shader. 3D relies on real vertical relief, so keep them off there.
+      uTopDown: { value: satellite ? 1 : 0 },
     },
   });
 }
