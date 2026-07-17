@@ -9,14 +9,7 @@ import {
   pointAlongPath,
   type MetroLine,
 } from "@/lib/metro";
-import { createWaterLayer } from "./WaterLayer";
-import { createModel3DLayer } from "@/lib/mapbox/Model3DLayer";
-import { MODEL_REGISTRY } from "@/lib/mapbox/modelRegistry";
-import {
-  addSatelliteNavigationDebugOverlay,
-  shouldShowNavigationDebugOverlay,
-} from "@/lib/mapbox/navigationDebugOverlay";
-import { waterRouteForDisplay } from "@/lib/mapbox/waterRouteGuards";
+import { createWaterLayer, setWaterMaskDebug } from "./WaterLayer";
 import type { ProjectWithRelations } from "@/lib/types";
 import { useFiltersStore } from "@/store/filters";
 
@@ -53,8 +46,6 @@ type Props = {
   trainMode: boolean;
   lightPreset: LightPreset;
   mode?: "satellite" | "3d";
-  /** Show the 3D GLB model layer (boats/yachts/ships). 3D mode only. */
-  show3DModels?: boolean;
 };
 
 // Small SVG metro/train icon used for the project markers.
@@ -84,7 +75,6 @@ export function MapboxView({
   trainMode,
   lightPreset,
   mode = "3d",
-  show3DModels = true,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
@@ -96,7 +86,6 @@ export function MapboxView({
   const trainRafRef = useRef<number | null>(null);
   const trainMotionRef = useRef<Map<string, TrainMotionState>>(new globalThis.Map());
   const styleLoadedRef = useRef(false);
-  const modelsAddedRef = useRef(false);
   const stationInteractionAddedRef = useRef(false);
   const heavyLayerFallbackTimeoutRef = useRef<number | null>(null);
   const deferredLayerTimeoutsRef = useRef<number[]>([]);
@@ -111,7 +100,6 @@ export function MapboxView({
   // Latest toggle state, readable inside the (stale-closure) style.load handler.
   const metroModeRef = useRef(metroMode);
   const trainModeRef = useRef(trainMode);
-  const show3DModelsRef = useRef(show3DModels);
   // Per-network station-reveal thresholds (0 = none revealed, 1 = all).
   const revealThreshRef = useRef<{ metro: number; train: number }>({ metro: 0, train: 0 });
   // Track whether this map instance is the active one and whether the tab is visible.
@@ -251,6 +239,15 @@ export function MapboxView({
     });
 
     mapRef.current = map;
+    // Dev-only test seam: expose the live map per mode so Playwright/verification
+    // harnesses can drive the camera (bearing/pitch/flyTo) and read state. Never
+    // present in production builds (guarded by import.meta.env.DEV).
+    if (import.meta.env.DEV) {
+      (window as unknown as Record<string, unknown>)[
+        mode === "3d" ? "__mapView3d" : "__mapViewSat"
+      ] = map;
+      (window as unknown as Record<string, unknown>).__setWaterMaskDebug = setWaterMaskDebug;
+    }
     return () => {
       stopNetworkAnimation(map, METRO_LINES, "metro");
       stopNetworkAnimation(map, TRAIN_LINES, "train");
@@ -411,8 +408,8 @@ export function MapboxView({
   }
 
   // Each heavy layer gets its own schedule slot so no single deferred task
-  // does all of water+boats+models back to back — WaterLayer itself further
-  // chunks its per-basin builds (see WaterLayer.ts onAdd).
+  // stalls the main thread — WaterLayer itself further chunks its per-basin
+  // builds (see WaterLayer.ts onAdd).
   function scheduleHeavyLayers(map: mapboxgl.Map, delays: [number, number, number]) {
     const schedule = (delay: number, task: () => void) => {
       const timeout = window.setTimeout(() => {
@@ -422,7 +419,6 @@ export function MapboxView({
       deferredLayerTimeoutsRef.current.push(timeout);
     };
     schedule(delays[0], () => addWaterLayer(map));
-    schedule(delays[1], () => addVesselLayers(map));
     schedule(delays[2], () => logCustomLayerOrder(map));
   }
 
@@ -443,87 +439,14 @@ export function MapboxView({
     }
   }
 
-  function addVesselLayers(map: mapboxgl.Map) {
-    try {
-      addBoatRouteLayers(map);
-    } catch (err) {
-      console.error("Failed to add boat route layers", err);
-    }
-    if (shouldShowNavigationDebugOverlay()) {
-      try {
-        addSatelliteNavigationDebugOverlay(map, MODEL_REGISTRY);
-      } catch (err) {
-        console.error("Failed to add satellite navigation debug overlay", err);
-      }
-    }
-    if (show3DModelsRef.current && !map.getLayer("dubai-3d-models")) {
-      try {
-        map.addLayer(createModel3DLayer(MODEL_REGISTRY, makeRenderController()));
-        modelsAddedRef.current = true;
-        console.log("[Boats]", MODEL_REGISTRY.length, "boat models loaded in", mode, "mode");
-      } catch (err) {
-        console.error("Failed to add 3D model layer", err);
-      }
-    }
-  }
-
   function logCustomLayerOrder(map: mapboxgl.Map) {
     console.log(
       "[MapLayers] custom layer order",
       map
         .getStyle()
-        .layers?.filter((layer) => ["dubai-water-3d", "dubai-3d-models"].includes(layer.id))
+        .layers?.filter((layer) => layer.id === "dubai-water-3d")
         .map((layer) => layer.id),
     );
-  }
-
-  // Thin, subtle transparent guide lines tracing each boat's route (3D only).
-  // Premium/faint — a soft cyan dashed hairline, unlike the bold metro lines,
-  // and always below the DOM project markers (canvas layer). Duplicate-guarded.
-  function addBoatRouteLayers(map: mapboxgl.Map) {
-    let added = 0;
-    const renderedRoutes = new Set<string>();
-    for (const cfg of MODEL_REGISTRY) {
-      const route = waterRouteForDisplay(cfg);
-      if (!route || route.length < 2) continue;
-      const routeKey = route.map(([lng, lat]) => `${lng.toFixed(5)},${lat.toFixed(5)}`).join("|");
-      if (renderedRoutes.has(routeKey)) continue;
-      renderedRoutes.add(routeKey);
-
-      const srcId = `boat-route-lane-${renderedRoutes.size}`;
-      const layerId = `${srcId}-line`;
-      const routeData = {
-        type: "Feature" as const,
-        properties: {},
-        geometry: { type: "LineString" as const, coordinates: route },
-      };
-      if (!map.getSource(srcId)) {
-        map.addSource(srcId, {
-          type: "geojson",
-          data: routeData,
-        });
-      } else {
-        const source = map.getSource(srcId) as mapboxgl.GeoJSONSource | undefined;
-        source?.setData(routeData);
-      }
-      if (!map.getLayer(layerId)) {
-        addLayerSafe(map, {
-          id: layerId,
-          type: "line",
-          source: srcId,
-          layout: { "line-cap": "round", "line-join": "round" },
-          paint: {
-            "line-color": "rgba(210, 245, 255, 0.35)",
-            "line-width": 1.25,
-            "line-blur": 0.8,
-            "line-dasharray": [2.5, 3],
-            "line-opacity": 0.18,
-          },
-        });
-        added++;
-      }
-    }
-    if (added > 0) console.log("[Boats] route lines added");
   }
 
   // A station is shown when its network's reveal threshold has passed its
@@ -1224,31 +1147,6 @@ export function MapboxView({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
-
-  // Show/hide the 3D model layer at runtime (Phase 10 control). Only meaningful
-  // in 3D mode; the layer is added lazily so we self-heal if it's missing.
-  useEffect(() => {
-    show3DModelsRef.current = show3DModels;
-    const map = mapRef.current;
-    if (!map || mode !== "3d") return;
-    const hasLayer = !!map.getLayer("dubai-3d-models");
-    if (show3DModels && !hasLayer && styleLoadedRef.current) {
-      try {
-        map.addLayer(createModel3DLayer(MODEL_REGISTRY));
-        modelsAddedRef.current = true;
-      } catch (err) {
-        console.error("Failed to add 3D model layer", err);
-      }
-    } else if (!show3DModels && hasLayer) {
-      try {
-        map.removeLayer("dubai-3d-models");
-        modelsAddedRef.current = false;
-      } catch (err) {
-        console.error("Failed to remove 3D model layer", err);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [show3DModels]);
 
   // A map can finish loading while hidden behind the other mode. When it later
   // becomes active, notify the parent again so the shared loading overlay exits.
