@@ -65,6 +65,36 @@ const BASE_SHORE_HALF_WIDTH_M = 9;
 const SHORE_SAMPLE_STEP_M = 7;
 const SHORE_Z = 0.62;
 
+// Per-mode shore-ribbon tuning. There are two water layers (one per mode), each
+// building its own shore mesh, so satellite can carry bold surf while 3D keeps
+// the restrained look — no runtime gating needed on the geometry itself.
+type ShoreConfig = {
+  halfWidthM: number;
+  ribbonOffsets: readonly number[];
+  opacity: number;
+  cycleSeconds: number;
+};
+
+// 3D: the original tuning, unchanged.
+const SHORE_CFG_3D: ShoreConfig = {
+  halfWidthM: BASE_SHORE_HALF_WIDTH_M,
+  ribbonOffsets: SHORE_RIBBON_OFFSETS,
+  opacity: 0.64,
+  cycleSeconds: SHORE_WAVE_CYCLE_SECONDS,
+};
+
+// Satellite (top-down): big white breaking waves — wider bands, further offshore
+// reach, brighter, and a slightly slower cycle so the surf rolls in rather than
+// flickers. The larger ribbons are still clipped to water at BUILD time
+// (quadIsWater uses cfg.halfWidthM), so foam never crosses onto the beach, and
+// narrow basins still self-limit via their maxReachMeters caps.
+const SHORE_CFG_SATELLITE: ShoreConfig = {
+  halfWidthM: 16,
+  ribbonOffsets: [86, 70, 56, 44, 34, 24, 15, 7],
+  opacity: 0.82,
+  cycleSeconds: 5.2,
+};
+
 type MercatorRef = {
   x: number;
   y: number;
@@ -461,7 +491,7 @@ const SHORE_FRAGMENT = /* glsl */ `
   }
 `;
 
-function makeShoreMaterial(): THREE.ShaderMaterial {
+function makeShoreMaterial(cfg: ShoreConfig): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     vertexShader: SHORE_VERTEX,
     fragmentShader: SHORE_FRAGMENT,
@@ -476,15 +506,15 @@ function makeShoreMaterial(): THREE.ShaderMaterial {
     uniforms: {
       uTime: { value: 0 },
       uGeneration: { value: 0 },
-      uOpacity: { value: 0.64 },
-      uCycleSeconds: { value: SHORE_WAVE_CYCLE_SECONDS },
+      uOpacity: { value: cfg.opacity },
+      uCycleSeconds: { value: cfg.cycleSeconds },
       uWidthScale: { value: 1 },
       uColor: { value: new THREE.Color(0xffffff) },
     },
   });
 }
 
-function buildShoreGeometry(ref: MercatorRef): THREE.BufferGeometry {
+function buildShoreGeometry(ref: MercatorRef, cfg: ShoreConfig): THREE.BufferGeometry {
   const positions: number[] = [];
   const alongs: number[] = [];
   const acrosses: number[] = [];
@@ -532,8 +562,8 @@ function buildShoreGeometry(ref: MercatorRef): THREE.BufferGeometry {
     intensity: number,
     segmentMask: number,
   ) => {
-    const wx = nx * BASE_SHORE_HALF_WIDTH_M;
-    const wy = ny * BASE_SHORE_HALF_WIDTH_M;
+    const wx = nx * cfg.halfWidthM;
+    const wy = ny * cfg.halfWidthM;
     pushVert(cx0 - wx, cy0 - wy, a0, 1, ribbon, phase, intensity, segmentMask, -wx, -wy);
     pushVert(cx0, cy0, a0, 0, ribbon, phase, intensity, segmentMask, 0, 0);
     pushVert(cx1 - wx, cy1 - wy, a1, 1, ribbon, phase, intensity, segmentMask, -wx, -wy);
@@ -559,7 +589,7 @@ function buildShoreGeometry(ref: MercatorRef): THREE.BufferGeometry {
   );
 
   for (const shoreline of SHORELINE_PATHS) {
-    addShorelinePath(shoreline, ref, waterMasks, pushRibbonTri);
+    addShorelinePath(shoreline, ref, waterMasks, pushRibbonTri, cfg);
   }
 
   const geo = new THREE.BufferGeometry();
@@ -593,6 +623,7 @@ function addShorelinePath(
     intensity: number,
     segmentMask: number,
   ) => void,
+  cfg: ShoreConfig,
 ) {
   const pts = shoreline.points.map(([lng, lat]) => lngLatToLocal(lng, lat, ref, 0));
   const baseHash = idHash(shoreline.id);
@@ -604,12 +635,11 @@ function addShorelinePath(
   // entirely on a tight bend. Drop any ribbon ring whose reach would exceed
   // the path's configured cap, and probe at whichever reach is smaller.
   const ribbonOffsets = shoreline.maxReachMeters
-    ? SHORE_RIBBON_OFFSETS.filter(
-        (offset) =>
-          shoreline.offsetMeters + offset + BASE_SHORE_HALF_WIDTH_M <= shoreline.maxReachMeters!,
+    ? cfg.ribbonOffsets.filter(
+        (offset) => shoreline.offsetMeters + offset + cfg.halfWidthM <= shoreline.maxReachMeters!,
       )
-    : SHORE_RIBBON_OFFSETS;
-  const widestOffset = ribbonOffsets.length > 0 ? ribbonOffsets[0] : SHORE_RIBBON_OFFSETS[0];
+    : cfg.ribbonOffsets;
+  const widestOffset = ribbonOffsets.length > 0 ? ribbonOffsets[0] : cfg.ribbonOffsets[0];
 
   for (let i = 0; i < pts.length - 1; i++) {
     const a = pts[i];
@@ -623,7 +653,7 @@ function addShorelinePath(
     const ty = dy / segmentLength;
     const preferredNx = -ty * shoreline.waterSide;
     const preferredNy = tx * shoreline.waterSide;
-    const probeOffset = shoreline.offsetMeters + widestOffset + BASE_SHORE_HALF_WIDTH_M;
+    const probeOffset = shoreline.offsetMeters + widestOffset + cfg.halfWidthM;
     const mid = new THREE.Vector3((a.x + b.x) / 2, (a.y + b.y) / 2, 0);
     const preferredProbe = new THREE.Vector3(
       mid.x + preferredNx * probeOffset,
@@ -666,8 +696,8 @@ function addShorelinePath(
         // all four actual corners of the quad about to be emitted and skip it
         // entirely unless the whole quad is submerged, so foam never bleeds
         // past the real shoreline.
-        const halfX = nx * BASE_SHORE_HALF_WIDTH_M;
-        const halfY = ny * BASE_SHORE_HALF_WIDTH_M;
+        const halfX = nx * cfg.halfWidthM;
+        const halfY = ny * cfg.halfWidthM;
         const quadIsWater =
           pointInAnyLocalWaterMask(new THREE.Vector3(cx0 - halfX, cy0 - halfY, 0), waterMasks) &&
           pointInAnyLocalWaterMask(new THREE.Vector3(cx0 + halfX, cy0 + halfY, 0), waterMasks) &&
@@ -846,17 +876,23 @@ const WATER_FRAGMENT = /* glsl */ `
     // Breaking surf: foam bands rolling toward every real coastline, fading
     // out ~95 m offshore. Band phase decreases with time so crests advance
     // shoreward; noise breaks the bands so they aren't ruler-straight.
-    float surfZone = 1.0 - smoothstep(8.0, 95.0, vShoreDist);
-    float bandPhase = fract(vShoreDist / 26.0 + uTime / 7.5);
+    // In satellite top-down (uTopDown=1) the surf reaches further offshore, the
+    // rolling bands are longer, and the amount is lifted so breaking waves read
+    // as big sheets of white; 3D keeps the restrained values (uTopDown=0).
+    float surfReach = mix(95.0, 165.0, uTopDown);
+    float surfZone = 1.0 - smoothstep(8.0, surfReach, vShoreDist);
+    float bandLen = mix(26.0, 34.0, uTopDown);
+    float bandPhase = fract(vShoreDist / bandLen + uTime / 7.5);
     float band = smoothstep(0.68, 0.84, bandPhase) * (1.0 - smoothstep(0.84, 0.98, bandPhase));
     float surf = band * surfZone * (0.5 + 0.5 * valueNoise(vLocal.xy * 0.11 + uTime * 0.18));
     surf *= clamp(uIntensity, 0.0, 1.0);
+    surf *= mix(1.0, 1.7, uTopDown);
 
     // Crisp waterline: solid bright foam edge hugging the shore polygon
     // boundary. Band width scales with camera distance so the line stays a
     // couple of pixels wide at every zoom — never sub-pixel shimmer far out,
     // never a fat blurry ribbon up close.
-    float edgeHalfWidth = clamp(dist * 0.004, 2.0, 22.0);
+    float edgeHalfWidth = clamp(dist * 0.004, 2.0, 22.0) * mix(1.0, 1.6, uTopDown);
     float edgeFoam = 1.0 - smoothstep(edgeHalfWidth * 0.4, edgeHalfWidth, vShoreDist);
 
     float foamTotal = clamp(foam * 0.65 + surf * 0.9 + edgeFoam, 0.0, 1.0);
@@ -1104,9 +1140,11 @@ export function createWaterLayer(
   const camLocal = new THREE.Vector3();
   const camMercator = new THREE.Vector3();
 
+  const shoreCfg: ShoreConfig = mode === "satellite" ? SHORE_CFG_SATELLITE : SHORE_CFG_3D;
+
   const createShorelineBundle = (): ShorelineGeometryBundle => {
-    const material = makeShoreMaterial();
-    const mesh = new THREE.Mesh(buildShoreGeometry(ref), material);
+    const material = makeShoreMaterial(shoreCfg);
+    const mesh = new THREE.Mesh(buildShoreGeometry(ref, shoreCfg), material);
     mesh.renderOrder = 2;
     mesh.frustumCulled = false;
     return { mesh, material };
@@ -1335,8 +1373,8 @@ export function createWaterLayer(
 
       if (shoreMaterial) {
         shoreMaterial.uniforms.uTime.value = elapsed;
-        shoreMaterial.uniforms.uGeneration.value = Math.floor(elapsed / SHORE_WAVE_CYCLE_SECONDS);
-        shoreMaterial.uniforms.uCycleSeconds.value = SHORE_WAVE_CYCLE_SECONDS;
+        shoreMaterial.uniforms.uGeneration.value = Math.floor(elapsed / shoreCfg.cycleSeconds);
+        shoreMaterial.uniforms.uCycleSeconds.value = shoreCfg.cycleSeconds;
         shoreMaterial.uniforms.uWidthScale.value = getShoreWaveWidthMeters(map.getZoom()) / 18;
       }
 
