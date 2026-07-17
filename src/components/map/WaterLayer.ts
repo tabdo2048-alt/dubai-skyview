@@ -879,7 +879,7 @@ const WATER_FRAGMENT = /* glsl */ `
     // In satellite top-down (uTopDown=1) the surf reaches further offshore, the
     // rolling bands are longer, and the amount is lifted so breaking waves read
     // as big sheets of white; 3D keeps the restrained values (uTopDown=0).
-    float surfReach = mix(95.0, 165.0, uTopDown);
+    float surfReach = mix(95.0, 200.0, uTopDown);
     float surfZone = 1.0 - smoothstep(8.0, surfReach, vShoreDist);
     float bandLen = mix(26.0, 34.0, uTopDown);
     float bandPhase = fract(vShoreDist / bandLen + uTime / 7.5);
@@ -896,13 +896,24 @@ const WATER_FRAGMENT = /* glsl */ `
     float edgeFoam = 1.0 - smoothstep(edgeHalfWidth * 0.4, edgeHalfWidth, vShoreDist);
 
     float foamTotal = clamp(foam * 0.65 + surf * 0.9 + edgeFoam, 0.0, 1.0);
-    color = mix(color, uFoamColor, foamTotal * 0.85);
+
+    // Coast-wide white breaking waves (satellite only). The rolling surf bands +
+    // waterline are already computed from vShoreDist for EVERY real coast ring,
+    // but over the low-opacity satellite water they wash out — so on any coast
+    // without the opaque named-beach ribbon meshes, no white shows. Push them to
+    // bold opaque white here so white waves hug the WHOLE coastline. uTopDown = 0
+    // in 3D, so 3D rendering is unchanged.
+    float coastFoam = clamp(surf + edgeFoam, 0.0, 1.0);
+    color = mix(color, uFoamColor, clamp(foamTotal * 0.85 + coastFoam * 0.25 * uTopDown, 0.0, 1.0));
 
     float alpha = uOpacity * (0.82 + fres * 0.18) + spec * 0.12 + foamTotal * 0.3;
     // Satellite-only: crests read a touch more opaque, troughs more transparent,
     // so the moving swell shows through the low base opacity over the imagery.
     // No-op in 3D (uTopDown = 0).
     alpha += crest * 0.12 * uTopDown;
+    // Make the coastal surf bands opaque white (not just tinted) in satellite, so
+    // they read as real breaking waves along the coast rather than a faint haze.
+    alpha = mix(alpha, 0.72, coastFoam * uTopDown);
     alpha = mix(alpha, 0.95, edgeFoam * 0.85);
     gl_FragColor = vec4(color, clamp(alpha, 0.0, 1.0));
   }
