@@ -89,9 +89,9 @@ const SHORE_CFG_3D: ShoreConfig = {
 // (quadIsWater uses cfg.halfWidthM), so foam never crosses onto the beach, and
 // narrow basins still self-limit via their maxReachMeters caps.
 const SHORE_CFG_SATELLITE: ShoreConfig = {
-  halfWidthM: 16,
-  ribbonOffsets: [86, 70, 56, 44, 34, 24, 15, 7],
-  opacity: 0.82,
+  halfWidthM: 19,
+  ribbonOffsets: [96, 80, 66, 54, 44, 34, 24, 15, 7],
+  opacity: 0.9,
   cycleSeconds: 5.2,
 };
 
@@ -886,13 +886,13 @@ const WATER_FRAGMENT = /* glsl */ `
     float band = smoothstep(0.68, 0.84, bandPhase) * (1.0 - smoothstep(0.84, 0.98, bandPhase));
     float surf = band * surfZone * (0.5 + 0.5 * valueNoise(vLocal.xy * 0.11 + uTime * 0.18));
     surf *= clamp(uIntensity, 0.0, 1.0);
-    surf *= mix(1.0, 1.7, uTopDown);
+    surf *= mix(1.0, 2.1, uTopDown);
 
     // Crisp waterline: solid bright foam edge hugging the shore polygon
     // boundary. Band width scales with camera distance so the line stays a
     // couple of pixels wide at every zoom — never sub-pixel shimmer far out,
     // never a fat blurry ribbon up close.
-    float edgeHalfWidth = clamp(dist * 0.004, 2.0, 22.0) * mix(1.0, 1.6, uTopDown);
+    float edgeHalfWidth = clamp(dist * 0.004, 2.0, 22.0) * mix(1.0, 1.9, uTopDown);
     float edgeFoam = 1.0 - smoothstep(edgeHalfWidth * 0.4, edgeHalfWidth, vShoreDist);
 
     float foamTotal = clamp(foam * 0.65 + surf * 0.9 + edgeFoam, 0.0, 1.0);
