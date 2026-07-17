@@ -52,22 +52,36 @@ type CompiledWave = {
   phase: number;
 };
 
+// Global height multiplier applied uniformly to every wave amplitude. The
+// relative spectrum in WATER_WAVE_PARAMS is already tuned so the long swells
+// (760 m / 420 m) dominate, so scaling uniformly keeps the natural, non-choppy
+// shape while making crests tall enough to read as real Gulf swell instead of a
+// flat sheet at city zoom. It multiplies BOTH the compiled amplitudes (which
+// feed the generated GLSL height/normal + the CPU sampler) AND MAX_WAVE_AMPLITUDE
+// (the shader's crest-normalization denominator, uniform uMaxAmp), so foam
+// thresholds and lighting stay correctly scaled from this single knob.
+// Crests never lap over the coastline: the vertex shader flattens height to ~0
+// within the shore/edge taper band (see aEdgeDist shoaling in WaterLayer.ts).
+export const WAVE_HEIGHT_SCALE = 2.2;
+
 const COMPILED: CompiledWave[] = WATER_WAVE_PARAMS.map((w) => {
   const rad = (w.directionDeg * Math.PI) / 180;
   const k = (2 * Math.PI) / w.wavelength;
+  const amplitude = w.amplitude * WAVE_HEIGHT_SCALE;
   return {
     dirX: Math.cos(rad),
     dirY: Math.sin(rad),
     k,
     omega: k * w.speed,
-    amplitude: w.amplitude,
-    qA: w.steepness * w.amplitude,
+    amplitude,
+    qA: w.steepness * amplitude,
     phase: w.phase,
   };
 });
 
 /** Sum of all wave amplitudes — the theoretical crest height at intensity 1. */
-export const MAX_WAVE_AMPLITUDE = WATER_WAVE_PARAMS.reduce((s, w) => s + w.amplitude, 0);
+export const MAX_WAVE_AMPLITUDE =
+  WATER_WAVE_PARAMS.reduce((s, w) => s + w.amplitude, 0) * WAVE_HEIGHT_SCALE;
 
 export type WaveSample = {
   /** Vertical displacement (metres) of the surface at (x, y, t). */
