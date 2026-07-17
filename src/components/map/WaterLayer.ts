@@ -293,14 +293,20 @@ function subdivideNearShore(
   return result;
 }
 
-function attachShoreDistances(geometry: THREE.BufferGeometry, grid: SegmentGrid) {
+// Per-vertex distance to a ring set, written to a named attribute. Used for two
+// distinct fields: `aShoreDist` (nearest REAL coastline only — drives foam) and
+// `aEdgeDist` (nearest of ALL the area's own rings incl. its outer ring — drives
+// the height taper). Keeping them separate lets crests flatten to ~0 at every
+// basin boundary (no seam walls, no lapping onto land) while foam still appears
+// only along real coastline.
+function attachDistances(geometry: THREE.BufferGeometry, grid: SegmentGrid, attribute: string) {
   const positions = geometry.getAttribute("position") as THREE.BufferAttribute;
   const source = positions.array;
   const dists = new Float32Array(positions.count);
   for (let i = 0; i < positions.count; i++) {
     dists[i] = shoreDistance(grid, source[i * 3], source[i * 3 + 1]);
   }
-  geometry.setAttribute("aShoreDist", new THREE.BufferAttribute(dists, 1));
+  geometry.setAttribute(attribute, new THREE.BufferAttribute(dists, 1));
 }
 
 function subdivide(geometry: THREE.BufferGeometry, levels: number): THREE.BufferGeometry {
@@ -697,6 +703,7 @@ const WAVE_GLSL = buildWaterWaveGLSL();
 const WATER_VERTEX = /* glsl */ `
   ${WAVE_GLSL}
   attribute float aShoreDist;
+  attribute float aEdgeDist;
   uniform float uTime;
   uniform float uIntensity;
   varying vec3 vLocal;
@@ -712,9 +719,12 @@ const WATER_VERTEX = /* glsl */ `
     // edge across the shoreline onto beaches. Crest shape still reads correctly
     // because lighting/foam are computed per-fragment from the wave field.
     float h = waterWaveHeight(base, uTime, uIntensity);
-    // Shoaling: flatten crests over the last metres before the coastline so
-    // animated water never visually laps past the shore polygon edge.
-    h *= smoothstep(0.0, 30.0, aShoreDist);
+    // Shoaling: flatten crests over the last metres before ANY basin edge (its
+    // own outer ring + holes) so animated water never laps past the polygon edge
+    // and so both sides of a shared water-water seam meet at ~0 — no vertical
+    // wall even with tall amplitudes. Band widened to 45 m to absorb the larger
+    // crests smoothly.
+    h *= smoothstep(0.0, 45.0, aEdgeDist);
     vec3 displaced = vec3(base, position.z + h);
     vBase = base;
     vLocal = displaced;
@@ -916,11 +926,22 @@ function buildWaterGeometry(
   for (let i = 0; i < holes.length; i++) shoreRings.push(mask.holes[i]);
   const grid = buildShoreSegmentGrid(shoreRings);
 
+  // Height-taper ring set: ALWAYS includes the area's own outer ring plus every
+  // hole. Unlike the foam set above it never omits the outer ring, so crests
+  // flatten to ~0 at every basin boundary — including water-water seams like the
+  // Palm-lagoon mouth (suppressOuterFoam) where the open-sea side also tapers to
+  // 0. Without this, taller amplitudes would open a visible vertical wall along
+  // that seam. Foam still uses `grid` (real coast only), so the seam stays
+  // foam-free.
+  const edgeRings: THREE.Vector3[][] = [mask.outer, ...mask.holes];
+  const edgeGrid = buildShoreSegmentGrid(edgeRings);
+
   const shapeGeometry = new THREE.ShapeGeometry(shape);
   warnIfTriangulationFailed(area.id, shapeGeometry, mask);
 
   const refined = subdivideNearShore(subdivide(shapeGeometry, levels), grid);
-  attachShoreDistances(refined, grid);
+  attachDistances(refined, grid, "aShoreDist");
+  attachDistances(refined, edgeGrid, "aEdgeDist");
   return refined;
 }
 
