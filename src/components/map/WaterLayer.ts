@@ -782,32 +782,50 @@ const WATER_FRAGMENT = /* glsl */ `
     float n = valueNoise(np)
       + 0.5 * valueNoise(np * 2.3 - uTime * 0.07)
       + 0.25 * valueNoise(np * 5.7 + uTime * 0.21);
-    vec3 normal = normalize(waveNormal + vec3((n - 0.875) * 0.42 * detail, (valueNoise(np.yx * 1.31) - 0.5) * 0.42 * detail, 0.0));
+    vec3 normal = normalize(waveNormal + vec3((n - 0.875) * 0.5 * detail, (valueNoise(np.yx * 1.31) - 0.5) * 0.5 * detail, 0.0));
 
     // Fresnel: grazing angles reflect the sky, steep angles show water color.
     float fres = pow(clamp(1.0 - max(dot(normal, viewDir), 0.0), 0.0, 1.0), 5.0);
     fres = mix(0.02, 1.0, fres);
 
+    // Horizon-biased sky: grazing views (low viewDir.z) look toward a brighter
+    // sky band near the horizon, steep top-down views see flatter sky. Gives the
+    // reflection real depth instead of a single flat tint.
+    float horizon = 1.0 - clamp(viewDir.z, 0.0, 1.0);
+    vec3 skyRefl = mix(uSkyColor, uSkyColor * 1.16 + vec3(0.05, 0.06, 0.08), horizon);
+
     // Sun glint: broad warm sheen + tight glitter-modulated sparkle lobe.
     vec3 halfDir = normalize(uSunDir + viewDir);
     float specDot = max(dot(normal, halfDir), 0.0);
     float glitter = 0.35 + 0.65 * valueNoise(vLocal.xy * 1.7 + uTime * 0.9);
-    float spec = pow(specDot, 48.0) * 0.16 + pow(specDot, 360.0) * 2.4 * glitter;
+    float spec = pow(specDot, 48.0) * 0.18 + pow(specDot, 360.0) * 2.6 * glitter;
 
     // Deep vs shallow water color: true shore proximity drives the turquoise
-    // shallows, with surface facing + crest height adding local variation.
+    // shallows, with surface facing + crest height adding local variation. The
+    // grade is widened (deeper open water, brighter shallows) for a richer,
+    // more oceanic look.
     float facing = clamp(dot(normal, vec3(0.0, 0.0, 1.0)), 0.0, 1.0);
     float crest = clamp(height / max(uMaxAmp * uIntensity, 0.001), -1.0, 1.0);
-    float shoreNear = 1.0 - smoothstep(0.0, 140.0, vShoreDist);
-    float depthMix = clamp(facing * 0.45 + crest * 0.2 + 0.1 + shoreNear * 0.6, 0.0, 1.0);
+    float shoreNear = 1.0 - smoothstep(0.0, 180.0, vShoreDist);
+    float depthMix = clamp(facing * 0.4 + crest * 0.22 + 0.08 + shoreNear * 0.62, 0.0, 1.0);
     vec3 water = mix(uDeepColor, uShallowColor, depthMix);
 
+    // Caustic shimmer: two slow, counter-drifting noise fields multiplied to a
+    // sparse network of sunlit cells, confined to the shallows near shore and
+    // faded out far away (respecting the detail falloff) so it never aliases at
+    // the horizon. Subtle — a living glimmer on shallow water, not a lightshow.
+    float c1 = valueNoise(vLocal.xy * 0.35 - uTime * 0.13);
+    float c2 = valueNoise(vLocal.xy * 0.22 + uTime * 0.09);
+    float caustic = pow(clamp(c1 * c2 * 2.2, 0.0, 1.0), 2.0) * shoreNear * detail;
+    water += uShallowColor * caustic * 0.22;
+
     // Sky reflection via Fresnel, then warm sun glint.
-    vec3 color = mix(water, uSkyColor, fres * 0.7);
+    vec3 color = mix(water, skyRefl, fres * 0.72);
     color += vec3(1.0, 0.96, 0.86) * spec;
 
-    // Whitecaps ONLY on the sharpest, highest open-water crests.
-    float foam = smoothstep(0.72, 0.98, crest) * smoothstep(0.35, 0.9, 1.0 - facing);
+    // Whitecaps on the tall open-water crests. crest is normalized by the scaled
+    // uMaxAmp, so this threshold tracks WAVE_HEIGHT_SCALE automatically.
+    float foam = smoothstep(0.66, 0.95, crest) * smoothstep(0.35, 0.9, 1.0 - facing);
     foam *= 0.5 + 0.5 * valueNoise(vLocal.xy * 0.5 + uTime * 0.4);
     foam *= uIntensity;
 
@@ -827,7 +845,7 @@ const WATER_FRAGMENT = /* glsl */ `
     float edgeHalfWidth = clamp(dist * 0.004, 2.0, 22.0);
     float edgeFoam = 1.0 - smoothstep(edgeHalfWidth * 0.4, edgeHalfWidth, vShoreDist);
 
-    float foamTotal = clamp(foam * 0.6 + surf * 0.9 + edgeFoam, 0.0, 1.0);
+    float foamTotal = clamp(foam * 0.65 + surf * 0.9 + edgeFoam, 0.0, 1.0);
     color = mix(color, uFoamColor, foamTotal * 0.85);
 
     float alpha = uOpacity * (0.82 + fres * 0.18) + spec * 0.12 + foamTotal * 0.3;
@@ -848,7 +866,11 @@ function makeWaterMaterial({
   openSea,
 }: WaterMaterialOptions): THREE.ShaderMaterial {
   const satellite = mode === "satellite";
-  const opacity = satellite ? (openSea ? 0.22 : 0.2) : openSea ? 0.28 : 0.24;
+  // Satellite water is a translucent overlay on the real Gulf imagery, so it
+  // stays low-opacity (it must read as the real sea, not hide tile detail); a
+  // small bump gives it more presence without washing the imagery out. The 3D
+  // basemap has no photographic sea under it, so its water can be richer.
+  const opacity = satellite ? (openSea ? 0.25 : 0.23) : openSea ? 0.34 : 0.3;
   return new THREE.ShaderMaterial({
     vertexShader: WATER_VERTEX,
     fragmentShader: WATER_FRAGMENT,
@@ -869,9 +891,9 @@ function makeWaterMaterial({
       uMaxAmp: { value: MAX_WAVE_AMPLITUDE },
       uCamLocal: { value: new THREE.Vector3() },
       uSunDir: { value: new THREE.Vector3(-0.5, -0.35, 0.79).normalize() },
-      uDeepColor: { value: new THREE.Color(satellite ? 0x1d7187 : 0x1a6d82) },
-      uShallowColor: { value: new THREE.Color(satellite ? 0x559eaf : 0x4b9cad) },
-      uSkyColor: { value: new THREE.Color(satellite ? 0x84beca : 0x8bc7d2) },
+      uDeepColor: { value: new THREE.Color(satellite ? 0x155f75 : 0x11536a) },
+      uShallowColor: { value: new THREE.Color(satellite ? 0x60b1c1 : 0x57adbf) },
+      uSkyColor: { value: new THREE.Color(satellite ? 0x8fc9d6 : 0x8bc7d2) },
       uFoamColor: { value: new THREE.Color(0xffffff) },
       uOpacity: { value: opacity },
     },
