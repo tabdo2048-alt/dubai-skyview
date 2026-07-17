@@ -1110,18 +1110,31 @@ export function createWaterLayer(
       // retroactively via applyMaskDebug above (if enabled later).
       function buildMaskDebugForArea(area: (typeof WATER_AREAS)[number], geometry: THREE.BufferGeometry) {
         maskDebugBuiltFor.add(area.id);
-        const triWire = new THREE.WireframeGeometry(geometry);
-        const triLine = new THREE.LineSegments(
-          triWire,
-          new THREE.LineBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.35 }),
-        );
-        triLine.position.z = 0.45;
-        triLine.renderOrder = 5;
-        triLine.frustumCulled = false;
-        triLine.visible = waterMaskDebugEnabled;
-        scene.add(triLine);
-        debugLines.push(triLine);
-        maskDebugObjects.push(triLine);
+        // THREE.WireframeGeometry dedups edges in a JS Set; the open-sea basin's
+        // shore-refined mesh has millions of edges and overflows the Set's max
+        // size (RangeError), aborting the whole mask build before the alignment
+        // rings are drawn. The green tri-wire is only a nicety — skip it for very
+        // large meshes and always draw the cyan/red rings (the part that matters
+        // for satellite alignment). ~500k verts ≈ safe edge-Set headroom.
+        const vertCount = geometry.getAttribute("position")?.count ?? 0;
+        if (vertCount <= 500_000) {
+          const triWire = new THREE.WireframeGeometry(geometry);
+          const triLine = new THREE.LineSegments(
+            triWire,
+            new THREE.LineBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.35 }),
+          );
+          triLine.position.z = 0.45;
+          triLine.renderOrder = 5;
+          triLine.frustumCulled = false;
+          triLine.visible = waterMaskDebugEnabled;
+          scene.add(triLine);
+          debugLines.push(triLine);
+          maskDebugObjects.push(triLine);
+        } else {
+          console.warn(
+            `[WaterMaskDebug] "${area.id}" mesh too large for tri-wireframe (${vertCount} verts) — drawing ring outlines only.`,
+          );
+        }
 
         // Outer ring in cyan.
         const outer = buildRingLine(area.polygon, ref, 0x00ffff, 0.55);
