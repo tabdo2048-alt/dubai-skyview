@@ -873,50 +873,52 @@ const WATER_FRAGMENT = /* glsl */ `
     foam *= uIntensity;
     foam *= mix(1.0, 1.6, uTopDown);
 
-    // Breaking surf: foam bands rolling toward every real coastline, fading
-    // out ~95 m offshore. Band phase decreases with time so crests advance
-    // shoreward; noise breaks the bands so they aren't ruler-straight.
-    // In satellite top-down (uTopDown=1) the surf reaches further offshore, the
-    // rolling bands are longer, and the amount is lifted so breaking waves read
-    // as big sheets of white; 3D keeps the restrained values (uTopDown=0).
-    float surfReach = mix(95.0, 150.0, uTopDown);
+    // Breaking surf: foam bands rolling toward every real coastline. The phase
+    // fract(vShoreDist / bandLen + uTime / T) moves crests SHOREWARD as time
+    // advances (holding phase constant forces vShoreDist to fall at bandLen/T
+    // meters per second), so breakers march onto the beach.
+    // Satellite top-down (uTopDown = 1) is BOLD: surf reaches ~220 m offshore,
+    // bands are longer and faster, each band has a sharp shoreward front (low
+    // phase) and a long dissolving foam tail offshore (high phase), and a slow
+    // large-scale phase wobble bends the bands so they are not ruler-straight.
+    // EVERY satellite term is gated through mix(x3d, xSat, uTopDown); with
+    // uTopDown = 0 each mix returns the exact original 3D constant and the
+    // wobble multiplies to 0.0, so the 3D view is numerically unchanged.
+    float surfReach = mix(95.0, 220.0, uTopDown);
     float surfZone = 1.0 - smoothstep(8.0, surfReach, vShoreDist);
-    float bandLen = mix(26.0, 34.0, uTopDown);
-    float bandPhase = fract(vShoreDist / bandLen + uTime / 7.5);
-    float band = smoothstep(0.68, 0.84, bandPhase) * (1.0 - smoothstep(0.84, 0.98, bandPhase));
+    float bandLen = mix(26.0, 40.0, uTopDown);
+    float bandWobble = (valueNoise(vLocal.xy * 0.018 + uTime * 0.04) - 0.5) * mix(0.0, 16.0, uTopDown);
+    float bandPhase = fract((vShoreDist + bandWobble) / bandLen + uTime / mix(7.5, 5.5, uTopDown));
+    float band = smoothstep(mix(0.68, 0.55, uTopDown), mix(0.84, 0.64, uTopDown), bandPhase)
+               * (1.0 - smoothstep(mix(0.84, 0.70, uTopDown), mix(0.98, 0.97, uTopDown), bandPhase));
     float surf = band * surfZone * (0.5 + 0.5 * valueNoise(vLocal.xy * 0.11 + uTime * 0.18));
     surf *= clamp(uIntensity, 0.0, 1.0);
-    surf *= mix(1.0, 1.4, uTopDown);
+    surf *= mix(1.0, 1.9, uTopDown);
 
     // Crisp waterline: solid bright foam edge hugging the shore polygon
     // boundary. Band width scales with camera distance so the line stays a
-    // couple of pixels wide at every zoom — never sub-pixel shimmer far out,
-    // never a fat blurry ribbon up close.
+    // couple of pixels wide at every zoom.
     float edgeHalfWidth = clamp(dist * 0.004, 2.0, 22.0) * mix(1.0, 1.25, uTopDown);
     float edgeFoam = 1.0 - smoothstep(edgeHalfWidth * 0.4, edgeHalfWidth, vShoreDist);
 
     float foamTotal = clamp(foam * 0.65 + surf * 0.9 + edgeFoam, 0.0, 1.0);
 
-    // Coast-wide white breaking waves (satellite only). The rolling surf bands +
-    // waterline are already computed from vShoreDist for EVERY real coast ring,
-    // but over the low-opacity satellite water they wash out — so on any coast
-    // without the opaque named-beach ribbon meshes, no white shows. Push them to
-    // bold opaque white here so white waves hug the WHOLE coastline. uTopDown = 0
-    // in 3D, so 3D rendering is unchanged.
+    // Coast-wide white breaking waves (satellite only): push the rolling surf
+    // and waterline to bold opaque white over the low-opacity satellite water.
+    // In 3D the coastFoam term multiplies to 0.0 and the foamTotal coefficient
+    // is the original 0.85, so 3D color is unchanged.
     float coastFoam = clamp(surf + edgeFoam, 0.0, 1.0);
-    color = mix(color, uFoamColor, clamp(foamTotal * mix(0.85, 0.5, uTopDown) + coastFoam * 0.05 * uTopDown, 0.0, 1.0));
+    color = mix(color, uFoamColor, clamp(foamTotal * 0.85 + coastFoam * 0.5 * uTopDown, 0.0, 1.0));
 
     float alpha = uOpacity * (0.82 + fres * 0.18) + spec * 0.12 + foamTotal * 0.3;
-    // Satellite-only: crests read a touch more opaque, troughs more transparent,
-    // so the moving swell shows through the low base opacity over the imagery.
-    // No-op in 3D (uTopDown = 0).
+    // Satellite-only swell legibility; no-op in 3D (uTopDown = 0).
     alpha += crest * 0.12 * uTopDown;
-    // Make the coastal surf bands opaque white (not just tinted) in satellite, so
-    // they read as real breaking waves along the coast rather than a faint haze.
-    alpha = mix(alpha, 0.32, coastFoam * uTopDown);
-    // Waterline whiteness: keep the crisp bright edge in 3D (0.95), soften it in
-    // satellite top-down (0.6) so the shore line reads less starkly white.
-    alpha = mix(alpha, mix(0.95, 0.6, uTopDown), edgeFoam * mix(0.85, 0.6, uTopDown));
+    // Satellite-only: surf sheets go near-opaque white so they read as real
+    // breakers over the imagery. Weight is coastFoam * uTopDown, so 3D alpha
+    // is untouched regardless of the 0.9 target.
+    alpha = mix(alpha, 0.9, coastFoam * uTopDown);
+    // Waterline: crisp bright edge in both views (0.95 in 3D, 0.9 satellite).
+    alpha = mix(alpha, mix(0.95, 0.9, uTopDown), edgeFoam * 0.85);
     gl_FragColor = vec4(color, clamp(alpha, 0.0, 1.0));
   }
 `;
