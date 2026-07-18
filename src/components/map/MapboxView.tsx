@@ -10,6 +10,7 @@ import {
   type MetroLine,
 } from "@/lib/metro";
 import { createWaterLayer, setWaterMaskDebug } from "./WaterLayer";
+import { createVesselLayer } from "./VesselLayer";
 import type { ProjectWithRelations } from "@/lib/types";
 import { useFiltersStore } from "@/store/filters";
 
@@ -419,6 +420,7 @@ export function MapboxView({
       deferredLayerTimeoutsRef.current.push(timeout);
     };
     schedule(delays[0], () => addWaterLayer(map));
+    schedule(delays[1], () => addVesselLayer(map));
     schedule(delays[2], () => logCustomLayerOrder(map));
   }
 
@@ -436,6 +438,16 @@ export function MapboxView({
       console.log("[Water] layer added");
     } catch (err) {
       console.error("Failed to add water wave layer", err);
+    }
+  }
+
+  function addVesselLayer(map: mapboxgl.Map) {
+    if (map.getLayer("dubai-vessels-3d")) return;
+    try {
+      map.addLayer(createVesselLayer(makeRenderController(), mode));
+      console.log("[Vessels] layer added");
+    } catch (err) {
+      console.error("Failed to add vessel layer", err);
     }
   }
 
@@ -769,6 +781,61 @@ export function MapboxView({
         },
       });
     }
+    // "M" station badges. Unlike the layers above, these are NOT gated by
+    // stationFilter() — every metro station shows its badge as soon as Metro
+    // mode turns them visible, so stations are never invisible waiting on the
+    // line-draw reveal. Metro network only (trains keep their own styling).
+    const metroOnly: Expr = ["==", ["get", "network"], "metro"];
+    if (!map.getLayer("metro-station-M-disc")) {
+      addLayerSafe(map, {
+        id: "metro-station-M-disc",
+        type: "circle",
+        source: "metro-station-points",
+        minzoom: 9.5,
+        filter: metroOnly,
+        layout: { visibility: "none" },
+        paint: {
+          "circle-radius": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            9.5,
+            5,
+            13,
+            ["case", ["get", "interchange"], 12, 9],
+            16,
+            ["case", ["get", "interchange"], 17, 13],
+          ],
+          "circle-color": ["get", "color"],
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 9.5, 1, 16, 2.5],
+          "circle-opacity": 0.98,
+          "circle-stroke-opacity": 1,
+        },
+      });
+    }
+    if (!map.getLayer("metro-station-M")) {
+      addLayerSafe(map, {
+        id: "metro-station-M",
+        type: "symbol",
+        source: "metro-station-points",
+        minzoom: 9.5,
+        filter: metroOnly,
+        layout: {
+          visibility: "none",
+          "text-field": "M",
+          "text-font": ["DIN Pro Bold", "Arial Unicode MS Bold"],
+          "text-size": ["interpolate", ["linear"], ["zoom"], 9.5, 7, 13, 12, 16, 17],
+          "text-allow-overlap": true,
+          "text-ignore-placement": true,
+        },
+        paint: {
+          "text-color": "#ffffff",
+          "text-halo-color": ["get", "color"],
+          "text-halo-width": 0.6,
+        },
+      });
+    }
     addStationInteractions(map);
   }
 
@@ -1020,6 +1087,12 @@ export function MapboxView({
     }
     if (metroMode) playNetworkSequence(map, METRO_LINES, "metro");
     else stopNetworkAnimation(map, METRO_LINES, "metro");
+    // "M" station badges follow metro mode directly (independent of the reveal
+    // animation) so every station is visible the moment Metro is on.
+    const badgeVis = metroMode ? "visible" : "none";
+    for (const id of ["metro-station-M-disc", "metro-station-M"]) {
+      if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", badgeVis);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [metroMode]);
 
