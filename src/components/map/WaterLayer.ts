@@ -904,7 +904,7 @@ const WATER_FRAGMENT = /* glsl */ `
     // bold opaque white here so white waves hug the WHOLE coastline. uTopDown = 0
     // in 3D, so 3D rendering is unchanged.
     float coastFoam = clamp(surf + edgeFoam, 0.0, 1.0);
-    color = mix(color, uFoamColor, clamp(foamTotal * 0.85 + coastFoam * 0.12 * uTopDown, 0.0, 1.0));
+    color = mix(color, uFoamColor, clamp(foamTotal * 0.85 + coastFoam * 0.08 * uTopDown, 0.0, 1.0));
 
     float alpha = uOpacity * (0.82 + fres * 0.18) + spec * 0.12 + foamTotal * 0.3;
     // Satellite-only: crests read a touch more opaque, troughs more transparent,
@@ -913,8 +913,10 @@ const WATER_FRAGMENT = /* glsl */ `
     alpha += crest * 0.12 * uTopDown;
     // Make the coastal surf bands opaque white (not just tinted) in satellite, so
     // they read as real breaking waves along the coast rather than a faint haze.
-    alpha = mix(alpha, 0.5, coastFoam * uTopDown);
-    alpha = mix(alpha, 0.95, edgeFoam * 0.85);
+    alpha = mix(alpha, 0.4, coastFoam * uTopDown);
+    // Waterline whiteness: keep the crisp bright edge in 3D (0.95), soften it in
+    // satellite top-down (0.78) so the shore line reads less starkly white.
+    alpha = mix(alpha, mix(0.95, 0.78, uTopDown), edgeFoam * 0.85);
     gl_FragColor = vec4(color, clamp(alpha, 0.0, 1.0));
   }
 `;
