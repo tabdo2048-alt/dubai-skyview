@@ -21,6 +21,9 @@ type FiltersStore = {
   trainMode: boolean;
   setTrainMode: (on: boolean) => void;
 
+  roadsMode: boolean;
+  setRoadsMode: (on: boolean) => void;
+
   lightPreset: LightPreset;
   setLightPreset: (preset: LightPreset) => void;
 
@@ -44,6 +47,9 @@ export const useFiltersStore = create<FiltersStore>((set) => ({
 
   trainMode: false,
   setTrainMode: (on) => set({ trainMode: on }),
+
+  roadsMode: false,
+  setRoadsMode: (on) => set({ roadsMode: on }),
 
   lightPreset: "day",
   setLightPreset: (preset) => set({ lightPreset: preset }),

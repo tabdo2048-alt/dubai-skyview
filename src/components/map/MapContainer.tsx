@@ -6,6 +6,7 @@ import {
   Loader2,
   TrainFront,
   TramFront,
+  Route,
   Sunrise,
   Sun,
   Sunset,
@@ -56,6 +57,8 @@ export function MapContainer() {
     setMetroMode,
     trainMode,
     setTrainMode,
+    roadsMode,
+    setRoadsMode,
     lightPreset,
     setLightPreset,
     selectedProjectId,
@@ -119,6 +122,7 @@ export function MapContainer() {
               active={mapMode === "satellite"}
               metroMode={metroMode}
               trainMode={trainMode}
+              roadsMode={roadsMode}
               lightPreset={lightPreset}
               mode="satellite"
             />
@@ -142,6 +146,7 @@ export function MapContainer() {
               active={mapMode === "3d"}
               metroMode={metroMode}
               trainMode={trainMode}
+              roadsMode={roadsMode}
               lightPreset={lightPreset}
               mode="3d"
             />
@@ -201,6 +206,13 @@ export function MapContainer() {
           className={`glass gold-hairline rounded-full px-4 ${trainMode ? "bg-gold text-gold-foreground" : "text-cream"}`}
         >
           <TramFront className="mr-1.5 h-4 w-4" /> Train
+        </Button>
+        <Button
+          size="sm"
+          onClick={() => setRoadsMode(!roadsMode)}
+          className={`glass gold-hairline rounded-full px-4 ${roadsMode ? "bg-gold text-gold-foreground" : "text-cream"}`}
+        >
+          <Route className="mr-1.5 h-4 w-4" /> Roads
         </Button>
         {/* Dev-only: toggles the Water Debug Editor panel without a console command. */}
         {import.meta.env.DEV && (

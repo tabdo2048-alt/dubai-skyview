@@ -11,6 +11,7 @@ import {
 } from "@/lib/metro";
 import { createWaterLayer, setWaterMaskDebug } from "./WaterLayer";
 import { createVesselLayer } from "./VesselLayer";
+import { addRoadsLayers, setRoadsVisible } from "./roadsLayer";
 import type { ProjectWithRelations } from "@/lib/types";
 import { useFiltersStore } from "@/store/filters";
 
@@ -45,6 +46,7 @@ type Props = {
   active: boolean;
   metroMode: boolean;
   trainMode: boolean;
+  roadsMode: boolean;
   lightPreset: LightPreset;
   mode?: "satellite" | "3d";
 };
@@ -74,6 +76,7 @@ export function MapboxView({
   active,
   metroMode,
   trainMode,
+  roadsMode,
   lightPreset,
   mode = "3d",
 }: Props) {
@@ -101,6 +104,7 @@ export function MapboxView({
   // Latest toggle state, readable inside the (stale-closure) style.load handler.
   const metroModeRef = useRef(metroMode);
   const trainModeRef = useRef(trainMode);
+  const roadsModeRef = useRef(roadsMode);
   // Per-network station-reveal thresholds (0 = none revealed, 1 = all).
   const revealThreshRef = useRef<{ metro: number; train: number }>({ metro: 0, train: 0 });
   // Track whether this map instance is the active one and whether the tab is visible.
@@ -386,8 +390,12 @@ export function MapboxView({
       try {
         addMetroLayers(map);
         addStationLayers(map);
+        // Colored street network (own Mapbox Streets v8 source) — added hidden,
+        // then shown if Roads is already toggled on for this instance.
+        addRoadsLayers(map);
+        setRoadsVisible(map, roadsModeRef.current);
       } catch (err) {
-        console.error("Failed to add deferred metro/train layers", err);
+        console.error("Failed to add deferred metro/train/roads layers", err);
       }
     });
 
@@ -1110,6 +1118,22 @@ export function MapboxView({
     else stopNetworkAnimation(map, TRAIN_LINES, "train");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trainMode]);
+
+  // Toggle the colored street network on/off as roadsMode changes.
+  useEffect(() => {
+    roadsModeRef.current = roadsMode;
+    const map = mapRef.current;
+    if (!map) return;
+    if (!styleLoadedRef.current) return;
+    // Layers not built yet (style just switched) — schedule them; they read
+    // roadsModeRef on add so they come up with the right visibility.
+    if (!map.getLayer("roads-colored-line")) {
+      scheduleDeferredLayers(map);
+      return;
+    }
+    setRoadsVisible(map, roadsMode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roadsMode]);
 
   // Switch Mapbox Standard's built-in light preset (day/dawn/dusk/night) live,
   // any time — no full style reload needed.
