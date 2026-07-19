@@ -1382,42 +1382,43 @@ export function createWaterLayer(
 
     render(_gl: WebGLRenderingContext, matrix: unknown) {
       if (!renderer || (controller && !controller.shouldRender())) return;
-      // Frame cap: render() also fires when the sibling vessel layer or a
-      // pan/zoom repaints the map, so gate the heavy Three render to ~30fps
-      // here (not just at the repaint call) or the caps would cancel out.
+      // Frame cap: advance the wave simulation at ~30fps to spare weak GPUs,
+      // but ALWAYS draw the scene below. render() also fires on externally
+      // driven repaints (the roads reveal, pan/zoom, tile loads, the sibling
+      // vessel layer). If we skipped the draw on those frames the water would
+      // contribute nothing and blink out for that composited frame — so only
+      // the per-frame uniform updates are throttled, never the render itself.
       const nowMs = performance.now();
-      if (nowMs - lastRenderMs < FRAME_MS) {
-        scheduleRepaint();
-        return;
-      }
-      lastRenderMs = nowMs;
-      clock.getDelta();
-      const elapsed = clock.elapsedTime;
-      // Shared, layer-independent wave clock so the surface and the boats
-      // (Model3DLayer) evaluate the identical wave field at the identical t.
-      const waveTime = waterTimeSeconds();
+      if (nowMs - lastRenderMs >= FRAME_MS) {
+        lastRenderMs = nowMs;
+        clock.getDelta();
+        const elapsed = clock.elapsedTime;
+        // Shared, layer-independent wave clock so the surface and the boats
+        // (Model3DLayer) evaluate the identical wave field at the identical t.
+        const waveTime = waterTimeSeconds();
 
-      // Camera position in local metres space, for Fresnel + specular.
-      const cam = map.getFreeCameraOptions().position;
-      if (cam) {
-        camMercator.set(cam.x, cam.y, cam.z);
-        camLocal.set(
-          (camMercator.x - ref.x) / ref.scale,
-          (camMercator.y - ref.y) / ref.scale,
-          (camMercator.z - ref.z) / ref.scale,
-        );
-      }
+        // Camera position in local metres space, for Fresnel + specular.
+        const cam = map.getFreeCameraOptions().position;
+        if (cam) {
+          camMercator.set(cam.x, cam.y, cam.z);
+          camLocal.set(
+            (camMercator.x - ref.x) / ref.scale,
+            (camMercator.y - ref.y) / ref.scale,
+            (camMercator.z - ref.z) / ref.scale,
+          );
+        }
 
-      for (const material of waterMaterials) {
-        material.uniforms.uTime.value = waveTime;
-        (material.uniforms.uCamLocal.value as THREE.Vector3).copy(camLocal);
-      }
+        for (const material of waterMaterials) {
+          material.uniforms.uTime.value = waveTime;
+          (material.uniforms.uCamLocal.value as THREE.Vector3).copy(camLocal);
+        }
 
-      if (shoreMaterial) {
-        shoreMaterial.uniforms.uTime.value = elapsed;
-        shoreMaterial.uniforms.uGeneration.value = Math.floor(elapsed / shoreCfg.cycleSeconds);
-        shoreMaterial.uniforms.uCycleSeconds.value = shoreCfg.cycleSeconds;
-        shoreMaterial.uniforms.uWidthScale.value = getShoreWaveWidthMeters(map.getZoom()) / 18;
+        if (shoreMaterial) {
+          shoreMaterial.uniforms.uTime.value = elapsed;
+          shoreMaterial.uniforms.uGeneration.value = Math.floor(elapsed / shoreCfg.cycleSeconds);
+          shoreMaterial.uniforms.uCycleSeconds.value = shoreCfg.cycleSeconds;
+          shoreMaterial.uniforms.uWidthScale.value = getShoreWaveWidthMeters(map.getZoom()) / 18;
+        }
       }
 
       const mArr = extractProjectionMatrix(matrix);

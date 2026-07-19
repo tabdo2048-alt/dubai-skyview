@@ -149,45 +149,45 @@ export function createVesselLayer(
 
     render(_gl: WebGLRenderingContext, matrix: unknown) {
       if (!renderer || (controller && !controller.shouldRender())) return;
-      // Frame cap: render() also fires when the sibling water layer or a
-      // pan/zoom repaints the map, so gate the heavy Three render to ~30fps
-      // here (not just at the repaint call) or the caps would cancel out.
+      // Frame cap: advance vessel motion at ~30fps to spare weak GPUs, but
+      // ALWAYS draw the scene below. render() also fires on externally driven
+      // repaints (the roads reveal, pan/zoom, tile loads, the sibling water
+      // layer); skipping the draw on those frames would blink the vessels out,
+      // so only the per-frame position update is throttled, never the render.
       const nowMs = performance.now();
-      if (nowMs - lastRenderMs < FRAME_MS) {
-        scheduleRepaint();
-        return;
-      }
-      lastRenderMs = nowMs;
+      if (nowMs - lastRenderMs >= FRAME_MS) {
+        lastRenderMs = nowMs;
 
-      const t = waterTimeSeconds();
+        const t = waterTimeSeconds();
 
-      for (const v of vessels) {
-        // Distance travelled in metres → fraction along the lane, so speed is a
-        // real m/s independent of the lane's length.
-        const dist = (v.offset * v.lengthM + v.speedMps * t) % v.lengthM;
-        let d = dist / v.lengthM;
-        if (d < 0) d += 1;
-        const ahead = (d + 8 / v.lengthM) % 1; // look ~8 m ahead for heading
+        for (const v of vessels) {
+          // Distance travelled in metres → fraction along the lane, so speed is
+          // a real m/s independent of the lane's length.
+          const dist = (v.offset * v.lengthM + v.speedMps * t) % v.lengthM;
+          let d = dist / v.lengthM;
+          if (d < 0) d += 1;
+          const ahead = (d + 8 / v.lengthM) % 1; // look ~8 m ahead for heading
 
-        const cur = pointAlongPath(v.route, d).coord;
-        const nxt = pointAlongPath(v.route, ahead).coord;
-        lngLatToLocal(cur[0], cur[1], ref, 0, pos);
-        lngLatToLocal(nxt[0], nxt[1], ref, 0, posAhead);
+          const cur = pointAlongPath(v.route, d).coord;
+          const nxt = pointAlongPath(v.route, ahead).coord;
+          lngLatToLocal(cur[0], cur[1], ref, 0, pos);
+          lngLatToLocal(nxt[0], nxt[1], ref, 0, posAhead);
 
-        // Heading from LOCAL-space deltas (mercator Y points south, so lng/lat
-        // deltas would give the wrong sign). Model forward = +X.
-        const yaw = Math.atan2(posAhead.y - pos.y, posAhead.x - pos.x);
+          // Heading from LOCAL-space deltas (mercator Y points south, so lng/lat
+          // deltas would give the wrong sign). Model forward = +X.
+          const yaw = Math.atan2(posAhead.y - pos.y, posAhead.x - pos.x);
 
-        // Float on the visible surface: z = wave height, deck tips to the normal.
-        sampleWaterWave(pos.x, pos.y, t, v.intensity, wave);
-        pos.z = wave.height;
+          // Float on the visible surface: z = wave height, deck tips to normal.
+          sampleWaterWave(pos.x, pos.y, t, v.intensity, wave);
+          pos.z = wave.height;
 
-        qYaw.setFromAxisAngle(zAxis, yaw);
-        qTilt.setFromUnitVectors(upAxis, wave.normal);
-        qOut.copy(qTilt).multiply(qYaw); // yaw first, then tip to the wave
+          qYaw.setFromAxisAngle(zAxis, yaw);
+          qTilt.setFromUnitVectors(upAxis, wave.normal);
+          qOut.copy(qTilt).multiply(qYaw); // yaw first, then tip to the wave
 
-        scaleVec.set(v.sizeScale, v.sizeScale, v.sizeScale);
-        v.mesh.matrix.compose(pos, qOut, scaleVec);
+          scaleVec.set(v.sizeScale, v.sizeScale, v.sizeScale);
+          v.mesh.matrix.compose(pos, qOut, scaleVec);
+        }
       }
 
       const mArr = extractProjectionMatrix(matrix);
