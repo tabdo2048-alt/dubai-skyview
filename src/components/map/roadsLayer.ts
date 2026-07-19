@@ -18,28 +18,42 @@ export const ROADS_LABEL_ID = "roads-name-label";
 const LINE_OPACITY = 0.9;
 const REVEAL_MS = 950;
 
-// Muted 3-tone scheme by importance: gold highways, green arterials, blue minor.
+// Saturated 3-tone scheme by importance: orange-gold highways, green arterials,
+// blue collectors. Only MAIN classes are drawn (see MAIN_ROADS filter) so there
+// are no residential "streets between homes" and no ferry lines over water.
 const CLASS_COLOR = [
   "match",
   ["get", "class"],
-  "motorway", "#e0b34d",
-  "motorway_link", "#e0b34d",
-  "trunk", "#e0b34d",
-  "trunk_link", "#e0b34d",
-  "primary", "#e0b34d", // gold — major roads
-  "primary_link", "#e0b34d",
-  "secondary", "#86b96a", // green — arterials
-  "secondary_link", "#86b96a",
-  "tertiary", "#86bbd8", // light blue
-  "tertiary_link", "#86bbd8",
-  "street", "#86bbd8",
-  "street_limited", "#86bbd8",
-  "service", "#86bbd8",
-  "track", "#86bbd8",
-  "pedestrian", "#5b8fb9", // deeper blue — paths
-  "path", "#5b8fb9",
-  /* other */ "#86bbd8",
+  "motorway", "#ff7a00", // vivid orange — highways
+  "motorway_link", "#ff7a00",
+  "trunk", "#ff9500",
+  "trunk_link", "#ff9500",
+  "primary", "#ffc400", // vivid gold — major roads
+  "primary_link", "#ffc400",
+  "secondary", "#22c55e", // vivid green — arterials
+  "secondary_link", "#22c55e",
+  "tertiary", "#1e90ff", // vivid blue — collectors
+  "tertiary_link", "#1e90ff",
+  /* other (filtered out anyway) */ "#1e90ff",
 ] as unknown as Expr;
+
+// Main roads only — matches the reference map: motorways/trunks/primaries down
+// to tertiary collectors, but NO street/street_limited/service/track/path/ferry.
+// Excluding ferry (and the minor classes) is what removes the stray line the
+// user saw crossing the sea.
+const MAIN_ROADS = [
+  "match",
+  ["get", "class"],
+  [
+    "motorway", "motorway_link",
+    "trunk", "trunk_link",
+    "primary", "primary_link",
+    "secondary", "secondary_link",
+    "tertiary", "tertiary_link",
+  ],
+  true,
+  false,
+] as unknown as mapboxgl.FilterSpecification;
 
 // Zoom → width stops; the reveal scales these by progress for the grow-in.
 const WIDTH_STOPS: [number, number][] = [
@@ -75,6 +89,7 @@ export function addRoadsLayers(map: mapboxgl.Map): void {
     type: "line",
     source: ROADS_SOURCE_ID,
     "source-layer": "road",
+    filter: MAIN_ROADS,
     layout: { visibility: "none", "line-cap": "round", "line-join": "round" },
     paint: {
       "line-color": CLASS_COLOR,
@@ -88,6 +103,7 @@ export function addRoadsLayers(map: mapboxgl.Map): void {
     type: "symbol",
     source: ROADS_SOURCE_ID,
     "source-layer": "road",
+    filter: MAIN_ROADS,
     layout: {
       visibility: "none",
       "symbol-placement": "line",

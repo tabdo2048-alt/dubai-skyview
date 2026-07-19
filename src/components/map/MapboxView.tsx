@@ -10,7 +10,6 @@ import {
   type MetroLine,
 } from "@/lib/metro";
 import { createWaterLayer, setWaterMaskDebug } from "./WaterLayer";
-import { createVesselLayer } from "./VesselLayer";
 import { addRoadsLayers, setRoadsVisible } from "./roadsLayer";
 import type { ProjectWithRelations } from "@/lib/types";
 import { useFiltersStore } from "@/store/filters";
@@ -428,7 +427,6 @@ export function MapboxView({
       deferredLayerTimeoutsRef.current.push(timeout);
     };
     schedule(delays[0], () => addWaterLayer(map));
-    schedule(delays[1], () => addVesselLayer(map));
     schedule(delays[2], () => logCustomLayerOrder(map));
   }
 
@@ -446,16 +444,6 @@ export function MapboxView({
       console.log("[Water] layer added");
     } catch (err) {
       console.error("Failed to add water wave layer", err);
-    }
-  }
-
-  function addVesselLayer(map: mapboxgl.Map) {
-    if (map.getLayer("dubai-vessels-3d")) return;
-    try {
-      map.addLayer(createVesselLayer(makeRenderController(), mode));
-      console.log("[Vessels] layer added");
-    } catch (err) {
-      console.error("Failed to add vessel layer", err);
     }
   }
 
