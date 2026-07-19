@@ -49,7 +49,6 @@ const MAIN_ROADS = [
     "trunk", "trunk_link",
     "primary", "primary_link",
     "secondary", "secondary_link",
-    "tertiary", "tertiary_link",
   ],
   true,
   false,

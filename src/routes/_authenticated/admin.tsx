@@ -105,6 +105,110 @@ function AdminPage() {
             </div>
           ))}
         </div>
+
+        <DeveloperManager />
+      </div>
+    </div>
+  );
+}
+
+type DeveloperRow = { id: string; name: string; slug: string; website: string | null; logo_url: string | null; description: string | null };
+
+function DeveloperManager() {
+  const { data: developers = [] } = useDevelopers();
+  const qc = useQueryClient();
+  const empty = { name: "", slug: "", website: "", logo_url: "", description: "" };
+  const [editId, setEditId] = useState<string | null>(null);
+  const [form, setForm] = useState(empty);
+  const [saving, setSaving] = useState(false);
+
+  const startEdit = (d: DeveloperRow) => {
+    setEditId(d.id);
+    setForm({
+      name: d.name,
+      slug: d.slug,
+      website: d.website ?? "",
+      logo_url: d.logo_url ?? "",
+      description: d.description ?? "",
+    });
+  };
+  const reset = () => { setEditId(null); setForm(empty); };
+
+  const refresh = () => { qc.invalidateQueries({ queryKey: ["developers"] }); };
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.name.trim()) return toast.error("Name is required");
+    setSaving(true);
+    try {
+      const payload = {
+        name: form.name.trim(),
+        slug: form.slug.trim() || form.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
+        website: form.website.trim() || null,
+        logo_url: form.logo_url.trim() || null,
+        description: form.description.trim() || null,
+      };
+      if (editId) {
+        const { error } = await supabase.from("developers").update(payload).eq("id", editId);
+        if (error) throw error;
+        toast.success("Developer updated");
+      } else {
+        const { error } = await supabase.from("developers").insert(payload);
+        if (error) throw error;
+        toast.success("Developer added");
+      }
+      reset();
+      refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const del = async (d: DeveloperRow) => {
+    if (!confirm(`Delete developer "${d.name}"?`)) return;
+    const { error } = await supabase.from("developers").delete().eq("id", d.id);
+    if (error) return toast.error(error.message);
+    toast.success("Developer deleted");
+    if (editId === d.id) reset();
+    refresh();
+  };
+
+  return (
+    <div className="mt-10">
+      <h2 className="font-display text-3xl text-cream">Developers</h2>
+
+      <form onSubmit={save} className="glass-strong gold-hairline mt-4 grid gap-3 rounded-2xl p-5 sm:grid-cols-2">
+        <Field label="Name"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></Field>
+        <Field label="Slug (optional)"><Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} /></Field>
+        <Field label="Website"><Input value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} placeholder="https://" /></Field>
+        <Field label="Logo URL"><Input value={form.logo_url} onChange={(e) => setForm({ ...form, logo_url: e.target.value })} placeholder="https://" /></Field>
+        <div className="sm:col-span-2">
+          <Field label="Description"><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2} /></Field>
+        </div>
+        <div className="flex gap-2 sm:col-span-2">
+          <Button type="submit" disabled={saving} className="bg-gold text-gold-foreground hover:bg-gold/90">
+            {editId ? "Update developer" : "Add developer"}
+          </Button>
+          {editId && <Button type="button" variant="ghost" onClick={reset} className="text-muted-foreground">Cancel</Button>}
+        </div>
+      </form>
+
+      <div className="mt-4 grid gap-2">
+        {developers.map((d) => (
+          <div key={d.id} className="glass gold-hairline flex items-center gap-3 rounded-2xl p-3">
+            <div className="h-10 w-10 overflow-hidden rounded-md bg-muted">
+              {d.logo_url && <img src={d.logo_url} alt="" className="h-full w-full object-cover" />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-display text-lg text-cream">{d.name}</div>
+              <div className="truncate text-xs text-muted-foreground">{d.slug}{d.website ? ` · ${d.website}` : ""}</div>
+            </div>
+            <Button size="icon" variant="ghost" onClick={() => startEdit(d as DeveloperRow)}><Edit3 className="h-4 w-4 text-cream" /></Button>
+            <Button size="icon" variant="ghost" onClick={() => del(d as DeveloperRow)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+          </div>
+        ))}
       </div>
     </div>
   );

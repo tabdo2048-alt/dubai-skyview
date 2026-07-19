@@ -1143,12 +1143,17 @@ export function createWaterLayer(
   let ref: MercatorRef;
   let clock: THREE.Clock;
   let onResize: (() => void) | null = null;
+  let onMove: (() => void) | null = null;
   let onMaskDebugClick: ((e: mapboxgl.MapMouseEvent) => void) | null = null;
   let unsubscribeMaskDebug: (() => void) | null = null;
   let shoreMesh: THREE.Mesh | null = null;
   let shoreMaterial: THREE.ShaderMaterial | null = null;
   let firstFrameLogged = false;
   let projectionWarned = false;
+  // Last valid projection matrix. If Mapbox hands a frame without one (can happen
+  // mid zoom/move on some builds), we reuse this instead of skipping the draw —
+  // skipping is exactly what made the water blink out for a frame during zoom.
+  let lastGoodMatrix: number[] | null = null;
 
   // Cap the self-driven wave animation to ~30fps. Mapbox coalesces repaint
   // requests, so scheduling the next frame through a timer (instead of an
@@ -1209,6 +1214,17 @@ export function createWaterLayer(
       console.log("[Water] shared renderer acquired");
       onResize = () => syncSharedRendererSize(map.getCanvas());
       map.on("resize", onResize);
+
+      // Keep the water repainting throughout AND right after a camera move.
+      // Mapbox stops its own repaints the instant a zoom/pan settles; on a weak
+      // GPU the layer's next self-scheduled frame can lag, leaving the water
+      // momentarily unpainted (the "disappears for part of a second" on zoom).
+      // Pulsing a repaint on every move event + at moveend closes that gap.
+      onMove = () => scheduleRepaint();
+      map.on("move", onMove);
+      map.on("zoom", onMove);
+      map.on("moveend", onMove);
+      map.on("zoomend", onMove);
 
       // Apply a mask-debug enabled/disabled state to this layer's objects and
       // its console click-logger. Called on init and whenever the runtime flag
@@ -1421,7 +1437,7 @@ export function createWaterLayer(
         }
       }
 
-      const mArr = extractProjectionMatrix(matrix);
+      const mArr = extractProjectionMatrix(matrix) ?? lastGoodMatrix;
       if (!mArr) {
         if (!projectionWarned) {
           console.warn(
@@ -1433,6 +1449,7 @@ export function createWaterLayer(
         scheduleRepaint();
         return;
       }
+      lastGoodMatrix = mArr;
 
       mercatorScale.set(ref.scale, ref.scale, ref.scale);
       localToMercator.makeTranslation(ref.x, ref.y, ref.z).scale(mercatorScale);
@@ -1458,6 +1475,13 @@ export function createWaterLayer(
       }
       if (onResize) map.off("resize", onResize);
       onResize = null;
+      if (onMove) {
+        map.off("move", onMove);
+        map.off("zoom", onMove);
+        map.off("moveend", onMove);
+        map.off("zoomend", onMove);
+      }
+      onMove = null;
       if (unsubscribeMaskDebug) unsubscribeMaskDebug();
       unsubscribeMaskDebug = null;
       if (onMaskDebugClick) map.off("click", onMaskDebugClick);
