@@ -1115,7 +1115,7 @@ export const IMPORTED_RAIL_LINES: MetroLine[] = [
     // stub. Regenerate: Overpass main-line query stitched by scripts (see
     // scratchpad stitch2.mjs / rdp.mjs).
     path: [
-      [55.08089, 24.7869],
+      [55.08377, 24.79],
       [55.09045, 24.79719],
       [55.09491, 24.80124],
       [55.14779, 24.83555],
@@ -1159,8 +1159,7 @@ export const IMPORTED_RAIL_LINES: MetroLine[] = [
       [55.61639, 25.18173],
       [55.62796, 25.19666],
       [55.63723, 25.20724],
-      [55.65815, 25.25166],
-      [55.66545, 25.26259],
+      [55.65, 25.23436],
     ],
     stations: [
 
