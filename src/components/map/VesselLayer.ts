@@ -67,6 +67,23 @@ export function createVesselLayer(
   let projectionWarned = false;
   const vessels: Vessel[] = [];
 
+  // Cap the self-driven animation loop to ~30fps. Mapbox coalesces repaint
+  // requests, so scheduling the next frame through a timer (instead of an
+  // immediate triggerRepaint every rendered frame) halves the idle GPU load on
+  // weak hardware while keeping the wave/vessel motion smooth. Interaction-
+  // driven repaints (pan/zoom, tile loads) are unaffected and stay at 60fps.
+  const FRAME_MS = 1000 / 30;
+  let repaintScheduled = false;
+  let lastRenderMs = 0;
+  const scheduleRepaint = () => {
+    if (repaintScheduled || disposed) return;
+    repaintScheduled = true;
+    window.setTimeout(() => {
+      repaintScheduled = false;
+      if (!disposed) map.triggerRepaint();
+    }, FRAME_MS);
+  };
+
   // Per-frame scratch — allocate once, never in the render loop.
   const localToMercator = new THREE.Matrix4();
   const projectionMatrix = new THREE.Matrix4();
@@ -132,6 +149,15 @@ export function createVesselLayer(
 
     render(_gl: WebGLRenderingContext, matrix: unknown) {
       if (!renderer || (controller && !controller.shouldRender())) return;
+      // Frame cap: render() also fires when the sibling water layer or a
+      // pan/zoom repaints the map, so gate the heavy Three render to ~30fps
+      // here (not just at the repaint call) or the caps would cancel out.
+      const nowMs = performance.now();
+      if (nowMs - lastRenderMs < FRAME_MS) {
+        scheduleRepaint();
+        return;
+      }
+      lastRenderMs = nowMs;
 
       const t = waterTimeSeconds();
 
@@ -170,7 +196,7 @@ export function createVesselLayer(
           console.warn("[Vessels] projection matrix unavailable");
           projectionWarned = true;
         }
-        map.triggerRepaint();
+        scheduleRepaint();
         return;
       }
 
@@ -187,7 +213,7 @@ export function createVesselLayer(
         console.log("[Vessels] first frame rendered");
         firstFrameLogged = true;
       }
-      map.triggerRepaint();
+      scheduleRepaint();
     },
 
     onRemove() {

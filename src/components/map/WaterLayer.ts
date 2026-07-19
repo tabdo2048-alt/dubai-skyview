@@ -1149,6 +1149,24 @@ export function createWaterLayer(
   let shoreMaterial: THREE.ShaderMaterial | null = null;
   let firstFrameLogged = false;
   let projectionWarned = false;
+
+  // Cap the self-driven wave animation to ~30fps. Mapbox coalesces repaint
+  // requests, so scheduling the next frame through a timer (instead of an
+  // immediate triggerRepaint every rendered frame) halves the idle GPU load on
+  // weak hardware while keeping the swell motion smooth. Interaction-driven
+  // repaints (pan/zoom, tile loads) are unaffected and stay at 60fps.
+  const FRAME_MS = 1000 / 30;
+  let repaintScheduled = false;
+  let lastRenderMs = 0;
+  const scheduleRepaint = () => {
+    if (repaintScheduled || disposed) return;
+    repaintScheduled = true;
+    window.setTimeout(() => {
+      repaintScheduled = false;
+      if (!disposed) map.triggerRepaint();
+    }, FRAME_MS);
+  };
+
   const localToMercator = new THREE.Matrix4();
   const projectionMatrix = new THREE.Matrix4();
   const mercatorScale = new THREE.Vector3();
@@ -1364,6 +1382,15 @@ export function createWaterLayer(
 
     render(_gl: WebGLRenderingContext, matrix: unknown) {
       if (!renderer || (controller && !controller.shouldRender())) return;
+      // Frame cap: render() also fires when the sibling vessel layer or a
+      // pan/zoom repaints the map, so gate the heavy Three render to ~30fps
+      // here (not just at the repaint call) or the caps would cancel out.
+      const nowMs = performance.now();
+      if (nowMs - lastRenderMs < FRAME_MS) {
+        scheduleRepaint();
+        return;
+      }
+      lastRenderMs = nowMs;
       clock.getDelta();
       const elapsed = clock.elapsedTime;
       // Shared, layer-independent wave clock so the surface and the boats
@@ -1402,7 +1429,7 @@ export function createWaterLayer(
           );
           projectionWarned = true;
         }
-        map.triggerRepaint();
+        scheduleRepaint();
         return;
       }
 
@@ -1419,7 +1446,7 @@ export function createWaterLayer(
         console.log("[Water] first frame rendered");
         firstFrameLogged = true;
       }
-      map.triggerRepaint();
+      scheduleRepaint();
     },
 
     onRemove() {
