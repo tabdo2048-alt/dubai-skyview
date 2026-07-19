@@ -17,6 +17,21 @@ import { formatAed } from "@/lib/dubai";
 
 const PROJECT_MEDIA_BUCKET = "project-media";
 
+// Supabase errors (Postgrest/Storage) are plain objects, not Error instances, so
+// `err instanceof Error` misses them and the UI would just say "Save failed".
+// Pull the real message out of whatever shape the error is.
+function errMsg(err: unknown, fallback = "Save failed"): string {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === "object") {
+    const e = err as Record<string, unknown>;
+    const parts = [e.message, e.error_description, e.error, e.details, e.hint]
+      .filter((v) => typeof v === "string" && v)
+      .map(String);
+    if (parts.length) return parts.join(" — ");
+  }
+  return fallback;
+}
+
 export const Route = createFileRoute("/_authenticated/admin")({
   component: AdminPage,
 });
@@ -160,7 +175,7 @@ function DeveloperManager() {
       reset();
       refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Save failed");
+      toast.error(errMsg(err));
     } finally {
       setSaving(false);
     }
@@ -370,7 +385,7 @@ function ProjectForm({ id, onClose }: { id: string | null; onClose: () => void }
       toast.success(isEditing ? "Project updated" : "Project created");
       onClose();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Save failed");
+      toast.error(errMsg(err));
     } finally {
       setSaving(false);
     }
