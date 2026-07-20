@@ -62,6 +62,50 @@ const TRAIN_MARKER_SVG = `
   <circle cx="15.5" cy="15" r="1"/>
 </svg>`;
 
+// Building glyph shown inside the liquid-glass project markers.
+const PROJECT_ICON_SVG = `
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M3 21h18"/>
+  <path d="M6 21V7l6-4 6 4v14"/>
+  <path d="M10 12h3"/>
+  <path d="M10 16h3"/>
+</svg>`;
+
+// Liquid-glass project marker: a frosted pill (name + building glyph) that lifts,
+// glows gold and sweeps a specular sheen on hover. Injected once, on first use.
+const PROJECT_MARKER_CSS = `
+.proj-marker{display:flex;align-items:center;gap:7px;padding:4px 12px 4px 4px;border-radius:9999px;
+  background:linear-gradient(135deg,rgba(255,255,255,.22),rgba(255,255,255,.07));
+  -webkit-backdrop-filter:blur(14px) saturate(1.6);backdrop-filter:blur(14px) saturate(1.6);
+  border:1px solid rgba(255,255,255,.35);
+  box-shadow:0 6px 22px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.55),inset 0 -6px 14px rgba(255,255,255,.05);
+  color:#fff;font:600 12px/1 'Work Sans',Arial,sans-serif;letter-spacing:.2px;white-space:nowrap;
+  cursor:pointer;position:relative;overflow:hidden;transform:translateZ(0);
+  transition:transform .35s cubic-bezier(.2,.9,.25,1),box-shadow .35s ease,border-color .35s ease}
+.proj-marker .proj-dot{width:22px;height:22px;flex:none;border-radius:9999px;display:grid;place-items:center;
+  color:#fff;background:linear-gradient(135deg,#0d7a5f,#c9a84c);
+  box-shadow:0 0 0 1px rgba(255,255,255,.5),0 2px 6px rgba(0,0,0,.3);transition:box-shadow .35s ease}
+.proj-marker .proj-dot svg{width:12px;height:12px}
+.proj-marker .proj-nm{max-width:170px;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 3px rgba(0,0,0,.55)}
+.proj-marker::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(120deg,transparent 35%,rgba(255,255,255,.55) 50%,transparent 65%);transform:translateX(-130%)}
+.proj-marker:hover{transform:scale(1.08);border-color:rgba(255,255,255,.65);
+  box-shadow:0 12px 32px rgba(0,0,0,.45),0 0 22px rgba(201,168,76,.55),inset 0 1px 0 rgba(255,255,255,.7)}
+.proj-marker:hover::after{animation:proj-sheen .85s ease}
+.proj-marker:hover .proj-dot{box-shadow:0 0 0 1px rgba(255,255,255,.7),0 0 12px rgba(201,168,76,.8)}
+.proj-marker.selected{transform:scale(1.12);border-color:#c9a84c;
+  box-shadow:0 0 26px rgba(201,168,76,.9),inset 0 1px 0 rgba(255,255,255,.7)}
+@keyframes proj-sheen{to{transform:translateX(130%)}}
+@media (prefers-reduced-motion:reduce){.proj-marker{transition:none}.proj-marker:hover::after{animation:none}}`;
+
+function ensureProjectMarkerStyles() {
+  if (typeof document === "undefined" || document.getElementById("proj-marker-style")) return;
+  const s = document.createElement("style");
+  s.id = "proj-marker-style";
+  s.textContent = PROJECT_MARKER_CSS;
+  document.head.appendChild(s);
+}
+
 const DRAW_DURATION = 2400; // ms per line's draw animation
 const LINE_STAGGER = 350; // ms delay between each line starting to draw
 
@@ -1249,12 +1293,15 @@ export function MapboxView({
     if (!map) return;
     const existing = markersRef.current;
     const seen = new Set<string>();
+    ensureProjectMarkerStyles();
     for (const p of projects) {
       seen.add(p.id);
       if (existing.has(p.id)) continue;
       const el = document.createElement("div");
-      el.className = "cursor-pointer";
-      el.innerHTML = `<div style="width:34px;height:34px;border-radius:9999px;border:2px solid rgba(255,255,255,0.92);background:linear-gradient(135deg,#0d7a5f,#c9a84c);box-shadow:0 4px 18px rgba(0,0,0,0.35),0 0 0 2px rgba(201,168,76,0.35);display:grid;place-items:center;color:#ffffff;font:800 11px/1 Work Sans,Arial,sans-serif;letter-spacing:0;">SN</div>`;
+      el.className = "proj-marker";
+      el.innerHTML = `<span class="proj-dot">${PROJECT_ICON_SVG}</span><span class="proj-nm"></span>`;
+      const nm = el.querySelector(".proj-nm");
+      if (nm) nm.textContent = p.name; // textContent — never inject the name as HTML
       el.onclick = () => setSelectedProjectId(p.id);
       const m = new mapboxgl.Marker({ element: el }).setLngLat([p.lng, p.lat]).addTo(map);
       existing.set(p.id, m);
@@ -1267,17 +1314,10 @@ export function MapboxView({
     }
   }, [projects, setSelectedProjectId]);
 
-  // Highlight selected
+  // Highlight selected — toggle the .selected class (styling lives in CSS).
   useEffect(() => {
     for (const [id, m] of markersRef.current.entries()) {
-      const el = m.getElement().firstElementChild as HTMLElement | null;
-      if (!el) continue;
-      const selected = id === selectedProjectId;
-      el.style.transform = selected ? "scale(1.35)" : "scale(1)";
-      el.style.boxShadow = selected
-        ? "0 0 24px rgba(251,191,36,0.9)"
-        : "0 4px 18px rgba(0,0,0,0.35)";
-      el.style.background = selected ? "#c9a84c" : "rgba(6,78,59,0.92)";
+      m.getElement().classList.toggle("selected", id === selectedProjectId);
     }
   }, [selectedProjectId]);
 
