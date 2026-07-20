@@ -74,25 +74,22 @@ const PROJECT_ICON_SVG = `
 // Liquid-glass project marker: a frosted pill (name + building glyph) that lifts,
 // glows gold and sweeps a specular sheen on hover. Injected once, on first use.
 const PROJECT_MARKER_CSS = `
-.proj-marker{display:flex;align-items:center;gap:7px;padding:4px 12px 4px 4px;border-radius:9999px;
+.proj-marker{display:grid;place-items:center;width:44px;height:44px;padding:0 6px;border-radius:9999px;
   background:linear-gradient(135deg,rgba(255,255,255,.22),rgba(255,255,255,.07));
   -webkit-backdrop-filter:blur(14px) saturate(1.6);backdrop-filter:blur(14px) saturate(1.6);
   border:1px solid rgba(255,255,255,.35);
   box-shadow:0 6px 22px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.55),inset 0 -6px 14px rgba(255,255,255,.05);
-  color:#fff;font:600 12px/1 'Work Sans',Arial,sans-serif;letter-spacing:.2px;white-space:nowrap;
+  color:#fff;font:600 9px/1.05 'Work Sans',Arial,sans-serif;letter-spacing:.2px;
   cursor:pointer;position:relative;overflow:hidden;transform:translateZ(0);
   transition:transform .35s cubic-bezier(.2,.9,.25,1),box-shadow .35s ease,border-color .35s ease}
-.proj-marker .proj-dot{width:20px;height:20px;flex:none;border-radius:6px;display:grid;place-items:center;
-  color:#fff;background:linear-gradient(135deg,#0d7a5f,#c9a84c);
-  box-shadow:0 0 0 1px rgba(255,255,255,.5),0 2px 6px rgba(0,0,0,.3);transition:box-shadow .35s ease}
-.proj-marker .proj-dot svg{width:12px;height:12px}
-.proj-marker .proj-nm{max-width:170px;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 3px rgba(0,0,0,.55)}
+.proj-marker .proj-dot{display:none}
+.proj-marker .proj-nm{width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;
+  text-shadow:0 1px 3px rgba(0,0,0,.55)}
 .proj-marker::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
   background:linear-gradient(120deg,transparent 35%,rgba(255,255,255,.55) 50%,transparent 65%);transform:translateX(-130%)}
 .proj-marker:hover{transform:scale(1.08);border-color:rgba(255,255,255,.65);
   box-shadow:0 12px 32px rgba(0,0,0,.45),0 0 22px rgba(201,168,76,.55),inset 0 1px 0 rgba(255,255,255,.7)}
 .proj-marker:hover::after{animation:proj-sheen .85s ease}
-.proj-marker:hover .proj-dot{box-shadow:0 0 0 1px rgba(255,255,255,.7),0 0 12px rgba(201,168,76,.8)}
 .proj-marker.selected{transform:scale(1.12);border-color:#c9a84c;
   box-shadow:0 0 26px rgba(201,168,76,.9),inset 0 1px 0 rgba(255,255,255,.7)}
 @keyframes proj-sheen{to{transform:translateX(130%)}}
@@ -484,22 +481,24 @@ export function MapboxView({
   function addWaterLayer(map: mapboxgl.Map) {
     if (map.getLayer("dubai-water-3d")) return;
     try {
-      if (mode === "satellite") console.log("[Water] satellite layer requested");
+      if (import.meta.env.DEV && mode === "satellite") console.log("[Water] satellite layer requested");
       map.addLayer(createWaterLayer(makeRenderController(), mode));
-      console.log("[Water] layer added");
+      if (import.meta.env.DEV) console.log("[Water] layer added");
     } catch (err) {
       console.error("Failed to add water wave layer", err);
     }
   }
 
   function logCustomLayerOrder(map: mapboxgl.Map) {
-    console.log(
-      "[MapLayers] custom layer order",
-      map
-        .getStyle()
-        .layers?.filter((layer) => layer.id === "dubai-water-3d")
-        .map((layer) => layer.id),
-    );
+    if (import.meta.env.DEV) {
+      console.log(
+        "[MapLayers] custom layer order",
+        map
+          .getStyle()
+          .layers?.filter((layer) => layer.id === "dubai-water-3d")
+          .map((layer) => layer.id),
+      );
+    }
   }
 
   // A station is shown when its network's reveal threshold has passed its
@@ -1299,7 +1298,7 @@ export function MapboxView({
       if (existing.has(p.id)) continue;
       const el = document.createElement("div");
       el.className = "proj-marker";
-      el.innerHTML = `<span class="proj-dot">${PROJECT_ICON_SVG}</span><span class="proj-nm"></span>`;
+      el.innerHTML = `<span class="proj-nm"></span>`;
       const nm = el.querySelector(".proj-nm");
       if (nm) nm.textContent = p.name; // textContent — never inject the name as HTML
       el.onclick = () => setSelectedProjectId(p.id);
