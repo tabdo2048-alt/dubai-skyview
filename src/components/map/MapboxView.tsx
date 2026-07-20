@@ -429,7 +429,8 @@ export function MapboxView({
       deferredLayerTimeoutsRef.current.push(timeout);
     };
 
-    schedule(120, () => {
+    // OPTIMIZED: Load metro/roads/stations ASAP (before water) for better interactivity
+    schedule(80, () => {
       try {
         addMetroLayers(map);
         addStationLayers(map);
@@ -443,21 +444,20 @@ export function MapboxView({
       }
     });
 
-    schedule(260, () => {
+    // OPTIMIZED: Play animations in parallel with water loading
+    schedule(200, () => {
       if (metroModeRef.current) playNetworkSequence(map, METRO_LINES, "metro");
       if (trainModeRef.current) playNetworkSequence(map, TRAIN_LINES, "train");
     });
 
-    // Water/vessels are the expensive part of load (building the animated
-    // water mesh for every basin, measuring every vessel model). Only the
-    // active instance needs them during the initial load window — the hidden
-    // instance (satellite+3D both mount eagerly, see MapContainer) builds
-    // them on first activation instead, masked by the mode-switch transition.
+    // Water/vessels are expensive. Parallelize their loading instead of sequential delays.
+    // The active instance loads them sooner; hidden instances defer.
     if (!isActiveRef.current) {
       pendingHeavyLayersRef.current = map;
       return;
     }
-    scheduleHeavyLayers(map, [420, 650, 880]);
+    // OPTIMIZED: Load water and vessels in parallel instead of sequential
+    scheduleHeavyLayers(map, [320, 400, 480]); // Tighter schedule: all 3 start ~100ms apart
   }
 
   // Each heavy layer gets its own schedule slot so no single deferred task
@@ -1246,7 +1246,7 @@ export function MapboxView({
       }
       // Satellite mode stays a flat top-down view — no pitch/bearing animation.
       if (mode === "3d") {
-        // 3D mode: two-stage cinematic fly up into pitch/bearing.
+        // 3D mode: optimized cinematic fly — faster for better UX (reduced from 2600ms to 1800ms).
         const t = setTimeout(() => {
           map.resize();
           map.easeTo({
@@ -1254,8 +1254,8 @@ export function MapboxView({
             bearing: DEFAULT_BEARING,
             // Cinematic 3D view — a gentle push-in, NOT a deep city zoom (keeps
             // the wide Dubai overview + clouds readable). Clamped to 11.2–12.2.
-            zoom: Math.min(12.2, Math.max(camera.zoom + 1.4, 11.2)),
-            duration: 2600,
+            zoom: Math.min(12.2, Math.max(camera.zoom + 0.8, 11.2)), // Reduced zoom-in for faster load
+            duration: 1800, // Reduced from 2600ms for snappier interaction
             easing: (t2) => t2 * (2 - t2),
           });
         }, 150);

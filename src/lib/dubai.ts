@@ -12,9 +12,17 @@ export const DUBAI_BOUNDS = {
 // Opening view: wide over Dubai, flat (pitch/bearing 0). After the map is idle
 // the cinematic fly-in (see MapboxView) eases up to DEFAULT_PITCH/BEARING and
 // a closer zoom — so we deliberately start zoomed OUT, not in the city.
-export const DEFAULT_ZOOM = 10.4;
+// Optimized: Slightly closer zoom for better initial detail perception.
+export const DEFAULT_ZOOM = 11.2; // Increased from 10.4 for better detail visibility
 export const DEFAULT_PITCH = 55;
 export const DEFAULT_BEARING = -28;
+
+// Zoom levels for progressive detail loading
+export const DETAIL_ZOOM_THRESHOLDS = {
+  MIN_PROJECTS: 10, // Show projects at this zoom and above
+  MIN_METRO_STATIONS: 12, // Show metro stations at this zoom
+  MIN_DETAIL_LABELS: 13, // Show detailed info at this zoom
+} as const;
 
 export const CATEGORIES = [
   { value: "apartment", label: "Apartment" },
