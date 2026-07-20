@@ -16,7 +16,8 @@ export const ROADS_LINE_ID = "roads-colored-line";
 export const ROADS_LABEL_ID = "roads-name-label";
 
 const LINE_OPACITY = 0.9;
-const REVEAL_MS = 950;
+// Roads draw themselves on over 5 seconds when toggled on.
+const REVEAL_MS = 5000;
 
 // Saturated 3-tone scheme by importance: orange-gold highways, green arterials,
 // blue collectors. Only MAIN classes are drawn (see MAIN_ROADS filter) so there
@@ -125,7 +126,8 @@ export function addRoadsLayers(map: mapboxgl.Map): void {
 const revealFrames = new WeakMap<mapboxgl.Map, number>();
 
 function setProgress(map: mapboxgl.Map, p: number): void {
-  const eased = 1 - (1 - p) * (1 - p); // ease-out quad
+  // ease-in-out cubic — slow start/end, so the 5s draw-on reads smoothly.
+  const eased = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
   if (map.getLayer(ROADS_LINE_ID)) {
     map.setPaintProperty(ROADS_LINE_ID, "line-width", widthExpr(eased));
     map.setPaintProperty(ROADS_LINE_ID, "line-opacity", LINE_OPACITY * eased);
