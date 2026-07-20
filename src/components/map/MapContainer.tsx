@@ -20,6 +20,7 @@ import { CloudLayer } from "./CloudLayer";
 import { ProjectPopup } from "./ProjectPopup";
 import { WaterDebugEditor } from "./WaterDebugEditor";
 import { shouldShowWaterDebugEditor } from "./waterDebugState";
+import { ROAD_GUIDE, setRouteHighlight } from "./roadsLayer";
 import { useMapConfig } from "@/hooks/use-map-config";
 import { useFiltersStore } from "@/store/filters";
 import { useProjects, filterProjects } from "@/hooks/use-projects";
@@ -73,6 +74,7 @@ export function MapContainer() {
   // Guide panel is expanded on desktop, collapsible on mobile (starts collapsed
   // under md via the `hidden md:block` body + this toggle for the mobile chevron).
   const [guideOpen, setGuideOpen] = useState(false);
+  const [roadsGuideOpen, setRoadsGuideOpen] = useState(false);
   // Track when the active map instance is ready (tiles + heavy layers loaded)
   const [mapReady, setMapReady] = useState(false);
   // Dev-only: the live map for the active view, handed to the Water Debug Editor.
@@ -247,15 +249,80 @@ export function MapContainer() {
         </div>
       )}
 
-      {/* Dubai Metro Guide — premium legend, only while metro mode plays */}
+      {/* Bottom-left guides — Roads + Metro legends stack when both are active */}
+      <div className="pointer-events-none absolute bottom-6 left-4 z-20 flex w-[230px] max-w-[calc(100vw-2rem)] flex-col gap-3">
+      {/* Dubai Roads Guide — metro-style legend; hovering a row lights that
+          road up on the map via the same eased glow as the cursor hover. */}
       <AnimatePresence>
-        {metroMode && (
+        {roadsMode && (
           <motion.div
+            key="roads-guide"
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
             transition={{ duration: 0.35, ease: "easeOut" }}
-            className="pointer-events-auto absolute bottom-6 left-4 z-20 w-[230px] max-w-[calc(100vw-2rem)]"
+            className="pointer-events-auto"
+          >
+            <div className="glass gold-hairline rounded-2xl p-3.5">
+              <button
+                type="button"
+                onClick={() => setRoadsGuideOpen((o) => !o)}
+                className="flex w-full items-center gap-1.5 font-display text-sm text-cream"
+              >
+                <Route className="h-4 w-4 text-gold" />
+                <span className="flex-1 text-left">Dubai Roads Guide</span>
+                <ChevronDown
+                  className={`h-4 w-4 text-cream/70 transition-transform md:hidden ${roadsGuideOpen ? "rotate-180" : ""}`}
+                />
+              </button>
+
+              <div className={roadsGuideOpen ? "block" : "hidden md:block"}>
+                <ul className="mt-2 space-y-0.5">
+                  {ROAD_GUIDE.map((r, i) => (
+                    <motion.li
+                      key={r.key}
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.15 + i * 0.06, duration: 0.3, ease: "easeOut" }}
+                      onPointerEnter={() => setRouteHighlight(r.key, true)}
+                      onPointerLeave={() => setRouteHighlight(r.key, false)}
+                      className="flex cursor-pointer items-center gap-2 rounded-lg px-1.5 py-1 text-xs text-cream/90 transition-colors hover:bg-white/10"
+                    >
+                      <span
+                        className="h-[3px] w-6 shrink-0 rounded-full"
+                        style={{
+                          background: `var(${r.cssVar}, ${r.color})`,
+                          boxShadow: `0 0 8px var(${r.cssVar}, ${r.color})`,
+                        }}
+                      />
+                      <span className="flex-1 truncate">{r.name}</span>
+                      {r.ref && (
+                        <span className="shrink-0 rounded-full bg-white/10 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-cream/70">
+                          {r.ref}
+                        </span>
+                      )}
+                    </motion.li>
+                  ))}
+                </ul>
+                <p className="mt-2.5 border-t border-white/10 pt-2 text-[10px] leading-tight text-muted-foreground">
+                  Hover a road to light it up on the map. Click any road for its name.
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Dubai Metro Guide — premium legend, only while metro mode plays */}
+      <AnimatePresence>
+        {metroMode && (
+          <motion.div
+            key="metro-guide"
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.35, ease: "easeOut" }}
+            className="pointer-events-auto"
           >
             <div className="glass gold-hairline rounded-2xl p-3.5">
               {/* Header — doubles as the mobile collapse toggle. */}
@@ -299,6 +366,7 @@ export function MapContainer() {
           </motion.div>
         )}
       </AnimatePresence>
+      </div>
 
       {/* Cinematic overlay during transition */}
       <AnimatePresence>

@@ -32,21 +32,29 @@ const LINE_OPACITY = 0.92;
 // `match` is tested against the OSM `name` property (note OSM spellings:
 // "Lahbab", "Dubai - Al Ain Road", "Sheikh Zayed bin Hamdan Al Nahyan Street").
 // Colors live in CSS variables (see ROADS_CSS) and are read at layer-add time;
-// the hex here is only the fallback if the variable is missing.
+// the hex here is only the fallback if the variable is missing. The palette is
+// tuned for the dark basemap (luminous 400-tier tones that glow, keeping each
+// road's hue identity). Order is coast → inland: the draw cascade and the Roads
+// Guide legend both sweep from Sheikh Zayed Road out toward the desert.
 const ROUTES = [
-  { key: "mbz", name: "Mohammed Bin Zayed Road", cssVar: "--road-mbz", color: "#2563EB", match: /mohammed bin zayed/i },
-  { key: "hamdan", name: "Zayed Bin Hamdan Road", cssVar: "--road-hamdan", color: "#16A34A", match: /zayed bin hamdan/i },
-  { key: "emirates", name: "Emirates Road", cssVar: "--road-emirates", color: "#F97316", match: /^emirates road$/i },
-  { key: "alkhail", name: "Al Khail Road", cssVar: "--road-alkhail", color: "#8B5CF6", match: /^al khail road$/i },
-  { key: "alain", name: "Dubai–Al Ain Road", cssVar: "--road-alain", color: "#DC2626", match: /dubai\s*-\s*al ain road/i },
-  { key: "hessa", name: "Hessa Street", cssVar: "--road-hessa", color: "#06B6D4", match: /^hessa street/i },
-  { key: "ummsuqeim", name: "Umm Suqeim Street", cssVar: "--road-ummsuqeim", color: "#EAB308", match: /^umm suqeim street/i },
-  { key: "expo", name: "Expo Road", cssVar: "--road-expo", color: "#EC4899", match: /^expo road$/i },
-  { key: "lehbab", name: "Lehbab Road", cssVar: "--road-lehbab", color: "#14B8A6", match: /lahbab road/i },
-  { key: "szr", name: "Sheikh Zayed Road", cssVar: "--road-szr", color: "#4F46E5", match: /^sheikh zayed road/i },
+  { key: "szr", name: "Sheikh Zayed Road", ref: "E11", cssVar: "--road-szr", color: "#818CF8", match: /^sheikh zayed road/i },
+  { key: "ummsuqeim", name: "Umm Suqeim Street", ref: "D63", cssVar: "--road-ummsuqeim", color: "#FACC15", match: /^umm suqeim street/i },
+  { key: "alkhail", name: "Al Khail Road", ref: "E44", cssVar: "--road-alkhail", color: "#A78BFA", match: /^al khail road$/i },
+  { key: "hessa", name: "Hessa Street", ref: "D61", cssVar: "--road-hessa", color: "#22D3EE", match: /^hessa street/i },
+  { key: "mbz", name: "Mohammed Bin Zayed Road", ref: "E311", cssVar: "--road-mbz", color: "#3B82F6", match: /mohammed bin zayed/i },
+  { key: "expo", name: "Expo Road", ref: "", cssVar: "--road-expo", color: "#F472B6", match: /^expo road$/i },
+  { key: "hamdan", name: "Zayed Bin Hamdan Road", ref: "D54", cssVar: "--road-hamdan", color: "#22C55E", match: /zayed bin hamdan/i },
+  { key: "emirates", name: "Emirates Road", ref: "E611", cssVar: "--road-emirates", color: "#FB923C", match: /^emirates road$/i },
+  { key: "alain", name: "Dubai–Al Ain Road", ref: "E66", cssVar: "--road-alain", color: "#EF4444", match: /dubai\s*-\s*al ain road/i },
+  { key: "lehbab", name: "Lehbab Road", ref: "E77", cssVar: "--road-lehbab", color: "#2DD4BF", match: /lahbab road/i },
 ] as const;
 
 type Route = (typeof ROUTES)[number];
+
+/** Legend data for the Roads Guide panel (colors resolve via the CSS vars). */
+export const ROAD_GUIDE = ROUTES.map(({ key, name, ref, cssVar, color }) => ({
+  key, name, ref, cssVar, color,
+}));
 
 const routeLayerId = (key: string) => `roads-route-${key}`;
 
@@ -154,6 +162,13 @@ const prefersReducedMotion = () =>
 
 let addingInFlight = false;
 
+// Maps that have the roads layers — lets the Roads Guide legend highlight a
+// route on whichever map instance is live. Feature ids come from generateId
+// (sequential feature index), recorded once during the tagging pass.
+const roadMaps = new Set<mapboxgl.Map>();
+const routeFeatureIds = new Map<string, number[]>();
+let dataTagged = false;
+
 /** Add the roads GeoJSON source + layers (hidden until toggled on). */
 export async function addRoadsLayers(map: mapboxgl.Map): Promise<void> {
   if (addingInFlight) return;
@@ -167,13 +182,22 @@ export async function addRoadsLayers(map: mapboxgl.Map): Promise<void> {
 
     // Tag signature-road features with their route key + CSS-variable color so
     // paint expressions (line, glow) and the tooltip share one color source.
-    for (const f of ROADS_MAIN_GEOJSON.features as GeoJSON.Feature[]) {
-      const nm = f.properties?.name;
-      if (typeof nm !== "string") continue;
-      const route = ROUTES.find((r) => r.match.test(nm));
-      if (route && f.properties) {
-        f.properties.route = route.key;
-        f.properties.routeColor = routeColor(route);
+    // Runs once — the data module is shared by every map instance.
+    if (!dataTagged) {
+      dataTagged = true;
+      const features = ROADS_MAIN_GEOJSON.features as GeoJSON.Feature[];
+      for (let i = 0; i < features.length; i++) {
+        const f = features[i];
+        const nm = f.properties?.name;
+        if (typeof nm !== "string") continue;
+        const route = ROUTES.find((r) => r.match.test(nm));
+        if (route && f.properties) {
+          f.properties.route = route.key;
+          f.properties.routeColor = routeColor(route);
+          const ids = routeFeatureIds.get(route.key) ?? [];
+          ids.push(i); // generateId assigns ids by feature index
+          routeFeatureIds.set(route.key, ids);
+        }
       }
     }
 
@@ -287,10 +311,23 @@ export async function addRoadsLayers(map: mapboxgl.Map): Promise<void> {
     } as unknown as mapboxgl.LayerSpecification);
 
     attachInteractions(map);
+    roadMaps.add(map);
+    map.on("remove", () => roadMaps.delete(map));
   } catch (err) {
     console.error("[roads] failed to add layers", err);
   } finally {
     addingInFlight = false;
+  }
+}
+
+/** Light a whole signature road up (or back down) — used by the Roads Guide
+ *  legend on hover. Reuses the same eased hover effect as the map cursor. */
+export function setRouteHighlight(key: string, on: boolean): void {
+  const ids = routeFeatureIds.get(key);
+  if (!ids) return;
+  for (const map of roadMaps) {
+    if (!map.getLayer(ROADS_GLOW_ID)) continue;
+    for (const id of ids) setHoverTarget(map, id, on ? 1 : 0);
   }
 }
 
@@ -300,8 +337,8 @@ export async function addRoadsLayers(map: mapboxgl.Map): Promise<void> {
 // itself over ROUTE_MS, cascading ROUTE_STAGGER apart.
 const OTHERS_MS = 1800;
 const ROUTE_MS = 1000;
-const ROUTE_STAGGER = 130;
-const ROUTE_DELAY0 = 250;
+const ROUTE_STAGGER = 160;
+const ROUTE_DELAY0 = 350;
 const REVEAL_TOTAL = Math.max(
   OTHERS_MS,
   ROUTE_DELAY0 + (ROUTES.length - 1) * ROUTE_STAGGER + ROUTE_MS,
@@ -362,6 +399,14 @@ export function setRoadsVisible(map: mapboxgl.Map, on: boolean): void {
   if (prefersReducedMotion()) {
     setRevealElapsed(map, REVEAL_TOTAL);
     return;
+  }
+
+  // Ghost substrate fades in instead of popping (native paint transition).
+  if (map.getLayer(ROADS_BASE_ID)) {
+    map.setPaintProperty(ROADS_BASE_ID, "line-opacity-transition", { duration: 0 });
+    map.setPaintProperty(ROADS_BASE_ID, "line-opacity", 0);
+    map.setPaintProperty(ROADS_BASE_ID, "line-opacity-transition", { duration: 700 });
+    map.setPaintProperty(ROADS_BASE_ID, "line-opacity", 0.16);
   }
 
   const start = performance.now();
