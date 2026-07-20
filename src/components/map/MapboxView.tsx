@@ -82,7 +82,7 @@ const PROJECT_MARKER_CSS = `
   color:#fff;font:600 12px/1 'Work Sans',Arial,sans-serif;letter-spacing:.2px;white-space:nowrap;
   cursor:pointer;position:relative;overflow:hidden;transform:translateZ(0);
   transition:transform .35s cubic-bezier(.2,.9,.25,1),box-shadow .35s ease,border-color .35s ease}
-.proj-marker .proj-dot{width:22px;height:22px;flex:none;border-radius:9999px;display:grid;place-items:center;
+.proj-marker .proj-dot{width:20px;height:20px;flex:none;border-radius:6px;display:grid;place-items:center;
   color:#fff;background:linear-gradient(135deg,#0d7a5f,#c9a84c);
   box-shadow:0 0 0 1px rgba(255,255,255,.5),0 2px 6px rgba(0,0,0,.3);transition:box-shadow .35s ease}
 .proj-marker .proj-dot svg{width:12px;height:12px}
