@@ -100,50 +100,55 @@ export async function addRoadsLayers(map: mapboxgl.Map): Promise<void> {
 // Per-map reveal animation handle so a re-toggle cancels the in-flight one.
 const revealFrames = new WeakMap<mapboxgl.Map, number>();
 
-/** p 0→1 draws the roads on (trim shrinks from the whole line to nothing). */
+/** p 0→1 draws the roads on. Head advances at a constant speed (linear) so the
+ *  line draws itself like a snake gliding forward, leaving the drawn trail. */
 function setProgress(map: mapboxgl.Map, p: number): void {
-  const eased = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+  // Linear — no ease-in/ease-out, so the snake head moves at a steady pace.
+  const head = Math.max(0, Math.min(1, p));
   if (map.getLayer(ROADS_LINE_ID)) {
-    // Show 0..eased of each line; trim (hide) eased..1. eased=0 → all hidden,
-    // eased=1 → [1,1] trims nothing → fully drawn.
-    map.setPaintProperty(ROADS_LINE_ID, "line-trim-offset", [eased, 1]);
+    // Show 0..head of each line; trim (hide) head..1. head=0 → all hidden,
+    // head=1 → [1,1] trims nothing → fully drawn.
+    map.setPaintProperty(ROADS_LINE_ID, "line-trim-offset", [head, 1]);
   }
   if (map.getLayer(ROADS_LABEL_ID)) {
     // Labels fade in over the back half of the draw.
-    map.setPaintProperty(ROADS_LABEL_ID, "text-opacity", Math.max(0, (eased - 0.5) * 2));
+    map.setPaintProperty(ROADS_LABEL_ID, "text-opacity", Math.max(0, (head - 0.5) * 2));
   }
 }
 
-/** Show/hide the roads with a 5s metro-style draw-on (reverse on hide). */
+/** Show the roads with a snake-style draw-on; hide instantly (no reverse). */
 export function setRoadsVisible(map: mapboxgl.Map, on: boolean): void {
   if (!map.getLayer(ROADS_LINE_ID)) return;
 
   const prev = revealFrames.get(map);
-  if (prev) cancelAnimationFrame(prev);
+  if (prev) {
+    cancelAnimationFrame(prev);
+    revealFrames.delete(map);
+  }
 
-  if (on) {
+  // Hiding is immediate — no ending / reverse animation.
+  if (!on) {
+    setProgress(map, 0);
     for (const id of [ROADS_LINE_ID, ROADS_LABEL_ID]) {
-      if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "visible");
+      if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none");
     }
+    return;
+  }
+
+  for (const id of [ROADS_LINE_ID, ROADS_LABEL_ID]) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "visible");
   }
 
   const start = performance.now();
-  const from = on ? 0 : 1;
-  const to = on ? 1 : 0;
   const tick = () => {
     const t = Math.min(1, (performance.now() - start) / REVEAL_MS);
-    setProgress(map, from + (to - from) * t);
+    setProgress(map, t);
     if (t < 1) {
       revealFrames.set(map, requestAnimationFrame(tick));
     } else {
       revealFrames.delete(map);
-      if (!on) {
-        for (const id of [ROADS_LINE_ID, ROADS_LABEL_ID]) {
-          if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none");
-        }
-      }
     }
   };
-  setProgress(map, from);
+  setProgress(map, 0);
   revealFrames.set(map, requestAnimationFrame(tick));
 }
