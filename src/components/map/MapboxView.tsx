@@ -407,6 +407,15 @@ export function MapboxView({
     deferredLayerTimeoutsRef.current = [];
   }
 
+  // Build the roads layers (async: lazy-imports the road data) and, once they
+  // exist, apply the current Roads toggle state.
+  function ensureRoadsLayers(map: mapboxgl.Map) {
+    void addRoadsLayers(map).then(() => {
+      if (mapRef.current !== map) return;
+      setRoadsVisible(map, roadsModeRef.current);
+    });
+  }
+
   function scheduleDeferredLayers(map: mapboxgl.Map) {
     if (deferredLayersScheduledRef.current) return;
     deferredLayersScheduledRef.current = true;
