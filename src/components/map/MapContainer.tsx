@@ -296,11 +296,15 @@ export function MapContainer() {
                         }}
                       />
                       <span className="flex-1 truncate">{r.name}</span>
-                      {r.ref && (
-                        <span className="shrink-0 rounded-full bg-white/10 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-cream/70">
-                          {r.ref}
-                        </span>
-                      )}
+                      <span
+                        className="shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide"
+                        style={{
+                          color: `var(${r.cssVar}, ${r.color})`,
+                          background: `color-mix(in srgb, var(${r.cssVar}, ${r.color}) 18%, transparent)`,
+                        }}
+                      >
+                        {r.colorName}
+                      </span>
                     </motion.li>
                   ))}
                 </ul>

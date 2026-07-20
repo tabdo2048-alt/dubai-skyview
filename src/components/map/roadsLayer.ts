@@ -37,23 +37,23 @@ const LINE_OPACITY = 0.92;
 // road's hue identity). Order is coast → inland: the draw cascade and the Roads
 // Guide legend both sweep from Sheikh Zayed Road out toward the desert.
 const ROUTES = [
-  { key: "szr", name: "Sheikh Zayed Road", ref: "E11", cssVar: "--road-szr", color: "#818CF8", match: /^sheikh zayed road/i },
-  { key: "ummsuqeim", name: "Umm Suqeim Street", ref: "D63", cssVar: "--road-ummsuqeim", color: "#FACC15", match: /^umm suqeim street/i },
-  { key: "alkhail", name: "Al Khail Road", ref: "E44", cssVar: "--road-alkhail", color: "#A78BFA", match: /^al khail road$/i },
-  { key: "hessa", name: "Hessa Street", ref: "D61", cssVar: "--road-hessa", color: "#22D3EE", match: /^hessa street/i },
-  { key: "mbz", name: "Mohammed Bin Zayed Road", ref: "E311", cssVar: "--road-mbz", color: "#3B82F6", match: /mohammed bin zayed/i },
-  { key: "expo", name: "Expo Road", ref: "", cssVar: "--road-expo", color: "#F472B6", match: /^expo road$/i },
-  { key: "hamdan", name: "Zayed Bin Hamdan Road", ref: "D54", cssVar: "--road-hamdan", color: "#22C55E", match: /zayed bin hamdan/i },
-  { key: "emirates", name: "Emirates Road", ref: "E611", cssVar: "--road-emirates", color: "#FB923C", match: /^emirates road$/i },
-  { key: "alain", name: "Dubai–Al Ain Road", ref: "E66", cssVar: "--road-alain", color: "#EF4444", match: /dubai\s*-\s*al ain road/i },
-  { key: "lehbab", name: "Lehbab Road", ref: "E77", cssVar: "--road-lehbab", color: "#2DD4BF", match: /lahbab road/i },
+  { key: "szr", name: "Sheikh Zayed Road", colorName: "Indigo", cssVar: "--road-szr", color: "#818CF8", match: /^sheikh zayed road/i },
+  { key: "ummsuqeim", name: "Umm Suqeim Street", colorName: "Yellow", cssVar: "--road-ummsuqeim", color: "#FACC15", match: /^umm suqeim street/i },
+  { key: "alkhail", name: "Al Khail Road", colorName: "Purple", cssVar: "--road-alkhail", color: "#A78BFA", match: /^al khail road$/i },
+  { key: "hessa", name: "Hessa Street", colorName: "Cyan", cssVar: "--road-hessa", color: "#22D3EE", match: /^hessa street/i },
+  { key: "mbz", name: "Mohammed Bin Zayed Road", colorName: "Blue", cssVar: "--road-mbz", color: "#3B82F6", match: /mohammed bin zayed/i },
+  { key: "expo", name: "Expo Road", colorName: "Pink", cssVar: "--road-expo", color: "#F472B6", match: /^expo road$/i },
+  { key: "hamdan", name: "Zayed Bin Hamdan Road", colorName: "Green", cssVar: "--road-hamdan", color: "#22C55E", match: /zayed bin hamdan/i },
+  { key: "emirates", name: "Emirates Road", colorName: "Orange", cssVar: "--road-emirates", color: "#FB923C", match: /^emirates road$/i },
+  { key: "alain", name: "Dubai–Al Ain Road", colorName: "Red", cssVar: "--road-alain", color: "#EF4444", match: /dubai\s*-\s*al ain road/i },
+  { key: "lehbab", name: "Lehbab Road", colorName: "Teal", cssVar: "--road-lehbab", color: "#2DD4BF", match: /lahbab road/i },
 ] as const;
 
 type Route = (typeof ROUTES)[number];
 
 /** Legend data for the Roads Guide panel (colors resolve via the CSS vars). */
-export const ROAD_GUIDE = ROUTES.map(({ key, name, ref, cssVar, color }) => ({
-  key, name, ref, cssVar, color,
+export const ROAD_GUIDE = ROUTES.map(({ key, name, colorName, cssVar, color }) => ({
+  key, name, colorName, cssVar, color,
 }));
 
 const routeLayerId = (key: string) => `roads-route-${key}`;
