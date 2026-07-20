@@ -85,18 +85,21 @@ let addingInFlight = false;
 
 /** Add the roads GeoJSON source + layers (hidden until toggled on). */
 export async function addRoadsLayers(map: mapboxgl.Map): Promise<void> {
-  if (map.getSource(ROADS_SOURCE_ID) || addingInFlight) return;
+  if (addingInFlight) return;
+  const layersReady = ALL_LAYERS.every((id) => map.getLayer(id));
+  if (layersReady) return;
+
   addingInFlight = true;
   try {
     const { ROADS_MAIN_GEOJSON } = await import("@/lib/roadsMain.generated");
-    if (map.getSource(ROADS_SOURCE_ID)) return;
-
-    map.addSource(ROADS_SOURCE_ID, {
-      type: "geojson",
-      data: ROADS_MAIN_GEOJSON,
-      lineMetrics: true, // required for the line-trim-offset draw reveal
-      generateId: true, // required for per-feature hover feature-state
-    });
+    if (!map.getSource(ROADS_SOURCE_ID)) {
+      map.addSource(ROADS_SOURCE_ID, {
+        type: "geojson",
+        data: ROADS_MAIN_GEOJSON,
+        lineMetrics: true, // required for the line-trim-offset draw reveal
+        generateId: true, // required for per-feature hover feature-state
+      });
+    }
 
     // Faint substrate — the whole network, always full, so the reveal reads as
     // illuminating an existing network rather than drawing from nothing.

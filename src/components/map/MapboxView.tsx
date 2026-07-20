@@ -433,9 +433,7 @@ export function MapboxView({
         addStationLayers(map);
         // Colored street network (baked GeoJSON) — added hidden (async: it lazy
         // imports the road data), then drawn on if Roads is already toggled on.
-        void addRoadsLayers(map).then(() => {
-          if (roadsModeRef.current) setRoadsVisible(map, true);
-        });
+        ensureRoadsLayers(map);
       } catch (err) {
         console.error("Failed to add deferred metro/train/roads layers", err);
       }
@@ -1157,10 +1155,11 @@ export function MapboxView({
     const map = mapRef.current;
     if (!map) return;
     if (!styleLoadedRef.current) return;
-    // Layers not built yet (style just switched) — schedule them; they read
-    // roadsModeRef on add so they come up with the right visibility.
+    // Build the roads layers if they do not exist yet, then toggle their
+    // visibility. This avoids a dead end when the initial deferred layer run
+    // already completed but the roads layer wasn't created yet.
     if (!map.getLayer("roads-colored-line")) {
-      scheduleDeferredLayers(map);
+      ensureRoadsLayers(map);
       return;
     }
     setRoadsVisible(map, roadsMode);
