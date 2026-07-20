@@ -389,10 +389,11 @@ export function MapboxView({
       try {
         addMetroLayers(map);
         addStationLayers(map);
-        // Colored street network (own Mapbox Streets v8 source) — added hidden,
-        // then shown if Roads is already toggled on for this instance.
-        addRoadsLayers(map);
-        setRoadsVisible(map, roadsModeRef.current);
+        // Colored street network (baked GeoJSON) — added hidden (async: it lazy
+        // imports the road data), then drawn on if Roads is already toggled on.
+        void addRoadsLayers(map).then(() => {
+          if (roadsModeRef.current) setRoadsVisible(map, true);
+        });
       } catch (err) {
         console.error("Failed to add deferred metro/train/roads layers", err);
       }
