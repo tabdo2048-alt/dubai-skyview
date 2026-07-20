@@ -71,29 +71,23 @@ const PROJECT_ICON_SVG = `
   <path d="M10 16h3"/>
 </svg>`;
 
-// Liquid-glass project marker: a frosted pill (name + building glyph) that lifts,
-// glows gold and sweeps a specular sheen on hover. Injected once, on first use.
+// Solid project marker: compact dark badge with the project name, lifts and
+// glows gold on hover. Injected once, on first use.
 const PROJECT_MARKER_CSS = `
 .proj-marker{display:grid;place-items:center;width:44px;height:44px;padding:0 6px;border-radius:9999px;
-  background:linear-gradient(135deg,rgba(255,255,255,.22),rgba(255,255,255,.07));
-  -webkit-backdrop-filter:blur(14px) saturate(1.6);backdrop-filter:blur(14px) saturate(1.6);
-  border:1px solid rgba(255,255,255,.35);
-  box-shadow:0 6px 22px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.55),inset 0 -6px 14px rgba(255,255,255,.05);
+  background:rgba(10,15,20,.92);
+  border:1px solid rgba(201,168,76,.5);
+  box-shadow:0 4px 16px rgba(0,0,0,.4);
   color:#fff;font:600 9px/1.05 'Work Sans',Arial,sans-serif;letter-spacing:.2px;
-  cursor:pointer;position:relative;overflow:hidden;transform:translateZ(0);
-  transition:transform .35s cubic-bezier(.2,.9,.25,1),box-shadow .35s ease,border-color .35s ease}
+  cursor:pointer;position:relative;transform:translateZ(0);
+  transition:transform .3s cubic-bezier(.2,.9,.25,1),box-shadow .3s ease,border-color .3s ease}
 .proj-marker .proj-dot{display:none}
-.proj-marker .proj-nm{width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;
-  text-shadow:0 1px 3px rgba(0,0,0,.55)}
-.proj-marker::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
-  background:linear-gradient(120deg,transparent 35%,rgba(255,255,255,.55) 50%,transparent 65%);transform:translateX(-130%)}
-.proj-marker:hover{transform:scale(1.08);border-color:rgba(255,255,255,.65);
-  box-shadow:0 12px 32px rgba(0,0,0,.45),0 0 22px rgba(201,168,76,.55),inset 0 1px 0 rgba(255,255,255,.7)}
-.proj-marker:hover::after{animation:proj-sheen .85s ease}
-.proj-marker.selected{transform:scale(1.12);border-color:#c9a84c;
-  box-shadow:0 0 26px rgba(201,168,76,.9),inset 0 1px 0 rgba(255,255,255,.7)}
-@keyframes proj-sheen{to{transform:translateX(130%)}}
-@media (prefers-reduced-motion:reduce){.proj-marker{transition:none}.proj-marker:hover::after{animation:none}}`;
+.proj-marker .proj-nm{width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center}
+.proj-marker:hover{transform:scale(1.1);border-color:#c9a84c;
+  box-shadow:0 8px 24px rgba(0,0,0,.5),0 0 18px rgba(201,168,76,.55)}
+.proj-marker.selected{transform:scale(1.14);border-color:#c9a84c;
+  box-shadow:0 0 24px rgba(201,168,76,.9)}
+@media (prefers-reduced-motion:reduce){.proj-marker{transition:none}}`;
 
 function ensureProjectMarkerStyles() {
   if (typeof document === "undefined" || document.getElementById("proj-marker-style")) return;

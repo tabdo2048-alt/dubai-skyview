@@ -40,22 +40,31 @@ const CLASS_COLOR = [
   /* other */ "#1e90ff",
 ] as unknown as Expr;
 
-// Zoom width curve, scaled per class so the road hierarchy is legible: motorways
-// read as spines, secondary streets stay thin. hover thickens the live road.
-const ZOOM_WIDTH = [
-  "interpolate", ["linear"], ["zoom"], 9, 0.6, 12, 1.6, 15, 3.4, 18, 8,
-] as unknown as Expr;
+// Per-class width hierarchy: motorways read as spines, secondary streets stay
+// thin; hover thickens the live road. NOTE: Mapbox requires ["zoom"] to drive
+// the OUTERMOST interpolate of a paint property, so the class/hover multipliers
+// live inside each zoom stop (["*", zoomStop, classMult] at the top level is
+// rejected by style validation and kills the whole layer).
 const CLASS_MULT = [
   "match", ["get", "class"],
   "motorway", 1.5, "trunk", 1.25, "primary", 1.0, "secondary", 0.6,
   /* other */ 1.0,
-] as unknown as Expr;
+] as const;
 const HOVER_MULT = [
   "case", ["boolean", ["feature-state", "hover"], false], 1.9, 1,
-] as unknown as Expr;
-const LINE_WIDTH = ["*", ZOOM_WIDTH, CLASS_MULT, HOVER_MULT] as unknown as Expr;
-const BASE_WIDTH = ["*", ZOOM_WIDTH, CLASS_MULT, 0.85] as unknown as Expr;
-const GLOW_WIDTH = ["*", ZOOM_WIDTH, CLASS_MULT, 2.6] as unknown as Expr;
+] as const;
+
+function classWidth(scale: number, withHover: boolean): Expr {
+  const stop = (v: number) =>
+    withHover ? ["*", v * scale, CLASS_MULT, HOVER_MULT] : ["*", v * scale, CLASS_MULT];
+  return [
+    "interpolate", ["linear"], ["zoom"],
+    9, stop(0.6), 12, stop(1.6), 15, stop(3.4), 18, stop(8),
+  ] as unknown as Expr;
+}
+const LINE_WIDTH = classWidth(1, true);
+const BASE_WIDTH = classWidth(0.85, false);
+const GLOW_WIDTH = classWidth(2.6, false);
 
 // Hovered road brightens to full opacity; others hold at LINE_OPACITY.
 const LINE_OPACITY_EXPR = [
