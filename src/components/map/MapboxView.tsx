@@ -9,7 +9,10 @@ import {
   pointAlongPath,
   type MetroLine,
 } from "@/lib/metro";
-import { createWaterLayer, setWaterMaskDebug } from "./WaterLayer";
+// WaterLayer pulls in Three.js and the ~1.6 MB coastline geometry. It is
+// imported dynamically so that weight lands in its own chunk, loaded only when
+// the water layer is actually added — never in the initial page bundle.
+import type { createWaterLayer as CreateWaterLayer } from "./WaterLayer";
 import { addRoadsLayers, setRoadsVisible } from "./roadsLayer";
 import type { ProjectWithRelations } from "@/lib/types";
 import { useFiltersStore } from "@/store/filters";
@@ -26,6 +29,7 @@ type TrainMotionState = {
   last: number;
   pausedUntil: number;
   lastStopId?: string;
+  lastRotation?: number;
 };
 
 export type LightPreset = "dawn" | "day" | "dusk" | "night";
@@ -178,7 +182,9 @@ export function MapboxView({
         [DUBAI_BOUNDS.west, DUBAI_BOUNDS.south],
         [DUBAI_BOUNDS.east, DUBAI_BOUNDS.north],
       ],
-      antialias: true,
+      // MSAA sharpens 3D building edges but costs fill-rate, most painfully on
+      // high-DPI phones. Keep it on desktop, drop it on mobile for smoother frames.
+      antialias: !isMobile,
     });
 
     map.on("style.load", () => {
@@ -285,7 +291,9 @@ export function MapboxView({
       (window as unknown as Record<string, unknown>)[
         mode === "3d" ? "__mapView3d" : "__mapViewSat"
       ] = map;
-      (window as unknown as Record<string, unknown>).__setWaterMaskDebug = setWaterMaskDebug;
+      void import("./WaterLayer").then(({ setWaterMaskDebug }) => {
+        (window as unknown as Record<string, unknown>).__setWaterMaskDebug = setWaterMaskDebug;
+      });
     }
     return () => {
       stopNetworkAnimation(map, METRO_LINES, "metro");
@@ -479,11 +487,17 @@ export function MapboxView({
     return { shouldRender: () => isActiveRef.current && isVisibleRef.current };
   }
 
-  function addWaterLayer(map: mapboxgl.Map) {
+  async function addWaterLayer(map: mapboxgl.Map) {
     if (map.getLayer("dubai-water-3d")) return;
     try {
       if (import.meta.env.DEV && mode === "satellite") console.log("[Water] satellite layer requested");
-      map.addLayer(createWaterLayer(makeRenderController(), mode));
+      const { createWaterLayer } = await import("./WaterLayer");
+      // The dynamic import awaits a tick; bail if this instance was torn down
+      // or the layer got added in the meantime.
+      if (!mapRef.current || mapRef.current !== map || map.getLayer("dubai-water-3d")) return;
+      map.addLayer(
+        (createWaterLayer as typeof CreateWaterLayer)(makeRenderController(), mode),
+      );
       if (import.meta.env.DEV) console.log("[Water] layer added");
     } catch (err) {
       console.error("Failed to add water wave layer", err);
@@ -1106,8 +1120,14 @@ export function MapboxView({
         state.t = next;
         const { coord, bearing } = pointAlongPath(line.path, state.t);
         marker.setLngLat(coord);
-        const icon = marker.getElement().firstElementChild as HTMLElement | null;
-        if (icon) icon.style.transform = `rotate(${bearing + (state.dir === -1 ? 180 : 0)}deg)`;
+        // Only touch the DOM transform when the rotation actually changed —
+        // saves a style recalc per train on the many frames where it hasn't.
+        const rotation = Math.round(bearing + (state.dir === -1 ? 180 : 0));
+        if (rotation !== state.lastRotation) {
+          const icon = marker.getElement().firstElementChild as HTMLElement | null;
+          if (icon) icon.style.transform = `rotate(${rotation}deg)`;
+          state.lastRotation = rotation;
+        }
       }
       trainRafRef.current = requestAnimationFrame(tick);
     };

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, lazy, Suspense } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Globe2,
@@ -18,7 +18,12 @@ import type mapboxgl from "mapbox-gl";
 import { MapboxView, type LightPreset } from "./MapboxView";
 import { CloudLayer } from "./CloudLayer";
 import { ProjectPopup } from "./ProjectPopup";
-import { WaterDebugEditor } from "./WaterDebugEditor";
+// Dev-only editor. Lazy so its static WaterLayer import (Three.js + the ~1.6 MB
+// coastline) never enters the production bundle and doesn't defeat the dynamic
+// WaterLayer split in MapboxView.
+const WaterDebugEditor = lazy(() =>
+  import("./WaterDebugEditor").then((m) => ({ default: m.WaterDebugEditor })),
+);
 import { shouldShowWaterDebugEditor } from "./waterDebugState";
 import { ROAD_GUIDE, setRouteHighlight } from "./roadsLayer";
 import { useMapConfig } from "@/hooks/use-map-config";
@@ -89,8 +94,17 @@ export function MapContainer() {
     projects.find((p) => p.id === selectedProjectId) ??
     null;
 
+  // Only the map(s) the user has actually visited get mounted. On first load
+  // that's a single Mapbox GL context (half the GPU/memory of mounting both);
+  // switching modes mounts the other one lazily and then keeps it alive, so
+  // re-switching stays instant with no expensive map re-creation.
+  const [mountedModes, setMountedModes] = useState<Set<"satellite" | "3d">>(
+    () => new Set([mapMode]),
+  );
+
   const switchMode = (mode: "satellite" | "3d") => {
     if (mode === mapMode) return;
+    setMountedModes((prev) => (prev.has(mode) ? prev : new Set(prev).add(mode)));
     setTransitioning(true);
     setMapReady(false); // Show loading overlay while new map loads
     setMapMode(mode);
@@ -108,51 +122,55 @@ export function MapContainer() {
       {cfg && (
         <>
           {/* Flat Mapbox satellite view (satellite-streets) with metro/train + water overlay */}
-          <div
-            className={
-              mapMode === "satellite"
-                ? "absolute inset-0"
-                : "absolute inset-0 opacity-0 pointer-events-none"
-            }
-          >
-            <MapboxView
-              accessToken={cfg.mapboxAccessToken}
-              projects={filtered}
-              camera={camera}
-              onCameraChange={setCamera}
-              onReady={() => mapMode === "satellite" && setMapReady(true)}
-              active={mapMode === "satellite"}
-              metroMode={metroMode}
-              trainMode={trainMode}
-              roadsMode={roadsMode}
-              lightPreset={lightPreset}
-              mode="satellite"
-            />
-          </div>
+          {mountedModes.has("satellite") && (
+            <div
+              className={
+                mapMode === "satellite"
+                  ? "absolute inset-0"
+                  : "absolute inset-0 opacity-0 pointer-events-none"
+              }
+            >
+              <MapboxView
+                accessToken={cfg.mapboxAccessToken}
+                projects={filtered}
+                camera={camera}
+                onCameraChange={setCamera}
+                onReady={() => mapMode === "satellite" && setMapReady(true)}
+                active={mapMode === "satellite"}
+                metroMode={metroMode}
+                trainMode={trainMode}
+                roadsMode={roadsMode}
+                lightPreset={lightPreset}
+                mode="satellite"
+              />
+            </div>
+          )}
 
           {/* 3D Mapbox view (Standard style, buildings, animated water/boats/clouds) */}
-          <div
-            className={
-              mapMode === "3d"
-                ? "absolute inset-0"
-                : "absolute inset-0 opacity-0 pointer-events-none"
-            }
-          >
-            <MapboxView
-              accessToken={cfg.mapboxAccessToken}
-              projects={filtered}
-              camera={camera}
-              onCameraChange={setCamera}
-              onReady={() => mapMode === "3d" && setMapReady(true)}
-              onMapReady={waterEditorEnabled ? setEditorMap : undefined}
-              active={mapMode === "3d"}
-              metroMode={metroMode}
-              trainMode={trainMode}
-              roadsMode={roadsMode}
-              lightPreset={lightPreset}
-              mode="3d"
-            />
-          </div>
+          {mountedModes.has("3d") && (
+            <div
+              className={
+                mapMode === "3d"
+                  ? "absolute inset-0"
+                  : "absolute inset-0 opacity-0 pointer-events-none"
+              }
+            >
+              <MapboxView
+                accessToken={cfg.mapboxAccessToken}
+                projects={filtered}
+                camera={camera}
+                onCameraChange={setCamera}
+                onReady={() => mapMode === "3d" && setMapReady(true)}
+                onMapReady={waterEditorEnabled ? setEditorMap : undefined}
+                active={mapMode === "3d"}
+                metroMode={metroMode}
+                trainMode={trainMode}
+                roadsMode={roadsMode}
+                lightPreset={lightPreset}
+                mode="3d"
+              />
+            </div>
+          )}
         </>
       )}
 
@@ -160,7 +178,11 @@ export function MapContainer() {
       <CloudLayer zoom={camera.zoom} />
 
       {/* Dev-only Water Debug Editor (3D mode) — never mounted in production. */}
-      {waterEditorEnabled && mapMode === "3d" && <WaterDebugEditor map={editorMap} />}
+      {waterEditorEnabled && mapMode === "3d" && (
+        <Suspense fallback={null}>
+          <WaterDebugEditor map={editorMap} />
+        </Suspense>
+      )}
 
       {/* Loading overlay — shown until the active map is ready (idle + heavy layers loaded) */}
       <AnimatePresence>

@@ -128,7 +128,15 @@ for (const line of ALL_RAIL_LINES) {
 }
 
 // Total geodesic-ish length of a path in degrees, used to distribute the train.
+// Cumulative segment lengths never change for a given path array, but the train
+// loop calls this every frame per line. Cache the result keyed on the path
+// (WeakMap — entries drop automatically when a path is no longer referenced).
+const segmentCache = new WeakMap<[number, number][], { cum: number[]; total: number }>();
+
 export function pathLengthSegments(path: [number, number][]): { cum: number[]; total: number } {
+  const cached = segmentCache.get(path);
+  if (cached) return cached;
+
   const cum: number[] = [0];
   let total = 0;
   for (let i = 1; i < path.length; i++) {
@@ -137,7 +145,9 @@ export function pathLengthSegments(path: [number, number][]): { cum: number[]; t
     total += Math.hypot(bx - ax, by - ay);
     cum.push(total);
   }
-  return { cum, total };
+  const result = { cum, total };
+  segmentCache.set(path, result);
+  return result;
 }
 
 // Interpolate a position at fraction t (0..1) along the polyline. Returns
