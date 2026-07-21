@@ -25,6 +25,13 @@ export type MetroLine = {
   category?: LineCategory;
 };
 
+// Cache for pathLengthSegments (declared here, above its first use, because
+// module-load code below — STATION_PROGRESS — calls it during initialization;
+// a `const` further down would be in its temporal dead zone and throw).
+// Cumulative segment lengths never change for a given path array, so cache the
+// result keyed on the path (WeakMap — entries drop when a path is unreferenced).
+const segmentCache = new WeakMap<[number, number][], { cum: number[]; total: number }>();
+
 // Premium line palette, keyed by category (matches the guide legend).
 export const CATEGORY_COLORS: Record<LineCategory, string> = {
   red: "#E63946",
@@ -128,11 +135,6 @@ for (const line of ALL_RAIL_LINES) {
 }
 
 // Total geodesic-ish length of a path in degrees, used to distribute the train.
-// Cumulative segment lengths never change for a given path array, but the train
-// loop calls this every frame per line. Cache the result keyed on the path
-// (WeakMap — entries drop automatically when a path is no longer referenced).
-const segmentCache = new WeakMap<[number, number][], { cum: number[]; total: number }>();
-
 export function pathLengthSegments(path: [number, number][]): { cum: number[]; total: number } {
   const cached = segmentCache.get(path);
   if (cached) return cached;
