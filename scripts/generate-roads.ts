@@ -79,7 +79,7 @@ async function main() {
   console.log("Fetching main roads from Overpass…");
   const osm = await overpass("roads-main", query);
 
-  const features: Feature<LineString, { class: string; name: string | null }>[] = [];
+  const features: Feature<LineString, { class: string; name: string | null; ref: string | null }>[] = [];
   for (const el of osm.elements) {
     if (el.type !== "way" || !el.geometry || el.geometry.length < 2) continue;
     const coords = el.geometry.map((g: any) => [round(g.lon), round(g.lat)] as [number, number]);
@@ -101,7 +101,11 @@ async function main() {
     const tags = el.tags ?? {};
     features.push({
       type: "Feature",
-      properties: { class: toClass(tags.highway), name: tags["name:en"] ?? tags.name ?? null },
+      properties: {
+        class: toClass(tags.highway),
+        name: tags["name:en"] ?? tags.name ?? null,
+        ref: tags.ref ?? null,
+      },
       geometry: { type: "LineString", coordinates: line },
     });
   }
@@ -116,9 +120,9 @@ async function main() {
     `// (© OpenStreetMap contributors, ODbL) via Overpass, bbox ${bbox} (S,W,N,E).\n` +
     `// Rerun: npm run generate:roads -- --refresh\n\n` +
     `import type { FeatureCollection, LineString } from "geojson";\n\n` +
-    `export const ROADS_MAIN_GEOJSON: FeatureCollection<LineString, { class: string; name: string | null }> =\n` +
+    `export const ROADS_MAIN_GEOJSON: FeatureCollection<LineString, { class: string; name: string | null; ref: string | null }> =\n` +
     JSON.stringify(fc) +
-    ` as unknown as FeatureCollection<LineString, { class: string; name: string | null }>;\n`;
+    ` as unknown as FeatureCollection<LineString, { class: string; name: string | null; ref: string | null }>;\n`;
 
   writeFileSync(OUT_FILE, body);
   console.log(`Wrote ${OUT_FILE} (${(body.length / 1024).toFixed(0)} KB)`);

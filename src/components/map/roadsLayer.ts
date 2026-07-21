@@ -36,17 +36,25 @@ const LINE_OPACITY = 0.92;
 // tuned for the dark basemap (luminous 400-tier tones that glow, keeping each
 // road's hue identity). Order is coast → inland: the draw cascade and the Roads
 // Guide legend both sweep from Sheikh Zayed Road out toward the desert.
+// `match` tests the OSM `name`; `ref` tests the OSM route ref (E11, E311, …).
+// A road is claimed if EITHER matches — the ref catches continuation segments
+// that OSM tags only with the route number and an Arabic name, so each road now
+// spans its full length to the map edge instead of stopping where the English
+// name tag ends.
 const ROUTES = [
-  { key: "szr", name: "Sheikh Zayed Road", colorName: "Indigo", cssVar: "--road-szr", color: "#818CF8", match: /^sheikh zayed road/i },
-  { key: "ummsuqeim", name: "Umm Suqeim Street", colorName: "Yellow", cssVar: "--road-ummsuqeim", color: "#FACC15", match: /^umm suqeim street/i },
-  { key: "alkhail", name: "Al Khail Road", colorName: "Purple", cssVar: "--road-alkhail", color: "#A78BFA", match: /^al khail road$/i },
-  { key: "hessa", name: "Hessa Street", colorName: "Cyan", cssVar: "--road-hessa", color: "#22D3EE", match: /^hessa street/i },
-  { key: "mbz", name: "Mohammed Bin Zayed Road", colorName: "Blue", cssVar: "--road-mbz", color: "#3B82F6", match: /mohammed bin zayed/i },
-  { key: "expo", name: "Expo Road", colorName: "Pink", cssVar: "--road-expo", color: "#F472B6", match: /^expo road$/i },
-  { key: "hamdan", name: "Zayed Bin Hamdan Road", colorName: "Green", cssVar: "--road-hamdan", color: "#22C55E", match: /zayed bin hamdan/i },
-  { key: "emirates", name: "Emirates Road", colorName: "Orange", cssVar: "--road-emirates", color: "#FB923C", match: /^emirates road$/i },
-  { key: "alain", name: "Dubai–Al Ain Road", colorName: "Red", cssVar: "--road-alain", color: "#EF4444", match: /dubai\s*-\s*al ain road/i },
-  { key: "lehbab", name: "Lehbab Road", colorName: "Teal", cssVar: "--road-lehbab", color: "#2DD4BF", match: /lahbab road/i },
+  // SZR: name-only. Ref E11 is a shared corridor (Sheikh Rashid Rd, Al Garhoud
+  // Bridge, Al Ittihad Rd downtown all carry E11), so matching it by ref would
+  // wrongly recolor those. The name tag already spans SZR's full in-bounds run.
+  { key: "szr", name: "Sheikh Zayed Road", colorName: "Indigo", cssVar: "--road-szr", color: "#4F46E5", match: /^sheikh zayed road/i, ref: null },
+  { key: "ummsuqeim", name: "Umm Suqeim Street", colorName: "Golden Yellow", cssVar: "--road-ummsuqeim", color: "#EAB308", match: /^umm suqeim street/i, ref: /^D\s*63$/i },
+  { key: "alkhail", name: "Al Khail Road", colorName: "Purple", cssVar: "--road-alkhail", color: "#8B5CF6", match: /^al khail road$/i, ref: /^E\s*44$/i },
+  { key: "hessa", name: "Hessa Street", colorName: "Cyan", cssVar: "--road-hessa", color: "#06B6D4", match: /^hessa street/i, ref: /^D\s*61$/i },
+  { key: "mbz", name: "Mohammed Bin Zayed Road", colorName: "Blue", cssVar: "--road-mbz", color: "#2563EB", match: /mohammed bin zayed/i, ref: /^E\s*311$/i },
+  { key: "expo", name: "Expo Road", colorName: "Pink", cssVar: "--road-expo", color: "#EC4899", match: /^expo road$/i, ref: null },
+  { key: "hamdan", name: "Zayed Bin Hamdan Road", colorName: "Green", cssVar: "--road-hamdan", color: "#16A34A", match: /zayed bin hamdan/i, ref: /^D\s*54$/i },
+  { key: "emirates", name: "Emirates Road", colorName: "Orange", cssVar: "--road-emirates", color: "#F97316", match: /^emirates road$/i, ref: /^E\s*611$/i },
+  { key: "alain", name: "Dubai–Al Ain Road", colorName: "Red", cssVar: "--road-alain", color: "#DC2626", match: /dubai\s*-\s*al ain road/i, ref: /^E\s*66$/i },
+  { key: "lehbab", name: "Lehbab Road", colorName: "Teal", cssVar: "--road-lehbab", color: "#14B8A6", match: /lahbab road/i, ref: /^E\s*77$/i },
 ] as const;
 
 type Route = (typeof ROUTES)[number];
@@ -58,7 +66,12 @@ export const ROAD_GUIDE = ROUTES.map(({ key, name, colorName, cssVar, color }) =
 
 const routeLayerId = (key: string) => `roads-route-${key}`;
 
-const ROADS_CSS = `:root{${ROUTES.map((r) => `${r.cssVar}:${r.color};`).join("")}}
+// Every non-signature road/street shares ONE uniform color (--road-base, easy to
+// retheme later). Only the 10 named signature roads above get their own color.
+// Declared before ROADS_CSS because that template literal interpolates it.
+const BASE_ROAD_COLOR = "#000000"; // black — all non-signature roads/streets
+
+const ROADS_CSS = `:root{${ROUTES.map((r) => `${r.cssVar}:${r.color};`).join("")}--road-base:${BASE_ROAD_COLOR};}
 .road-popup .mapboxgl-popup-content{background:rgba(12,16,22,.92);backdrop-filter:blur(8px);
   border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:8px 14px;
   box-shadow:0 8px 28px rgba(0,0,0,.45);color:#fff;
@@ -83,19 +96,9 @@ function routeColor(route: Route): string {
   return v || route.color;
 }
 
-// Saturated by importance: orange-gold highways, green arterials, blue collectors.
-const CLASS_COLOR = [
-  "match",
-  ["get", "class"],
-  "motorway", "#ff7a00",
-  "trunk", "#ff9500",
-  "primary", "#ffc400",
-  "secondary", "#22c55e",
-  /* other */ "#1e90ff",
-] as unknown as Expr;
-
-// Signature roads use their tagged color; everything else the class palette.
-const ROAD_COLOR = ["to-color", ["coalesce", ["get", "routeColor"], CLASS_COLOR]] as unknown as Expr;
+// Signature roads use their tagged color; every other road/street falls back to
+// the single uniform base color.
+const ROAD_COLOR = ["to-color", ["coalesce", ["get", "routeColor"], BASE_ROAD_COLOR]] as unknown as Expr;
 
 // Per-class width hierarchy: motorways read as spines, secondary streets stay
 // thin; hover/pulse thicken the live road. NOTE: Mapbox requires ["zoom"] to
@@ -188,10 +191,19 @@ export async function addRoadsLayers(map: mapboxgl.Map): Promise<void> {
       const features = ROADS_MAIN_GEOJSON.features as GeoJSON.Feature[];
       for (let i = 0; i < features.length; i++) {
         const f = features[i];
-        const nm = f.properties?.name;
-        if (typeof nm !== "string") continue;
-        const route = ROUTES.find((r) => r.match.test(nm));
-        if (route && f.properties) {
+        if (!f.properties) continue;
+        const nm = f.properties.name;
+        const ref = f.properties.ref;
+        // Match by route ref first (E311, E66, …) so a road spans its full
+        // length even where OSM tags segments only by ref or an Arabic name;
+        // fall back to the English name for roads without a highway ref. OSM
+        // packs concurrent refs into a ";"-list ("E11;S113"), so test each part.
+        const refParts = typeof ref === "string" ? ref.split(";").map((s) => s.trim()) : [];
+        const route =
+          ROUTES.find((r) => r.ref && refParts.some((p) => (r.ref as RegExp).test(p))) ||
+          (typeof nm === "string" ? ROUTES.find((r) => r.match.test(nm)) : undefined) ||
+          null;
+        if (route) {
           f.properties.route = route.key;
           f.properties.routeColor = routeColor(route);
           const ids = routeFeatureIds.get(route.key) ?? [];
