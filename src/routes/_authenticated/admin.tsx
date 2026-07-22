@@ -88,7 +88,10 @@ function AdminPage() {
         <Button asChild variant="ghost" size="sm" className="text-muted-foreground hover:text-cream">
           <Link to="/"><ArrowLeft className="mr-1 h-4 w-4" /> Back to map</Link>
         </Button>
-        <div className="mt-4 flex items-center justify-between">
+
+        <AdminNav />
+
+        <div id="admin-projects" className="mt-4 flex items-center justify-between scroll-mt-24">
           <h1 className="font-display text-4xl text-cream">Admin <span className="text-gold-gradient">Dashboard</span></h1>
           <Button onClick={() => { setCreating(true); setEditing(null); }} className="bg-gold text-gold-foreground hover:bg-gold/90">
             <Plus className="mr-1 h-4 w-4" /> New project
@@ -146,6 +149,35 @@ function ZoneSection() {
     <Suspense fallback={null}>
       <AdminZoneEditor accessToken={cfg.mapboxAccessToken} />
     </Suspense>
+  );
+}
+
+// Quick-jump nav: each button scrolls to its admin section.
+const ADMIN_SECTIONS = [
+  { id: "admin-projects", label: "Projects" },
+  { id: "admin-developers", label: "Developers" },
+  { id: "admin-poi", label: "Places of interest" },
+  { id: "admin-zones", label: "Zone editor" },
+] as const;
+
+function AdminNav() {
+  const go = (id: string) =>
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  return (
+    <div className="sticky top-16 z-30 -mx-4 mt-2 border-b border-gold/15 bg-background/85 px-4 py-3 backdrop-blur-md">
+      <div className="flex flex-wrap gap-2">
+        {ADMIN_SECTIONS.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => go(s.id)}
+            className="glass gold-hairline rounded-full px-4 py-1.5 text-sm text-cream transition-all hover:bg-gold hover:text-gold-foreground"
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -217,7 +249,7 @@ function PoiManager() {
   };
 
   return (
-    <div className="mt-10">
+    <div id="admin-poi" className="mt-10 scroll-mt-24">
       <h2 className="font-display text-3xl text-cream">Places of interest</h2>
 
       {/* Category tabs */}
@@ -349,7 +381,7 @@ function DeveloperManager() {
   };
 
   return (
-    <div className="mt-10">
+    <div id="admin-developers" className="mt-10 scroll-mt-24">
       <h2 className="font-display text-3xl text-cream">Developers</h2>
 
       <form onSubmit={save} className="glass-strong gold-hairline mt-4 grid gap-3 rounded-2xl p-5 sm:grid-cols-2">

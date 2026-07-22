@@ -212,7 +212,7 @@ export function AdminZoneEditor({ accessToken }: Props) {
   };
 
   return (
-    <div className="mt-10">
+    <div id="admin-zones" className="mt-10 scroll-mt-24">
       <h2 className="font-display text-3xl text-cream">Zone editor</h2>
       <p className="mt-1 text-sm text-muted-foreground">
         Click the polygon tool, click points on the map to trace a boundary, close it, then name it and save.
