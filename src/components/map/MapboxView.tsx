@@ -17,7 +17,7 @@ import type { createStationModelLayer as CreateStationModelLayer } from "./Stati
 import { addRoadsLayers, setRoadsVisible } from "./roadsLayer";
 import type { ProjectWithRelations } from "@/lib/types";
 import { useFiltersStore } from "@/store/filters";
-import type { PoiPoint } from "@/hooks/use-pois";
+import { POI_TABLES, type PoiPoint, type PoiCategory } from "@/hooks/use-pois";
 
 // mapbox-gl v3 style expression — an array that can nest to arbitrary depth.
 // We build these by hand, so TypeScript sees them as `any[]` but Mapbox knows better.
@@ -82,20 +82,24 @@ const PROJECT_ICON_SVG = `
 // Solid project marker: compact dark badge with the project name, lifts and
 // glows gold on hover. Injected once, on first use.
 const PROJECT_MARKER_CSS = `
-.proj-marker{display:grid;place-items:center;width:44px;height:44px;padding:0 6px;border-radius:9999px;
-  background:rgba(10,15,20,.92);
-  border:1px solid rgba(201,168,76,.5);
-  box-shadow:0 4px 16px rgba(0,0,0,.4);
-  color:#fff;font:600 9px/1.05 'Work Sans',Arial,sans-serif;letter-spacing:.2px;
-  cursor:pointer;position:relative;transform:translateZ(0);
-  transition:transform .3s cubic-bezier(.2,.9,.25,1),box-shadow .3s ease,border-color .3s ease}
-.proj-marker .proj-dot{display:none}
-.proj-marker .proj-nm{width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center}
-.proj-marker:hover{transform:scale(1.1);border-color:#c9a84c;
-  box-shadow:0 8px 24px rgba(0,0,0,.5),0 0 18px rgba(201,168,76,.55)}
-.proj-marker.selected{transform:scale(1.14);border-color:#c9a84c;
-  box-shadow:0 0 24px rgba(201,168,76,.9)}
-@media (prefers-reduced-motion:reduce){.proj-marker{transition:none}}
+.proj-pin{position:relative;width:36px;height:36px;display:grid;place-items:center;border-radius:50%;
+  background:linear-gradient(158deg,rgba(22,28,34,.97),rgba(9,13,17,.97));
+  border:1.5px solid rgba(201,168,76,.7);
+  box-shadow:0 7px 20px rgba(0,0,0,.5),0 0 0 3px rgba(201,168,76,.08);
+  color:#e9c766;cursor:pointer;transform:translateZ(0);
+  transition:transform .28s cubic-bezier(.2,.9,.25,1),box-shadow .28s ease,border-color .28s ease,color .28s ease}
+.proj-pin svg{width:18px;height:18px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}
+.proj-pin::after{content:"";position:absolute;bottom:-4px;left:50%;width:9px;height:9px;
+  background:linear-gradient(135deg,rgba(9,13,17,.97),rgba(9,13,17,.97));
+  border-right:1.5px solid rgba(201,168,76,.7);border-bottom:1.5px solid rgba(201,168,76,.7);
+  transform:translateX(-50%) rotate(45deg)}
+.proj-pin:hover{transform:scale(1.12) translateY(-2px);border-color:#c9a84c;color:#ffd97a;
+  box-shadow:0 11px 28px rgba(0,0,0,.55),0 0 22px rgba(201,168,76,.5)}
+.proj-pin.selected{transform:scale(1.18) translateY(-2px);border-color:#f0d488;color:#1a1206;
+  background:linear-gradient(158deg,#e9c766,#c19a3c);
+  box-shadow:0 0 28px rgba(201,168,76,.95),0 8px 22px rgba(0,0,0,.5)}
+.proj-pin.selected::after{background:#c19a3c;border-color:#f0d488}
+@media (prefers-reduced-motion:reduce){.proj-pin{transition:none}}
 .poi-marker{display:grid;place-items:center;width:36px;height:36px;border-radius:9999px;
   background:rgba(10,15,20,.88);
   border:2px solid currentColor;
@@ -104,7 +108,15 @@ const PROJECT_MARKER_CSS = `
   cursor:pointer;position:relative;transform:translateZ(0);
   transition:transform .2s ease,box-shadow .2s ease}
 .poi-marker:hover{transform:scale(1.15);box-shadow:0 0 16px currentColor}
-@media (prefers-reduced-motion:reduce){.poi-marker{transition:none}}`;
+@media (prefers-reduced-motion:reduce){.poi-marker{transition:none}}
+.poi-label{display:inline-flex;align-items:center;gap:5px;max-width:160px;padding:3px 8px;border-radius:9999px;
+  background:rgba(10,15,20,.92);border:1px solid currentColor;
+  box-shadow:0 2px 12px rgba(0,0,0,.5);
+  cursor:pointer;transform:translateZ(0);transition:transform .2s ease,box-shadow .2s ease}
+.poi-label .poi-dot{width:5px;height:5px;border-radius:9999px;background:currentColor;box-shadow:0 0 7px currentColor;flex:0 0 auto}
+.poi-label .poi-nm{color:#fff;font:600 9px/1.15 'Work Sans',Arial,sans-serif;letter-spacing:.2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.poi-label:hover{transform:scale(1.06);box-shadow:0 0 18px currentColor}
+@media (prefers-reduced-motion:reduce){.poi-label{transition:none}}`;
 
 function ensureProjectMarkerStyles() {
   if (typeof document === "undefined" || document.getElementById("proj-marker-style")) return;
@@ -521,6 +533,24 @@ export function MapboxView({
     }
   }
 
+  async function addStationModelLayer(map: mapboxgl.Map) {
+    if (map.getLayer("metro-stations-3d-model")) return;
+    try {
+      const { createStationModelLayer } = await import("./StationModelLayer");
+      if (!mapRef.current || mapRef.current !== map) return;
+      const handle = (createStationModelLayer as typeof CreateStationModelLayer)(
+        makeRenderController(),
+        ALL_RAIL_LINES,
+        STATION_PROGRESS,
+        new Set(METRO_LINES.map((l) => l.id))
+      );
+      map.addLayer(handle.layer);
+      stationModelRef.current = handle;
+    } catch (err) {
+      console.error("Failed to add station model layer", err);
+    }
+  }
+
   function logCustomLayerOrder(map: mapboxgl.Map) {
     if (import.meta.env.DEV) {
       console.log(
@@ -546,7 +576,7 @@ export function MapboxView({
 
   function applyStationFilters(map: mapboxgl.Map) {
     const filter = stationFilter() as MapboxFilter;
-    if (map.getLayer("metro-stations-3d")) map.setFilter("metro-stations-3d", filter);
+    stationModelRef.current?.setReveal(revealThreshRef.current.metro, revealThreshRef.current.train);
     if (map.getLayer("metro-station-halo")) map.setFilter("metro-station-halo", filter);
     if (map.getLayer("metro-station-core")) map.setFilter("metro-station-core", filter);
     if (map.getLayer("metro-stations-label")) map.setFilter("metro-stations-label", filter);
@@ -765,29 +795,7 @@ export function MapboxView({
         data: { type: "FeatureCollection", features: pointFeatures },
       });
     }
-    if (!map.getLayer("metro-stations-3d")) {
-      addLayerSafe(map, {
-        id: "metro-stations-3d",
-        type: "fill-extrusion",
-        source: "metro-stations",
-        minzoom: 11,
-        filter: stationFilter(),
-        paint: {
-          "fill-extrusion-color": ["get", "color"],
-          "fill-extrusion-height": [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            11,
-            0,
-            14,
-            ["get", "height"],
-          ],
-          "fill-extrusion-base": 0,
-          "fill-extrusion-opacity": 0.9,
-        },
-      });
-    }
+    void addStationModelLayer(map);
     if (!map.getLayer("metro-station-halo")) {
       addLayerSafe(map, {
         id: "metro-station-halo",
@@ -1336,10 +1344,9 @@ export function MapboxView({
       seen.add(p.id);
       if (existing.has(p.id)) continue;
       const el = document.createElement("div");
-      el.className = "proj-marker";
-      el.innerHTML = `<span class="proj-nm"></span>`;
-      const nm = el.querySelector(".proj-nm");
-      if (nm) nm.textContent = p.name; // textContent — never inject the name as HTML
+      el.className = "proj-pin";
+      el.innerHTML = PROJECT_ICON_SVG; // static building glyph — no user data injected
+      el.title = p.name; // name shown as native tooltip on hover
       el.onclick = () => setSelectedProjectId(p.id);
       const m = new mapboxgl.Marker({ element: el }).setLngLat([p.lng, p.lat]).addTo(map);
       existing.set(p.id, m);
@@ -1358,6 +1365,85 @@ export function MapboxView({
       m.getElement().classList.toggle("selected", id === selectedProjectId);
     }
   }, [selectedProjectId]);
+
+  // POI markers (tourism / schools / hospitals). The `pois` prop is only
+  // populated when a category is active; each point becomes a colored glass pin
+  // carrying that category's emoji, with a name popup on click.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    ensureProjectMarkerStyles();
+    const existing = poiMarkersRef.current;
+    const meta = activeCategory ? POI_TABLES[activeCategory as PoiCategory] : null;
+    const seen = new Set<string>();
+    for (const poi of pois) {
+      seen.add(poi.id);
+      if (existing.has(poi.id)) continue;
+      // Name label (no icon): a glass pill with a colored accent dot + the
+      // place name, so the map reads as a set of highlighted names.
+      const el = document.createElement("div");
+      el.className = "poi-label";
+      el.style.color = meta?.color ?? "#c9a84c"; // drives the dot + border via currentColor
+      const dot = document.createElement("span");
+      dot.className = "poi-dot";
+      const nm = document.createElement("span");
+      nm.className = "poi-nm";
+      nm.textContent = poi.name; // textContent — never inject as HTML
+      el.append(dot, nm);
+      el.title = poi.name;
+      el.onclick = () => {
+        map.flyTo({
+          center: [poi.lng, poi.lat],
+          zoom: Math.max(map.getZoom(), 14.5),
+          duration: 1000,
+          essential: true,
+        });
+      };
+      const m = new mapboxgl.Marker({ element: el }).setLngLat([poi.lng, poi.lat]).addTo(map);
+      existing.set(poi.id, m);
+    }
+    for (const [id, marker] of existing.entries()) {
+      if (!seen.has(id)) {
+        marker.remove();
+        existing.delete(id);
+      }
+    }
+  }, [pois, activeCategory]);
+
+  // Cinematic fit-to-bounds when a POI category is switched on — frames all of
+  // that category's points. Only the active map instance moves its camera.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !active || !activeCategory || pois.length === 0) return;
+    const bounds = new mapboxgl.LngLatBounds();
+    for (const p of pois) bounds.extend([p.lng, p.lat]);
+    map.fitBounds(bounds, {
+      padding: 90,
+      maxZoom: 13.5,
+      pitch: mode === "3d" ? 40 : 0,
+      duration: 1300,
+      essential: true,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCategory, pois, active]);
+
+  // Zoom-in fly to the selected project (sidebar or marker click). Only the
+  // active map instance animates.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !active || !selectedProjectId) return;
+    const p = projects.find((x) => x.id === selectedProjectId);
+    if (!p) return;
+    map.flyTo({
+      center: [p.lng, p.lat],
+      zoom: Math.max(map.getZoom(), 15.5),
+      pitch: mode === "3d" ? 55 : 0,
+      bearing: map.getBearing(),
+      duration: 1500,
+      essential: true,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProjectId, active]);
 
   if (!accessToken) {
     return (

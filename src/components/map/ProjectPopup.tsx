@@ -20,7 +20,7 @@ export function ProjectPopup({ project, onClose }: { project: ProjectWithRelatio
           <div className="glass-strong overflow-hidden rounded-3xl">
             <div className="relative h-48 w-full overflow-hidden">
               {project.main_image_url ? (
-                <img src={project.main_image_url} alt={project.name} className="h-full w-full object-cover" />
+                <img src={project.main_image_url} alt={project.name} className="h-full w-full object-cover" loading="lazy" decoding="async" />
               ) : (
                 <div className="h-full w-full bg-muted" />
               )}

@@ -86,7 +86,15 @@ function applyCategory(lines: MetroLine[], isTrain: boolean): MetroLine[] {
 import { IMPORTED_METRO_LINES, IMPORTED_RAIL_LINES } from "./metroImported.generated";
 import { DUBAI_TRAM } from "./tram";
 
-export const METRO_LINES: MetroLine[] = applyCategory([...IMPORTED_METRO_LINES, DUBAI_TRAM], false);
+// Drop station-less metro fragments before rendering. The KML import left a few
+// degenerate/mislabeled pieces — red-line-3 & cyan-line-5 (short, no stations),
+// green-line-2 (a segment sitting in the Marina, not the Deira Green corridor),
+// green-line-3 (a 2-point straight stub across empty desert). They drew as stray,
+// disconnected "broken" bits. Every real line keeps ≥1 station, so this filter
+// removes only the junk. The Tram is always kept (its stations live in tram.ts).
+const METRO_SOURCE = IMPORTED_METRO_LINES.filter((line) => line.stations.length > 0);
+
+export const METRO_LINES: MetroLine[] = applyCategory([...METRO_SOURCE, DUBAI_TRAM], false);
 
 // Etihad Rail corridor from the imported map. Stays OUT of the Metro button
 // because it is exported only through TRAIN_LINES.

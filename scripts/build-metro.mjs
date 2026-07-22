@@ -179,7 +179,12 @@ function keyOf(pt) {
 // Greedy nearest-endpoint chaining: joins a folder's LineString segments into
 // one or more contiguous chains (a folder yields >1 chain when its lines are
 // genuinely disjoint corridors, e.g. Cyan, or have a branch, e.g. Red/Route 2020).
-function stitchSegments(segments, epsDeg = 0.003) {
+// Tolerance 0.015° (~1.5 km): the KML digitized each line as segments with small
+// gaps at station platforms — 0.003 left the Red Line's Jabal Ali segment as a
+// disconnected 16-pt orphan (1.7 km gap). 1.5 km closes those real-but-small
+// gaps while keeping genuine branches (Red→Expo 9.4 km, Blue 19.5 km) and the
+// mislabeled Green fragments (22 km away) as separate lines.
+function stitchSegments(segments, epsDeg = 0.015) {
   const remaining = segments.map((s) => s.slice());
   const chains = [];
   while (remaining.length) {

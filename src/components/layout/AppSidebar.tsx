@@ -1,15 +1,33 @@
 import { motion } from "framer-motion";
-import { MapPin, Bed, ChevronLeft, ChevronRight, Building2, X } from "lucide-react";
+import { MapPin, Bed, ChevronLeft, ChevronRight, Building2, X, Eye, EyeOff, Search } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { useProjects, filterProjects, useCommunities } from "@/hooks/use-projects";
 import { useFiltersStore } from "@/store/filters";
 import { formatAed, CATEGORIES, STATUSES } from "@/lib/dubai";
+import { track } from "@/lib/analytics";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
+const PRICE_RANGES: { label: string; min: number | null; max: number | null }[] = [
+  { label: "< 1M", min: null, max: 1_000_000 },
+  { label: "1–3M", min: 1_000_000, max: 3_000_000 },
+  { label: "3–5M", min: 3_000_000, max: 5_000_000 },
+  { label: "5M+", min: 5_000_000, max: null },
+];
+const BEDROOM_OPTIONS = [1, 2, 3, 4] as const;
+
 export function AppSidebar() {
-  const { filters, setFilters, reset, selectedProjectId, setSelectedProjectId, sidebarOpen, setSidebarOpen } =
-    useFiltersStore();
+  const {
+    filters,
+    setFilters,
+    reset,
+    selectedProjectId,
+    setSelectedProjectId,
+    sidebarOpen,
+    setSidebarOpen,
+    visibleProjectIds,
+    toggleProjectVisible,
+  } = useFiltersStore();
   const { data: projects = [], isLoading } = useProjects();
   const { data: communities = [] } = useCommunities();
   const filtered = filterProjects(projects, filters);
@@ -27,7 +45,8 @@ export function AppSidebar() {
         transition={{ type: "spring", stiffness: 260, damping: 30 }}
         className="glass-strong absolute inset-y-0 left-0 z-30 flex w-[380px] max-w-[92vw] flex-col border-r border-border/60"
       >
-        <div className="border-b border-border/50 p-4">
+        {/* Pinned header — stays put while everything below scrolls. */}
+        <div className="shrink-0 border-b border-border/50 p-4">
           <div className="flex items-center justify-between">
             <div>
               <div className="text-xs uppercase tracking-widest text-muted-foreground">Discover</div>
@@ -39,12 +58,55 @@ export function AppSidebar() {
               <X className="mr-1 h-3.5 w-3.5" /> Reset
             </Button>
           </div>
+        </div>
+
+        {/* Single scroll area: filters + project list share one gold scrollbar. */}
+        <div className="sidebar-scroll flex-1 overflow-y-auto">
+          <div className="border-b border-border/50 p-4">
+          {/* Smart search — matches name, developer, community, address (see
+              filterProjects in use-projects). */}
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="search"
+              value={filters.search}
+              onChange={(e) => setFilters({ search: e.target.value })}
+              placeholder="Search project, developer, area…"
+              className="glass gold-hairline w-full rounded-full py-2 pl-9 pr-3 text-sm text-cream placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-gold/50"
+            />
+          </div>
 
           <div className="mt-3 space-y-2">
-            <FilterRow label="Category">
+            <FilterRow label="Property type">
               {CATEGORIES.map((c) => (
                 <Chip key={c.value} active={filters.categories.includes(c.value)} onClick={() => toggle("categories", c.value)}>
                   {c.label}
+                </Chip>
+              ))}
+            </FilterRow>
+            <FilterRow label="Price (AED)">
+              {PRICE_RANGES.map((r) => (
+                <Chip
+                  key={r.label}
+                  active={filters.minPrice === r.min && filters.maxPrice === r.max}
+                  onClick={() =>
+                    filters.minPrice === r.min && filters.maxPrice === r.max
+                      ? setFilters({ minPrice: null, maxPrice: null })
+                      : setFilters({ minPrice: r.min, maxPrice: r.max })
+                  }
+                >
+                  {r.label}
+                </Chip>
+              ))}
+            </FilterRow>
+            <FilterRow label="Bedrooms (min)">
+              {BEDROOM_OPTIONS.map((b) => (
+                <Chip
+                  key={b}
+                  active={filters.bedrooms === b}
+                  onClick={() => setFilters({ bedrooms: filters.bedrooms === b ? null : b })}
+                >
+                  {b}+
                 </Chip>
               ))}
             </FilterRow>
@@ -65,15 +127,19 @@ export function AppSidebar() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-3">
+          <div className="p-3">
           {isLoading && <div className="p-6 text-center text-sm text-muted-foreground">Loading Dubai projects…</div>}
           <div className="space-y-2">
             {filtered.map((p) => {
               const selected = p.id === selectedProjectId;
+              const visible = visibleProjectIds.has(p.id);
               return (
+                <div key={p.id} className="relative">
                 <button
-                  key={p.id}
-                  onClick={() => setSelectedProjectId(p.id)}
+                  onClick={() => {
+                    setSelectedProjectId(p.id);
+                    track("select_project", { id: p.id, name: p.name });
+                  }}
                   className={`group w-full overflow-hidden rounded-2xl text-left transition-all ${
                     selected ? "gold-hairline ring-2 ring-gold/50" : "border border-border/60 hover:border-gold/40"
                   } glass`}
@@ -81,7 +147,7 @@ export function AppSidebar() {
                   <div className="flex gap-3 p-2.5">
                     <div className="h-20 w-24 shrink-0 overflow-hidden rounded-xl">
                       {p.main_image_url ? (
-                        <img src={p.main_image_url} alt={p.name} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
+                        <img src={p.main_image_url} alt={p.name} className="h-full w-full object-cover transition-transform group-hover:scale-105" loading="lazy" decoding="async" />
                       ) : (
                         <div className="h-full w-full bg-muted" />
                       )}
@@ -105,6 +171,20 @@ export function AppSidebar() {
                     </div>
                   </div>
                 </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleProjectVisible(p.id);
+                  }}
+                  aria-label={visible ? "Hide from map" : "Show on map"}
+                  title={visible ? "Hide from map" : "Show on map"}
+                  className={`glass gold-hairline absolute right-2 top-2 z-10 grid h-7 w-7 place-items-center rounded-full transition-colors ${
+                    visible ? "text-gold" : "text-muted-foreground hover:text-cream"
+                  }`}
+                >
+                  {visible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                </button>
+                </div>
               );
             })}
             {!isLoading && filtered.length === 0 && (
@@ -112,6 +192,7 @@ export function AppSidebar() {
                 No projects match your filters.
               </div>
             )}
+          </div>
           </div>
         </div>
       </motion.aside>

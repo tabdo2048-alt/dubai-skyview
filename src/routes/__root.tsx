@@ -13,6 +13,18 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { GA_ID } from "@/lib/analytics";
+
+// Origin of the Supabase project (from VITE_SUPABASE_URL) — preconnected so the
+// first auth/data request doesn't pay a cold DNS+TLS handshake.
+const SUPABASE_ORIGIN = (() => {
+  try {
+    const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+    return url ? new URL(url).origin : null;
+  } catch {
+    return null;
+  }
+})();
 
 function NotFoundComponent() {
   return (
@@ -79,7 +91,25 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Work+Sans:wght@300;400;500;600;700&display=swap" },
+      // Warm up the connections the map + data need on the critical path, so the
+      // TLS/DNS handshake overlaps with JS parse instead of blocking first tile.
+      { rel: "preconnect", href: "https://api.mapbox.com", crossOrigin: "anonymous" as const },
+      { rel: "preconnect", href: "https://events.mapbox.com", crossOrigin: "anonymous" as const },
+      { rel: "dns-prefetch", href: "https://a.tiles.mapbox.com" },
+      { rel: "dns-prefetch", href: "https://b.tiles.mapbox.com" },
+      ...(SUPABASE_ORIGIN
+        ? [{ rel: "preconnect", href: SUPABASE_ORIGIN, crossOrigin: "anonymous" as const }]
+        : []),
     ],
+    // GA4 loader — only emitted when VITE_GA_ID is configured.
+    scripts: GA_ID
+      ? [
+          { src: `https://www.googletagmanager.com/gtag/js?id=${GA_ID}`, async: true },
+          {
+            children: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${GA_ID}');`,
+          },
+        ]
+      : [],
   }),
   shellComponent: RootShell,
   component: RootComponent,

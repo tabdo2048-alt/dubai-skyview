@@ -86,6 +86,33 @@ export type Database = {
         }
         Relationships: []
       }
+      hospitals: {
+        Row: {
+          created_at: string
+          id: string
+          images: string[]
+          lat: number
+          lng: number
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          images?: string[]
+          lat: number
+          lng: number
+          name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          images?: string[]
+          lat?: number
+          lng?: number
+          name?: string
+        }
+        Relationships: []
+      }
       project_amenities: {
         Row: {
           created_at: string
@@ -248,6 +275,60 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      schools: {
+        Row: {
+          created_at: string
+          id: string
+          images: string[]
+          lat: number
+          lng: number
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          images?: string[]
+          lat: number
+          lng: number
+          name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          images?: string[]
+          lat?: number
+          lng?: number
+          name?: string
+        }
+        Relationships: []
+      }
+      tourism: {
+        Row: {
+          created_at: string
+          id: string
+          images: string[]
+          lat: number
+          lng: number
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          images?: string[]
+          lat: number
+          lng: number
+          name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          images?: string[]
+          lat?: number
+          lng?: number
+          name?: string
+        }
+        Relationships: []
       }
       user_roles: {
         Row: {

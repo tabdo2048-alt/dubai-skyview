@@ -72,7 +72,7 @@ export function MapContainer() {
     selectedProjectId,
     setSelectedProjectId,
     activeCategory,
-    hiddenProjectIds,
+    visibleProjectIds,
   } = useFiltersStore();
   const { data: pois = [] } = usePoi(activeCategory);
   usePoiRealtime();
@@ -95,12 +95,14 @@ export function MapContainer() {
   const [editorMap, setEditorMap] = useState<mapboxgl.Map | null>(null);
 
   const filtered = useMemo(() => filterProjects(projects, filters), [projects, filters]);
+  // Projects start hidden; only those the user has revealed (eye toggle) draw as
+  // markers. Category mode hides all project markers regardless.
   const projectsToShow = useMemo(
     () =>
       activeCategory
         ? []
-        : filtered.filter((p) => !hiddenProjectIds.has(p.id)),
-    [filtered, activeCategory, hiddenProjectIds]
+        : filtered.filter((p) => visibleProjectIds.has(p.id)),
+    [filtered, activeCategory, visibleProjectIds]
   );
   const selected =
     projectsToShow.find((p) => p.id === selectedProjectId) ??
@@ -152,9 +154,9 @@ export function MapContainer() {
                 onCameraChange={setCamera}
                 onReady={() => mapMode === "satellite" && setMapReady(true)}
                 active={mapMode === "satellite"}
-                metroMode={metroMode}
-                trainMode={trainMode}
-                roadsMode={roadsMode}
+                metroMode={activeCategory ? false : metroMode}
+                trainMode={activeCategory ? false : trainMode}
+                roadsMode={activeCategory ? false : roadsMode}
                 lightPreset={lightPreset}
                 mode="satellite"
               />
@@ -180,9 +182,9 @@ export function MapContainer() {
                 onReady={() => mapMode === "3d" && setMapReady(true)}
                 onMapReady={waterEditorEnabled ? setEditorMap : undefined}
                 active={mapMode === "3d"}
-                metroMode={metroMode}
-                trainMode={trainMode}
-                roadsMode={roadsMode}
+                metroMode={activeCategory ? false : metroMode}
+                trainMode={activeCategory ? false : trainMode}
+                roadsMode={activeCategory ? false : roadsMode}
                 lightPreset={lightPreset}
                 mode="3d"
               />
@@ -222,50 +224,50 @@ export function MapContainer() {
       </AnimatePresence>
 
       {/* Mode toggle */}
-      <div className="pointer-events-auto absolute right-4 top-4 z-20 flex gap-2">
+      <div className="pointer-events-auto absolute right-4 top-4 z-20 flex flex-wrap justify-end gap-1.5">
         <Button
           size="sm"
           onClick={() => switchMode("satellite")}
-          className={`glass gold-hairline rounded-full px-4 ${mapMode === "satellite" ? "bg-gold text-gold-foreground" : "text-cream"}`}
+          className={`glass gold-hairline h-8 rounded-full px-2.5 text-xs ${mapMode === "satellite" ? "bg-gold text-gold-foreground" : "text-cream"}`}
         >
-          <Satellite className="mr-1.5 h-4 w-4" /> Satellite
+          <Satellite className="mr-1 h-3.5 w-3.5" /> Satellite
         </Button>
         <Button
           size="sm"
           onClick={() => switchMode("3d")}
-          className={`glass gold-hairline rounded-full px-4 ${mapMode === "3d" ? "bg-gold text-gold-foreground" : "text-cream"}`}
+          className={`glass gold-hairline h-8 rounded-full px-2.5 text-xs ${mapMode === "3d" ? "bg-gold text-gold-foreground" : "text-cream"}`}
         >
-          <Globe2 className="mr-1.5 h-4 w-4" /> 3D View
+          <Globe2 className="mr-1 h-3.5 w-3.5" /> 3D View
         </Button>
         <Button
           size="sm"
           onClick={() => setMetroMode(!metroMode)}
-          className={`glass gold-hairline rounded-full px-4 ${metroMode ? "bg-gold text-gold-foreground" : "text-cream"}`}
+          className={`glass gold-hairline h-8 rounded-full px-2.5 text-xs ${metroMode ? "bg-gold text-gold-foreground" : "text-cream"}`}
         >
-          <TrainFront className="mr-1.5 h-4 w-4" /> Metro
+          <TrainFront className="mr-1 h-3.5 w-3.5" /> Metro
         </Button>
         <Button
           size="sm"
           onClick={() => setTrainMode(!trainMode)}
-          className={`glass gold-hairline rounded-full px-4 ${trainMode ? "bg-gold text-gold-foreground" : "text-cream"}`}
+          className={`glass gold-hairline h-8 rounded-full px-2.5 text-xs ${trainMode ? "bg-gold text-gold-foreground" : "text-cream"}`}
         >
-          <TramFront className="mr-1.5 h-4 w-4" /> Train
+          <TramFront className="mr-1 h-3.5 w-3.5" /> Train
         </Button>
         <Button
           size="sm"
           onClick={() => setRoadsMode(!roadsMode)}
-          className={`glass gold-hairline rounded-full px-4 ${roadsMode ? "bg-gold text-gold-foreground" : "text-cream"}`}
+          className={`glass gold-hairline h-8 rounded-full px-2.5 text-xs ${roadsMode ? "bg-gold text-gold-foreground" : "text-cream"}`}
         >
-          <Route className="mr-1.5 h-4 w-4" /> Roads
+          <Route className="mr-1 h-3.5 w-3.5" /> Roads
         </Button>
         {/* Dev-only: toggles the Water Debug Editor panel without a console command. */}
         {import.meta.env.DEV && (
           <Button
             size="sm"
             onClick={() => setWaterEditorEnabled((on) => !on)}
-            className={`glass gold-hairline rounded-full px-4 ${waterEditorEnabled ? "bg-gold text-gold-foreground" : "text-cream"}`}
+            className={`glass gold-hairline h-8 rounded-full px-2.5 text-xs ${waterEditorEnabled ? "bg-gold text-gold-foreground" : "text-cream"}`}
           >
-            <Waves className="mr-1.5 h-4 w-4" /> Water Editor
+            <Waves className="mr-1 h-3.5 w-3.5" /> Water Editor
           </Button>
         )}
       </div>

@@ -32,32 +32,36 @@ export function useProjects() {
   });
 }
 
+// Standalone fetch (used by the detail route's SSR loader so <head> SEO tags can
+// be built from real project data, and reused as the react-query queryFn).
+export async function fetchProjectBySlug(slug: string): Promise<ProjectWithRelations | null> {
+  const { data, error } = await supabase
+    .from("projects")
+    .select(`
+      *,
+      developer:developers(id,name,slug),
+      community:communities(id,name,slug),
+      images:project_images(*),
+      amenities:project_amenities(*)
+    `)
+    .eq("slug", slug)
+    .maybeSingle();
+  if (!error) return normalizeProject(data);
+
+  console.warn("[Projects] full project query failed; falling back to legacy schema", error.message);
+  const { data: legacyData, error: legacyError } = await supabase
+    .from("projects")
+    .select("*, developer:developers(id,name,slug)")
+    .eq("slug", slug)
+    .maybeSingle();
+  if (legacyError) throw legacyError;
+  return normalizeProject(legacyData);
+}
+
 export function useProject(slug: string) {
   return useQuery({
     queryKey: ["projects", "slug", slug],
-    queryFn: async (): Promise<ProjectWithRelations | null> => {
-      const { data, error } = await supabase
-        .from("projects")
-        .select(`
-          *,
-          developer:developers(id,name,slug),
-          community:communities(id,name,slug),
-          images:project_images(*),
-          amenities:project_amenities(*)
-        `)
-        .eq("slug", slug)
-        .maybeSingle();
-      if (!error) return normalizeProject(data);
-
-      console.warn("[Projects] full project query failed; falling back to legacy schema", error.message);
-      const { data: legacyData, error: legacyError } = await supabase
-        .from("projects")
-        .select("*, developer:developers(id,name,slug)")
-        .eq("slug", slug)
-        .maybeSingle();
-      if (legacyError) throw legacyError;
-      return normalizeProject(legacyData);
-    },
+    queryFn: () => fetchProjectBySlug(slug),
   });
 }
 

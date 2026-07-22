@@ -13,10 +13,16 @@ export type PoiPoint = {
   created_at: string;
 };
 
+// Table names deliberately equal the category ids, and all three POI tables
+// share an identical shape — so narrowing `table` to the POI-only union (not
+// `keyof Tables`) lets supabase.from(table) type both inserts and selects
+// against the real POI columns instead of the whole-schema union.
+type PoiTable = Extract<keyof Database["public"]["Tables"], PoiCategory>;
+
 export const POI_TABLES: Record<
   PoiCategory,
   {
-    table: keyof Database["public"]["Tables"];
+    table: PoiTable;
     label: string;
     icon: string;
     color: string;

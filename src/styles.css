@@ -220,3 +220,22 @@
   95% { opacity: 1; transform: translate(40%) scaleY(1); }
   100% { opacity: 0; transform: translate(50%) scaleY(1); }
 }
+
+/* Slim gold scrollbar for the sidebar scroll area (filters + project list). */
+.sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(201, 168, 76, 0.5) transparent;
+}
+.sidebar-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: rgba(201, 168, 76, 0.45);
+  border-radius: 9999px;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(201, 168, 76, 0.75);
+}

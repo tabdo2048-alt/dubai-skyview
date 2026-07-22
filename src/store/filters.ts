@@ -33,7 +33,9 @@ type FiltersStore = {
   activeCategory: "hospitals" | "schools" | "tourism" | null;
   setActiveCategory: (cat: "hospitals" | "schools" | "tourism" | null) => void;
 
-  hiddenProjectIds: Set<string>;
+  // Projects are hidden on the map by default; a project's marker only shows
+  // once its id is added here (via the eye toggle in the sidebar).
+  visibleProjectIds: Set<string>;
   toggleProjectVisible: (id: string) => void;
 };
 
@@ -66,11 +68,11 @@ export const useFiltersStore = create<FiltersStore>((set) => ({
   activeCategory: null,
   setActiveCategory: (cat) => set({ activeCategory: cat }),
 
-  hiddenProjectIds: new Set(),
+  visibleProjectIds: new Set(),
   toggleProjectVisible: (id) => set((s) => {
-    const next = new Set(s.hiddenProjectIds);
+    const next = new Set(s.visibleProjectIds);
     if (next.has(id)) next.delete(id);
     else next.add(id);
-    return { hiddenProjectIds: next };
+    return { visibleProjectIds: next };
   }),
 }));

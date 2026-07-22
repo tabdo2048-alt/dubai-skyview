@@ -7,6 +7,7 @@ import { AdminLocationPicker } from "@/components/map/AdminLocationPicker";
 import { useAuth, useIsAdmin } from "@/hooks/use-auth";
 import { useMapConfig } from "@/hooks/use-map-config";
 import { useProjects, useCommunities, useDevelopers } from "@/hooks/use-projects";
+import { POI_TABLES, type PoiCategory, type PoiPoint } from "@/hooks/use-pois";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -122,6 +123,143 @@ function AdminPage() {
         </div>
 
         <DeveloperManager />
+        <PoiManager />
+      </div>
+    </div>
+  );
+}
+
+const POI_CATEGORIES = Object.keys(POI_TABLES) as PoiCategory[];
+
+// Add / list / delete Places of Interest (tourism, schools, hospitals). Mirrors
+// DeveloperManager, but the active POI table is chosen with a category tab and
+// the location is set with the same map picker used for projects.
+function PoiManager() {
+  const { data: cfg } = useMapConfig();
+  const [category, setCategory] = useState<PoiCategory>("tourism");
+  const [rows, setRows] = useState<PoiPoint[]>([]);
+  const [loading, setLoading] = useState(false);
+  const empty = { name: "", lat: 25.1972, lng: 55.2744, images: "" };
+  const [form, setForm] = useState(empty);
+  const [saving, setSaving] = useState(false);
+
+  const table = POI_TABLES[category].table;
+
+  const load = async (cat: PoiCategory) => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from(POI_TABLES[cat].table)
+      .select("*")
+      .order("created_at", { ascending: false });
+    setLoading(false);
+    if (error) return toast.error(errMsg(error, "Could not load places"));
+    setRows((data ?? []) as PoiPoint[]);
+  };
+
+  useEffect(() => {
+    void load(category);
+    setForm(empty);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [category]);
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.name.trim()) return toast.error("Name is required");
+    setSaving(true);
+    try {
+      const payload = {
+        name: form.name.trim(),
+        lat: Number(form.lat),
+        lng: Number(form.lng),
+        images: form.images
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+      };
+      const { error } = await supabase.from(table).insert(payload);
+      if (error) throw error;
+      toast.success(`${POI_TABLES[category].label} place added`);
+      setForm(empty);
+      void load(category);
+    } catch (err) {
+      toast.error(errMsg(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const del = async (row: PoiPoint) => {
+    if (!confirm(`Delete "${row.name}"?`)) return;
+    const { error } = await supabase.from(table).delete().eq("id", row.id);
+    if (error) return toast.error(errMsg(error, "Delete failed"));
+    toast.success("Place deleted");
+    void load(category);
+  };
+
+  return (
+    <div className="mt-10">
+      <h2 className="font-display text-3xl text-cream">Places of interest</h2>
+
+      {/* Category tabs */}
+      <div className="mt-3 flex flex-wrap gap-2">
+        {POI_CATEGORIES.map((c) => (
+          <button
+            key={c}
+            type="button"
+            onClick={() => setCategory(c)}
+            className={`rounded-full px-4 py-1.5 text-sm transition-all ${
+              category === c ? "bg-gold text-gold-foreground shadow" : "glass gold-hairline text-cream hover:text-gold"
+            }`}
+          >
+            {POI_TABLES[c].icon} {POI_TABLES[c].label}
+          </button>
+        ))}
+      </div>
+
+      <form onSubmit={save} className="glass-strong gold-hairline mt-4 grid gap-3 rounded-2xl p-5 sm:grid-cols-2">
+        <Field label="Name"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></Field>
+        <Field label="Image URLs (comma-separated)"><Input value={form.images} onChange={(e) => setForm({ ...form, images: e.target.value })} placeholder="https://…, https://…" /></Field>
+        {cfg?.mapboxAccessToken && (
+          <div className="sm:col-span-2">
+            <Label className="text-xs uppercase tracking-widest text-muted-foreground">Location on map</Label>
+            <div className="mt-1">
+              <AdminLocationPicker
+                accessToken={cfg.mapboxAccessToken}
+                lat={form.lat}
+                lng={form.lng}
+                onChange={({ lat, lng }) => setForm({ ...form, lat, lng })}
+              />
+            </div>
+          </div>
+        )}
+        <Field label="Latitude"><Input type="number" step="0.0001" value={form.lat} onChange={(e) => setForm({ ...form, lat: Number(e.target.value) })} required /></Field>
+        <Field label="Longitude"><Input type="number" step="0.0001" value={form.lng} onChange={(e) => setForm({ ...form, lng: Number(e.target.value) })} required /></Field>
+        <div className="flex gap-2 sm:col-span-2">
+          <Button type="submit" disabled={saving} className="bg-gold text-gold-foreground hover:bg-gold/90">
+            <Plus className="mr-1 h-4 w-4" /> {saving ? "Saving…" : `Add ${POI_TABLES[category].label} place`}
+          </Button>
+        </div>
+      </form>
+
+      <div className="mt-4 grid gap-2">
+        {loading && <div className="p-4 text-center text-sm text-muted-foreground">Loading…</div>}
+        {!loading && rows.length === 0 && (
+          <div className="glass gold-hairline rounded-2xl p-4 text-center text-sm text-muted-foreground">
+            No {POI_TABLES[category].label.toLowerCase()} places yet.
+          </div>
+        )}
+        {rows.map((row) => (
+          <div key={row.id} className="glass gold-hairline flex items-center gap-3 rounded-2xl p-3">
+            <div className="grid h-10 w-10 place-items-center rounded-md bg-black/30 text-lg" style={{ color: POI_TABLES[category].color }}>
+              {POI_TABLES[category].icon}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-display text-lg text-cream">{row.name}</div>
+              <div className="truncate text-xs text-muted-foreground">{row.lat.toFixed(4)}, {row.lng.toFixed(4)}</div>
+            </div>
+            <Button size="icon" variant="ghost" onClick={() => del(row)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+          </div>
+        ))}
       </div>
     </div>
   );

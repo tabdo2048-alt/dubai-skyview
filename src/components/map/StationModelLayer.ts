@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import mapboxgl from "mapbox-gl";
 import { acquireSharedRenderer, releaseSharedRenderer, syncSharedRendererSize, extractProjectionMatrix } from "@/lib/mapbox/sharedThreeRenderer";
 import { makeMercatorRef, lngLatToLocal, composeLocalToMercator } from "@/lib/mapbox/mercatorLocal";
@@ -12,7 +12,7 @@ export type StationModelHandle = {
 
 interface StationClone {
   mesh: THREE.Group;
-  station: { id: string; coord: [number, number]; color: string; interchange: boolean; network: "metro" | "train" };
+  station: { id: string; coord: [number, number]; color: string; interchange: boolean; network: "metro" | "train"; progress: number };
   target: number;
   current: number;
   baseScale: number;
@@ -119,14 +119,14 @@ export function createStationModelLayer(
       scene.add(dirLight);
 
       renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFShadowShadowMap;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
       new GLTFLoader().load(
         import.meta.env.BASE_URL + "models/metro-station.glb",
-        (gltf) => {
+        (gltf: { scene: THREE.Group }) => {
           if (disposed) return;
           gltfTemplate = gltf.scene;
-          buildClones(gltfTemplate);
+          buildClones(gltf.scene);
         },
         undefined,
         () => {
@@ -170,7 +170,7 @@ export function createStationModelLayer(
       renderer.resetState();
       renderer.render(scene, camera);
 
-      if (anyTweening) renderer.context.canvas.dispatchEvent(new Event("repaint"));
+      if (anyTweening) renderer.getContext().canvas.dispatchEvent(new Event("repaint"));
     },
 
     onRemove() {
@@ -216,8 +216,8 @@ export function createStationModelLayer(
           changed = true;
         }
       }
-      if (changed && typeof renderer !== "undefined") {
-        renderer.context.canvas.dispatchEvent(new Event("repaint"));
+      if (changed && renderer) {
+        renderer.getContext().canvas.dispatchEvent(new Event("repaint"));
       }
     },
   };
