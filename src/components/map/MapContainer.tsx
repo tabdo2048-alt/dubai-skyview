@@ -18,6 +18,7 @@ import type mapboxgl from "mapbox-gl";
 import { MapboxView, type LightPreset } from "./MapboxView";
 import { CloudLayer } from "./CloudLayer";
 import { ProjectPopup } from "./ProjectPopup";
+import { CategoryPanel } from "./CategoryPanel";
 // Dev-only editor. Lazy so its static WaterLayer import (Three.js + the ~1.6 MB
 // coastline) never enters the production bundle and doesn't defeat the dynamic
 // WaterLayer split in MapboxView.
@@ -29,6 +30,7 @@ import { ROAD_GUIDE, setRouteHighlight } from "./roadsLayer";
 import { useMapConfig } from "@/hooks/use-map-config";
 import { useFiltersStore } from "@/store/filters";
 import { useProjects, filterProjects } from "@/hooks/use-projects";
+import { usePoi, usePoiRealtime } from "@/hooks/use-pois";
 import { DUBAI_CENTER, DEFAULT_ZOOM } from "@/lib/dubai";
 import { CATEGORY_COLORS } from "@/lib/metro";
 import { Button } from "@/components/ui/button";
@@ -69,7 +71,11 @@ export function MapContainer() {
     setLightPreset,
     selectedProjectId,
     setSelectedProjectId,
+    activeCategory,
+    hiddenProjectIds,
   } = useFiltersStore();
+  const { data: pois = [] } = usePoi(activeCategory);
+  usePoiRealtime();
   const [camera, setCamera] = useState({
     lat: DUBAI_CENTER.lat,
     lng: DUBAI_CENTER.lng,
@@ -89,8 +95,15 @@ export function MapContainer() {
   const [editorMap, setEditorMap] = useState<mapboxgl.Map | null>(null);
 
   const filtered = useMemo(() => filterProjects(projects, filters), [projects, filters]);
+  const projectsToShow = useMemo(
+    () =>
+      activeCategory
+        ? []
+        : filtered.filter((p) => !hiddenProjectIds.has(p.id)),
+    [filtered, activeCategory, hiddenProjectIds]
+  );
   const selected =
-    filtered.find((p) => p.id === selectedProjectId) ??
+    projectsToShow.find((p) => p.id === selectedProjectId) ??
     projects.find((p) => p.id === selectedProjectId) ??
     null;
 
@@ -132,7 +145,9 @@ export function MapContainer() {
             >
               <MapboxView
                 accessToken={cfg.mapboxAccessToken}
-                projects={filtered}
+                projects={projectsToShow}
+                pois={pois}
+                activeCategory={activeCategory}
                 camera={camera}
                 onCameraChange={setCamera}
                 onReady={() => mapMode === "satellite" && setMapReady(true)}
@@ -157,7 +172,9 @@ export function MapContainer() {
             >
               <MapboxView
                 accessToken={cfg.mapboxAccessToken}
-                projects={filtered}
+                projects={projectsToShow}
+                pois={pois}
+                activeCategory={activeCategory}
                 camera={camera}
                 onCameraChange={setCamera}
                 onReady={() => mapMode === "3d" && setMapReady(true)}
@@ -176,6 +193,9 @@ export function MapContainer() {
 
       {/* Premium aerial cloud layer — fades out as you zoom into the city (both modes) */}
       <CloudLayer zoom={camera.zoom} />
+
+      {/* Category filter panel (right side) */}
+      <CategoryPanel />
 
       {/* Dev-only Water Debug Editor (3D mode) — never mounted in production. */}
       {waterEditorEnabled && mapMode === "3d" && (

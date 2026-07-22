@@ -29,6 +29,12 @@ type FiltersStore = {
 
   sidebarOpen: boolean;
   setSidebarOpen: (open: boolean) => void;
+
+  activeCategory: "hospitals" | "schools" | "tourism" | null;
+  setActiveCategory: (cat: "hospitals" | "schools" | "tourism" | null) => void;
+
+  hiddenProjectIds: Set<string>;
+  toggleProjectVisible: (id: string) => void;
 };
 
 export const useFiltersStore = create<FiltersStore>((set) => ({
@@ -56,4 +62,15 @@ export const useFiltersStore = create<FiltersStore>((set) => ({
 
   sidebarOpen: true,
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
+
+  activeCategory: null,
+  setActiveCategory: (cat) => set({ activeCategory: cat }),
+
+  hiddenProjectIds: new Set(),
+  toggleProjectVisible: (id) => set((s) => {
+    const next = new Set(s.hiddenProjectIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return { hiddenProjectIds: next };
+  }),
 }));

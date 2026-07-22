@@ -13,9 +13,11 @@ import {
 // imported dynamically so that weight lands in its own chunk, loaded only when
 // the water layer is actually added — never in the initial page bundle.
 import type { createWaterLayer as CreateWaterLayer } from "./WaterLayer";
+import type { createStationModelLayer as CreateStationModelLayer } from "./StationModelLayer";
 import { addRoadsLayers, setRoadsVisible } from "./roadsLayer";
 import type { ProjectWithRelations } from "@/lib/types";
 import { useFiltersStore } from "@/store/filters";
+import type { PoiPoint } from "@/hooks/use-pois";
 
 // mapbox-gl v3 style expression — an array that can nest to arbitrary depth.
 // We build these by hand, so TypeScript sees them as `any[]` but Mapbox knows better.
@@ -37,6 +39,8 @@ export type LightPreset = "dawn" | "day" | "dusk" | "night";
 type Props = {
   accessToken: string;
   projects: ProjectWithRelations[];
+  pois?: PoiPoint[];
+  activeCategory?: string | null;
   camera: { lat: number; lng: number; zoom: number };
   onCameraChange: (c: { lat: number; lng: number; zoom: number }) => void;
   onReady?: () => void;
@@ -91,7 +95,16 @@ const PROJECT_MARKER_CSS = `
   box-shadow:0 8px 24px rgba(0,0,0,.5),0 0 18px rgba(201,168,76,.55)}
 .proj-marker.selected{transform:scale(1.14);border-color:#c9a84c;
   box-shadow:0 0 24px rgba(201,168,76,.9)}
-@media (prefers-reduced-motion:reduce){.proj-marker{transition:none}}`;
+@media (prefers-reduced-motion:reduce){.proj-marker{transition:none}}
+.poi-marker{display:grid;place-items:center;width:36px;height:36px;border-radius:9999px;
+  background:rgba(10,15,20,.88);
+  border:2px solid currentColor;
+  box-shadow:0 0 12px rgba(0,0,0,.5);
+  color:#fff;font:600 8px/1 'Work Sans',Arial,sans-serif;
+  cursor:pointer;position:relative;transform:translateZ(0);
+  transition:transform .2s ease,box-shadow .2s ease}
+.poi-marker:hover{transform:scale(1.15);box-shadow:0 0 16px currentColor}
+@media (prefers-reduced-motion:reduce){.poi-marker{transition:none}}`;
 
 function ensureProjectMarkerStyles() {
   if (typeof document === "undefined" || document.getElementById("proj-marker-style")) return;
@@ -107,6 +120,8 @@ const LINE_STAGGER = 350; // ms delay between each line starting to draw
 export function MapboxView({
   accessToken,
   projects,
+  pois = [],
+  activeCategory,
   camera,
   onCameraChange,
   onReady,
@@ -121,12 +136,14 @@ export function MapboxView({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<Map<string, mapboxgl.Marker>>(new globalThis.Map());
+  const poiMarkersRef = useRef<Map<string, mapboxgl.Marker>>(new globalThis.Map());
   const trainMarkersRef = useRef<Map<string, mapboxgl.Marker>>(new globalThis.Map());
   const pulseMarkersRef = useRef<mapboxgl.Marker[]>([]);
   const metroFrameRef = useRef<Map<string, number>>(new globalThis.Map());
   const metroTimeoutsRef = useRef<number[]>([]);
   const trainRafRef = useRef<number | null>(null);
   const trainMotionRef = useRef<Map<string, TrainMotionState>>(new globalThis.Map());
+  const stationModelRef = useRef<ReturnType<typeof import("./StationModelLayer").createStationModelLayer> | null>(null);
   const styleLoadedRef = useRef(false);
   const stationInteractionAddedRef = useRef(false);
   const heavyLayerFallbackTimeoutRef = useRef<number | null>(null);
