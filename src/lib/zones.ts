@@ -2,9 +2,30 @@
 //
 // One source/truth for the RY / STR / HH investment zones so the public map
 // (highlight buttons) and the admin preview draw them identically: same colors,
-// same outline-only styling, same value-driven intensity. No fill — borders only.
+// same value-driven intensity.
+//
+// Spotlight effect: when a category is active, a single inverted "dim mask"
+// (a world-sized rectangle with the active zones punched out as holes) darkens
+// everything except the zones, and each active zone gets a semi-transparent
+// color fill under its bright border. Everything animates via mapbox paint
+// transitions (opacity only) so toggling fades in/out.
 
 import type mapboxgl from "mapbox-gl";
+
+// ── Spotlight look — tweak here ──────────────────────────────────────────────
+export const ZONE_DIM_COLOR = "#05070c";   // near-black overlay outside zones
+export const ZONE_DIM_OPACITY = 0.55;       // how dark the surroundings get
+export const ZONE_FILL_OPACITY = 0.3;       // base zone color fill
+export const ZONE_FILL_PULSE = 0.08;        // extra opacity at the pulse peak
+export const ZONE_ANIM_MS = 420;            // fade duration
+export const ZONE_PULSE = true;             // subtle breathing pulse on fills
+// World-sized outer ring for the mask; far exceeds the map's maxBounds so no
+// un-dimmed strip shows at the edges when zoomed/panned out.
+const WORLD_RING: [number, number][] = [
+  [-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85],
+];
+const DIM_SRC = "zone-dim-src";
+const DIM_LAYER = "zone-dim";
 
 export type ZoneCategory = "RY" | "STR" | "HH";
 
@@ -42,6 +63,9 @@ export function isZoneCategory(v: string): v is ZoneCategory {
 function srcId(cat: ZoneCategory) {
   return `zones-${cat}-src`;
 }
+function fillId(cat: ZoneCategory) {
+  return `zones-${cat}-fill`;
+}
 function casingId(cat: ZoneCategory) {
   return `zones-${cat}-casing`;
 }
@@ -53,7 +77,7 @@ function labelId(cat: ZoneCategory) {
 }
 
 export function zoneLayerIds(cat: ZoneCategory) {
-  return { src: srcId(cat), casing: casingId(cat), line: lineId(cat), label: labelId(cat) };
+  return { src: srcId(cat), fill: fillId(cat), casing: casingId(cat), line: lineId(cat), label: labelId(cat) };
 }
 
 type Ring = [number, number][];
@@ -115,22 +139,98 @@ export function buildZoneLabels(zones: ZoneRow[]): GeoJSON.FeatureCollection {
   return { type: "FeatureCollection", features };
 }
 
-// Add every category's sources + layers ONCE (empty, hidden). Toggling is done
-// by visibility + setData afterwards — never by add/remove — which avoids the
-// mapbox symbol-placement crash that source churn triggers on the Standard style.
-// Adding sources/layers needs a loaded style, so this no-ops until then; the
-// caller retries. Setting data/visibility on already-added layers is always safe.
+// Inverted mask: one polygon whose outer ring is the whole world and whose
+// holes are the active zones. Filling it dark darkens everything EXCEPT the
+// zones (mapbox treats every ring after the first as a hole). Built by hand so
+// no turf import lands in the public map bundle.
+export function buildDimMask(activeZones: ZoneRow[]): GeoJSON.FeatureCollection {
+  const holes: Ring[] = [];
+  for (const z of activeZones) {
+    const ring = polygonRings(z.geometry)[0];
+    if (ring && ring.length >= 4) holes.push(ring);
+  }
+  if (holes.length === 0) return emptyFC();
+  return {
+    type: "FeatureCollection",
+    features: [
+      {
+        type: "Feature",
+        properties: {},
+        geometry: { type: "Polygon", coordinates: [WORLD_RING, ...holes] },
+      },
+    ],
+  };
+}
+
+// Add all zone sources + layers ONCE (empty). Toggling is done by paint-opacity
+// + setData afterwards — never add/remove — which avoids the mapbox symbol-
+// placement crash source churn triggers on the Standard style. Adding needs a
+// loaded style, so this no-ops until then; the caller retries. Opacity/data
+// updates on already-added layers are always safe.
+//
+// Order (bottom→top): dim mask → per-category fills → casings → lines → labels.
+//
+// Not gated on isStyleLoaded(): the Mapbox Standard style (3D mode) reports
+// false long after add* actually works, which would starve the layers. Each
+// add is guarded by an existence check and wrapped so a genuine "style not
+// ready" throw is swallowed and simply retried on the next call.
 export function ensureZoneLayers(map: mapboxgl.Map) {
-  if (!map.isStyleLoaded()) return;
+  try {
+    ensureZoneLayersUnsafe(map);
+  } catch {
+    // Style not ready yet — caller retries (toggle / idle).
+  }
+}
+
+function ensureZoneLayersUnsafe(map: mapboxgl.Map) {
+  const tr = { duration: ZONE_ANIM_MS } as const;
+  const add = (layer: Record<string, unknown>) => (map.addLayer as (l: unknown) => void)(layer);
+
+  // Dim mask (single, shared).
+  if (!map.getSource(DIM_SRC)) {
+    map.addSource(DIM_SRC, { type: "geojson", data: emptyFC() });
+    add({
+      id: DIM_LAYER,
+      type: "fill",
+      source: DIM_SRC,
+      paint: {
+        "fill-color": ZONE_DIM_COLOR,
+        "fill-opacity": 0,
+        "fill-opacity-transition": tr,
+      },
+    });
+  }
+
+  // Per-category sources.
+  for (const cat of ZONE_ORDER) {
+    const ids = zoneLayerIds(cat);
+    if (map.getSource(ids.src)) continue;
+    map.addSource(ids.src, { type: "geojson", data: emptyFC() });
+    map.addSource(`${ids.src}-lbl`, { type: "geojson", data: emptyFC() });
+  }
+
+  // Fills (above the mask so the zone reads in its color, not dimmed).
+  for (const cat of ZONE_ORDER) {
+    const ids = zoneLayerIds(cat);
+    if (map.getLayer(ids.fill)) continue;
+    add({
+      id: ids.fill,
+      type: "fill",
+      source: ids.src,
+      paint: {
+        "fill-color": ZONE_CATEGORIES[cat].full,
+        "fill-opacity": 0,
+        "fill-opacity-transition": tr,
+      },
+    });
+  }
+
+  // Borders + labels on top.
   for (const cat of ZONE_ORDER) {
     const ids = zoneLayerIds(cat);
     const palette = ZONE_CATEGORIES[cat];
-    if (map.getSource(ids.src)) continue;
+    if (map.getLayer(ids.line)) continue;
 
-    map.addSource(ids.src, { type: "geojson", data: emptyFC() });
-    map.addSource(`${ids.src}-lbl`, { type: "geojson", data: emptyFC() });
-
-    // Value-driven color/width: dim+thin at ZONE_VALUE_MIN, full+thick at MAX.
     const valueExpr = ["coalesce", ["get", "value"], 0] as unknown;
     const colorExpr = [
       "interpolate", ["linear"], valueExpr,
@@ -143,28 +243,30 @@ export function ensureZoneLayers(map: mapboxgl.Map) {
       ZONE_VALUE_MAX, 3.5,
     ] as unknown;
 
-    const add = (layer: Record<string, unknown>) =>
-      (map.addLayer as (l: unknown) => void)(layer);
-
-    // Wide translucent casing under the solid line so the border "pops".
     add({
       id: ids.casing,
       type: "line",
       source: ids.src,
-      layout: { "line-join": "round", "line-cap": "round", visibility: "none" },
+      layout: { "line-join": "round", "line-cap": "round" },
       paint: {
         "line-color": palette.full,
         "line-width": ["+", widthExpr, 4],
-        "line-opacity": 0.28,
+        "line-opacity": 0,
         "line-blur": 2,
+        "line-opacity-transition": tr,
       },
     });
     add({
       id: ids.line,
       type: "line",
       source: ids.src,
-      layout: { "line-join": "round", "line-cap": "round", visibility: "none" },
-      paint: { "line-color": colorExpr, "line-width": widthExpr },
+      layout: { "line-join": "round", "line-cap": "round" },
+      paint: {
+        "line-color": colorExpr,
+        "line-width": widthExpr,
+        "line-opacity": 0,
+        "line-opacity-transition": tr,
+      },
     });
     add({
       id: ids.label,
@@ -175,30 +277,65 @@ export function ensureZoneLayers(map: mapboxgl.Map) {
         "text-size": 12,
         "text-font": ["Open Sans Semibold", "Arial Unicode MS Regular"],
         "text-allow-overlap": false,
-        visibility: "none",
       },
       paint: {
         "text-color": palette.full,
         "text-halo-color": "rgba(0,0,0,0.85)",
         "text-halo-width": 1.4,
+        "text-opacity": 0,
+        "text-opacity-transition": tr,
       },
     });
   }
 }
 
-// Refresh data + visibility for every category. Adds the layers first if missing.
-export function applyZones(map: mapboxgl.Map, zones: ZoneRow[], active: Set<ZoneCategory>) {
+// Refresh geometry + drive the spotlight. Data for every category is always
+// present; appearance is pure opacity (so both fade-in and fade-out animate).
+// `fillBoost` (0..ZONE_FILL_PULSE) is added to active fills for the breathing
+// pulse — pass 0 for a steady fill.
+export function applyZones(
+  map: mapboxgl.Map,
+  zones: ZoneRow[],
+  active: Set<ZoneCategory>,
+  fillBoost = 0,
+) {
   ensureZoneLayers(map);
+
+  // Zone geometry (all categories, always) + the combined dim mask (active only).
+  const activeZones: ZoneRow[] = [];
+  for (const cat of ZONE_ORDER) {
+    const ids = zoneLayerIds(cat);
+    const rows = zones.filter((z) => z.category === cat);
+    if (active.has(cat)) activeZones.push(...rows);
+    (map.getSource(ids.src) as mapboxgl.GeoJSONSource | undefined)?.setData(buildZonePolygons(rows));
+    (map.getSource(`${ids.src}-lbl`) as mapboxgl.GeoJSONSource | undefined)?.setData(buildZoneLabels(rows));
+  }
+  (map.getSource(DIM_SRC) as mapboxgl.GeoJSONSource | undefined)?.setData(buildDimMask(activeZones));
+
+  const anyActive = activeZones.length > 0;
+  if (map.getLayer(DIM_LAYER)) {
+    map.setPaintProperty(DIM_LAYER, "fill-opacity", anyActive ? ZONE_DIM_OPACITY : 0);
+  }
+
   for (const cat of ZONE_ORDER) {
     const ids = zoneLayerIds(cat);
     const on = active.has(cat);
-    const rows = on ? zones.filter((z) => z.category === cat) : [];
-    (map.getSource(ids.src) as mapboxgl.GeoJSONSource | undefined)?.setData(buildZonePolygons(rows));
-    (map.getSource(`${ids.src}-lbl`) as mapboxgl.GeoJSONSource | undefined)?.setData(buildZoneLabels(rows));
-    const vis = on ? "visible" : "none";
-    for (const id of [ids.casing, ids.line, ids.label]) {
-      if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", vis);
+    if (map.getLayer(ids.fill)) {
+      map.setPaintProperty(ids.fill, "fill-opacity", on ? ZONE_FILL_OPACITY + fillBoost : 0);
     }
+    if (map.getLayer(ids.casing)) map.setPaintProperty(ids.casing, "line-opacity", on ? 0.28 : 0);
+    if (map.getLayer(ids.line)) map.setPaintProperty(ids.line, "line-opacity", on ? 1 : 0);
+    if (map.getLayer(ids.label)) map.setPaintProperty(ids.label, "text-opacity", on ? 1 : 0);
+  }
+}
+
+// Breathing pulse: nudge only the active fills' opacity (no geometry work), so
+// it can run on a timer cheaply. `boost` in 0..ZONE_FILL_PULSE.
+export function pulseZoneFills(map: mapboxgl.Map, active: Set<ZoneCategory>, boost: number) {
+  for (const cat of ZONE_ORDER) {
+    if (!active.has(cat)) continue;
+    const id = fillId(cat);
+    if (map.getLayer(id)) map.setPaintProperty(id, "fill-opacity", ZONE_FILL_OPACITY + boost);
   }
 }
 

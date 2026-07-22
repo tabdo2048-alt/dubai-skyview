@@ -18,7 +18,16 @@ import { addRoadsLayers, setRoadsVisible } from "./roadsLayer";
 import type { ProjectWithRelations } from "@/lib/types";
 import { useFiltersStore } from "@/store/filters";
 import { POI_TABLES, type PoiPoint, type PoiCategory } from "@/hooks/use-pois";
-import { ZONE_ORDER, applyZones, type ZoneRow, type ZoneCategory } from "@/lib/zones";
+import {
+  ZONE_ORDER,
+  ZONE_PULSE,
+  ZONE_FILL_PULSE,
+  ZONE_ANIM_MS,
+  applyZones,
+  pulseZoneFills,
+  type ZoneRow,
+  type ZoneCategory,
+} from "@/lib/zones";
 
 // mapbox-gl v3 style expression — an array that can nest to arbitrary depth.
 // We build these by hand, so TypeScript sees them as `any[]` but Mapbox knows better.
@@ -1417,11 +1426,11 @@ export function MapboxView({
     }
   }, [pois, activeCategory]);
 
-  // Zone highlight outlines (RY / STR / HH). Layers are added once (empty,
-  // hidden); toggling a category flips visibility + refreshes source data —
-  // never add/remove, which avoids the mapbox symbol-placement crash on the
-  // Standard style. Gated on mapReady so the style is fully loaded. Outline
-  // only; GL line layers sit under the DOM markers automatically.
+  // Zone spotlight (RY / STR / HH). Layers are added once; toggling a category
+  // drives an inverted dim-mask (darkens everything but the zones) + a color
+  // fill + border, all via animated paint-opacity — never add/remove, which
+  // avoids the mapbox symbol-placement crash on the Standard style. A subtle
+  // pulse breathes the active fills. GL layers sit under the DOM markers.
   const activeZoneKey = zoneCategories ? ZONE_ORDER.filter((c) => zoneCategories.has(c)).join(",") : "";
   useEffect(() => {
     const map = mapRef.current;
@@ -1430,7 +1439,7 @@ export function MapboxView({
     const run = () => {
       if (mapRef.current !== map) return;
       // applyZones adds layers only once the style is loaded, then always
-      // refreshes data + visibility (safe even mid tile-load).
+      // refreshes data + opacity (safe even mid tile-load).
       applyZones(map, zones, active);
     };
     run();
@@ -1441,8 +1450,21 @@ export function MapboxView({
       if (mapRef.current === map && map.getLayer("zones-RY-line")) map.off("idle", retry);
     };
     if (!map.getLayer("zones-RY-line")) map.on("idle", retry);
+
+    // Breathing pulse on the active fills — a slow ping-pong the paint
+    // transition eases between. Off when nothing is active.
+    let pulse: ReturnType<typeof setInterval> | undefined;
+    if (ZONE_PULSE && active.size > 0) {
+      let up = true;
+      pulse = setInterval(() => {
+        if (mapRef.current !== map) return;
+        pulseZoneFills(map, active, up ? ZONE_FILL_PULSE : 0);
+        up = !up;
+      }, ZONE_ANIM_MS + 380);
+    }
     return () => {
       map.off("idle", retry);
+      if (pulse) clearInterval(pulse);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zones, activeZoneKey, mapReady]);
