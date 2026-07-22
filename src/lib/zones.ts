@@ -15,8 +15,8 @@ import type mapboxgl from "mapbox-gl";
 // ── Spotlight look — tweak here ──────────────────────────────────────────────
 export const ZONE_DIM_COLOR = "#05070c";   // near-black overlay outside zones
 export const ZONE_DIM_OPACITY = 0.55;       // how dark the surroundings get
-export const ZONE_FILL_OPACITY = 0.3;       // base zone color fill
-export const ZONE_FILL_PULSE = 0.08;        // extra opacity at the pulse peak
+export const ZONE_FILL_OPACITY = 0.15;      // base zone color fill
+export const ZONE_FILL_PULSE = 0.05;        // extra opacity at the pulse peak
 export const ZONE_ANIM_MS = 420;            // fade duration
 export const ZONE_PULSE = true;             // subtle breathing pulse on fills
 // World-sized outer ring for the mask; far exceeds the map's maxBounds so no
