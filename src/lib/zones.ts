@@ -14,7 +14,7 @@ import type mapboxgl from "mapbox-gl";
 
 // ── Spotlight look — tweak here ──────────────────────────────────────────────
 export const ZONE_DIM_COLOR = "#05070c";   // near-black overlay outside zones
-export const ZONE_DIM_OPACITY = 0.55;       // how dark the surroundings get
+export const ZONE_DIM_OPACITY = 0.28;       // how dark the surroundings get
 export const ZONE_FILL_OPACITY = 0.15;      // base zone color fill
 export const ZONE_FILL_PULSE = 0.05;        // extra opacity at the pulse peak
 export const ZONE_ANIM_MS = 420;            // fade duration
@@ -323,7 +323,8 @@ export function applyZones(
     if (map.getLayer(ids.fill)) {
       map.setPaintProperty(ids.fill, "fill-opacity", on ? ZONE_FILL_OPACITY + fillBoost : 0);
     }
-    if (map.getLayer(ids.casing)) map.setPaintProperty(ids.casing, "line-opacity", on ? 0.28 : 0);
+    // Casing (blurred glow) kept off — reads as a shadow around the zone.
+    if (map.getLayer(ids.casing)) map.setPaintProperty(ids.casing, "line-opacity", 0);
     if (map.getLayer(ids.line)) map.setPaintProperty(ids.line, "line-opacity", on ? 1 : 0);
     if (map.getLayer(ids.label)) map.setPaintProperty(ids.label, "text-opacity", on ? 1 : 0);
   }

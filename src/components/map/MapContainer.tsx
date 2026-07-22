@@ -32,7 +32,7 @@ import { useFiltersStore } from "@/store/filters";
 import { useProjects, filterProjects } from "@/hooks/use-projects";
 import { usePoi, usePoiRealtime } from "@/hooks/use-pois";
 import { useZones, useZonesRealtime } from "@/hooks/use-zones";
-import { ZONE_ORDER, ZONE_CATEGORIES, ZONE_VALUE_MIN, ZONE_VALUE_MAX } from "@/lib/zones";
+import { ZONE_ORDER, ZONE_CATEGORIES } from "@/lib/zones";
 import { DUBAI_CENTER, DEFAULT_ZOOM } from "@/lib/dubai";
 import { CATEGORY_COLORS } from "@/lib/metro";
 import { Button } from "@/components/ui/button";
@@ -439,51 +439,6 @@ export function MapContainer() {
                 <p className="mt-2.5 border-t border-white/10 pt-2 text-[10px] leading-tight text-muted-foreground">
                   Watch the network draw itself across Dubai. Yachts &amp; ships sail the Marina,
                   Palm and Creek waters.
-                </p>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Zone highlight legend — color per category + the value→intensity scale. */}
-      <AnimatePresence>
-        {zoneCategories.size > 0 && (
-          <motion.div
-            key="zone-legend"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.35, ease: "easeOut" }}
-            className="pointer-events-auto"
-          >
-            <div className="glass gold-hairline rounded-2xl p-3.5">
-              <div className="font-display text-sm text-cream">Investment Zones</div>
-              <ul className="mt-2 space-y-1.5">
-                {ZONE_ORDER.filter((c) => zoneCategories.has(c)).map((c) => (
-                  <li key={c} className="flex items-center gap-2 text-xs text-cream/90">
-                    <span
-                      className="h-[3px] w-6 shrink-0 rounded-full"
-                      style={{
-                        background: ZONE_CATEGORIES[c].color,
-                        boxShadow: `0 0 8px ${ZONE_CATEGORIES[c].color}`,
-                      }}
-                    />
-                    <span className="flex-1 truncate">{ZONE_CATEGORIES[c].label}</span>
-                    <span className="shrink-0 rounded-full bg-white/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-cream/70">
-                      {c}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-2.5 border-t border-white/10 pt-2">
-                <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                  <span>{ZONE_VALUE_MIN}%</span>
-                  <span className="h-1.5 flex-1 rounded-full bg-gradient-to-r from-white/20 to-gold" />
-                  <span>{ZONE_VALUE_MAX}%+</span>
-                </div>
-                <p className="mt-1 text-[10px] leading-tight text-muted-foreground">
-                  Brighter, thicker borders mark stronger yield.
                 </p>
               </div>
             </div>
