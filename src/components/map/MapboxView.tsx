@@ -18,6 +18,7 @@ import { addRoadsLayers, setRoadsVisible } from "./roadsLayer";
 import type { ProjectWithRelations } from "@/lib/types";
 import { useFiltersStore } from "@/store/filters";
 import { POI_TABLES, type PoiPoint, type PoiCategory } from "@/hooks/use-pois";
+import { ZONE_ORDER, applyZones, type ZoneRow, type ZoneCategory } from "@/lib/zones";
 
 // mapbox-gl v3 style expression — an array that can nest to arbitrary depth.
 // We build these by hand, so TypeScript sees them as `any[]` but Mapbox knows better.
@@ -41,6 +42,10 @@ type Props = {
   projects: ProjectWithRelations[];
   pois?: PoiPoint[];
   activeCategory?: string | null;
+  /** All zones (any category); the map only draws the categories in `zoneCategories`. */
+  zones?: ZoneRow[];
+  /** Which RY/STR/HH highlight buttons are currently on. */
+  zoneCategories?: Set<ZoneCategory>;
   camera: { lat: number; lng: number; zoom: number };
   onCameraChange: (c: { lat: number; lng: number; zoom: number }) => void;
   onReady?: () => void;
@@ -134,6 +139,8 @@ export function MapboxView({
   projects,
   pois = [],
   activeCategory,
+  zones = [],
+  zoneCategories,
   camera,
   onCameraChange,
   onReady,
@@ -1409,6 +1416,36 @@ export function MapboxView({
       }
     }
   }, [pois, activeCategory]);
+
+  // Zone highlight outlines (RY / STR / HH). Layers are added once (empty,
+  // hidden); toggling a category flips visibility + refreshes source data —
+  // never add/remove, which avoids the mapbox symbol-placement crash on the
+  // Standard style. Gated on mapReady so the style is fully loaded. Outline
+  // only; GL line layers sit under the DOM markers automatically.
+  const activeZoneKey = zoneCategories ? ZONE_ORDER.filter((c) => zoneCategories.has(c)).join(",") : "";
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const active = zoneCategories ?? new Set<ZoneCategory>();
+    const run = () => {
+      if (mapRef.current !== map) return;
+      // applyZones adds layers only once the style is loaded, then always
+      // refreshes data + visibility (safe even mid tile-load).
+      applyZones(map, zones, active);
+    };
+    run();
+    // If the layers couldn't be added yet (style still loading), retry on idle
+    // until they exist.
+    const retry = () => {
+      run();
+      if (mapRef.current === map && map.getLayer("zones-RY-line")) map.off("idle", retry);
+    };
+    if (!map.getLayer("zones-RY-line")) map.on("idle", retry);
+    return () => {
+      map.off("idle", retry);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zones, activeZoneKey, mapReady]);
 
   // Cinematic fit-to-bounds when a POI category is switched on — frames all of
   // that category's points. Only the active map instance moves its camera.

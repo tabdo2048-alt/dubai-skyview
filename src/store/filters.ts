@@ -37,6 +37,11 @@ type FiltersStore = {
   // once its id is added here (via the eye toggle in the sidebar).
   visibleProjectIds: Set<string>;
   toggleProjectVisible: (id: string) => void;
+
+  // Active zone-highlight categories (RY / STR / HH). Independent toggles — any
+  // combination can be shown at once, each in its own color.
+  zoneCategories: Set<"RY" | "STR" | "HH">;
+  toggleZoneCategory: (cat: "RY" | "STR" | "HH") => void;
 };
 
 export const useFiltersStore = create<FiltersStore>((set) => ({
@@ -74,5 +79,13 @@ export const useFiltersStore = create<FiltersStore>((set) => ({
     if (next.has(id)) next.delete(id);
     else next.add(id);
     return { visibleProjectIds: next };
+  }),
+
+  zoneCategories: new Set(),
+  toggleZoneCategory: (cat) => set((s) => {
+    const next = new Set(s.zoneCategories);
+    if (next.has(cat)) next.delete(cat);
+    else next.add(cat);
+    return { zoneCategories: next };
   }),
 }));
