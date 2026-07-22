@@ -351,6 +351,33 @@ export type Database = {
         }
         Relationships: []
       }
+      zones: {
+        Row: {
+          category: string
+          created_at: string
+          geometry: Json
+          id: string
+          name: string
+          value: number | null
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          geometry: Json
+          id?: string
+          name: string
+          value?: number | null
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          geometry?: Json
+          id?: string
+          name?: string
+          value?: number | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

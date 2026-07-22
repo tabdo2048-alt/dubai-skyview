@@ -1,9 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, lazy, Suspense } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Plus, Trash2, Star, StarOff, Edit3, Upload, ImagePlus, X } from "lucide-react";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { AdminLocationPicker } from "@/components/map/AdminLocationPicker";
+// Client-only: mapbox-gl-draw touches the DOM at import time, so keep it out of
+// the SSR bundle (lazy + a mounted gate), same pattern as the Water Editor.
+const AdminZoneEditor = lazy(() =>
+  import("@/components/map/AdminZoneEditor").then((m) => ({ default: m.AdminZoneEditor })),
+);
 import { useAuth, useIsAdmin } from "@/hooks/use-auth";
 import { useMapConfig } from "@/hooks/use-map-config";
 import { useProjects, useCommunities, useDevelopers } from "@/hooks/use-projects";
@@ -124,8 +129,23 @@ function AdminPage() {
 
         <DeveloperManager />
         <PoiManager />
+        <ZoneSection />
       </div>
     </div>
+  );
+}
+
+// Zone editor lives behind the same admin gate; needs the Mapbox token.
+// Rendered only after mount so the client-only editor never runs during SSR.
+function ZoneSection() {
+  const { data: cfg } = useMapConfig();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted || !cfg?.mapboxAccessToken) return null;
+  return (
+    <Suspense fallback={null}>
+      <AdminZoneEditor accessToken={cfg.mapboxAccessToken} />
+    </Suspense>
   );
 }
 
