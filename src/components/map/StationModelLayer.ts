@@ -57,8 +57,8 @@ export function createStationModelLayer(
       const clone = template.clone(true) as THREE.Group;
       lngLatToLocal(station.coord[0], station.coord[1], ref!, 0, clone.position);
       clone.rotation.x = Math.PI / 2;
-      // Smaller footprint — the model previously read oversized on the map.
-      const scale = station.interchange ? 0.34 : 0.24;
+      // Small footprint, sat on the ground (street level) at the station point.
+      const scale = station.interchange ? 0.4 : 0.3;
       clone.scale.setScalar(scale);
       clone.updateMatrixWorld(true);
       // Rest the model on the ground plane: lift so its lowest point sits at the

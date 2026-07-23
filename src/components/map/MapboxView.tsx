@@ -589,6 +589,9 @@ export function MapboxView({
   }
 
   async function addStationModelLayer(map: mapboxgl.Map) {
+    // 3D-only: the extruded station model reads wrong on the flat satellite
+    // imagery, so satellite keeps just the 2D station markers.
+    if (mode !== "3d") return;
     if (map.getLayer("metro-stations-3d-model")) return;
     try {
       const { createStationModelLayer } = await import("./StationModelLayer");
