@@ -24,10 +24,13 @@ export default defineConfig(async ({ command, mode }) => {
     viteReact(),
   ];
 
-  // Nitro produces the deploy bundle (Cloudflare module) — build only.
+  // Nitro produces the deploy bundle — build only. defaultPreset is the fallback
+  // when NITRO_PRESET is unset (local builds → cloudflare-module); on Vercel the
+  // NITRO_PRESET=vercel env from vercel.json wins, so use defaultPreset (not
+  // preset) to avoid forcing the wrong target.
   if (command === "build") {
     const { nitro } = await import("nitro/vite");
-    plugins.splice(3, 0, nitro({ preset: "cloudflare-module" }));
+    plugins.splice(3, 0, nitro({ defaultPreset: "cloudflare-module" }));
   }
 
   return {
