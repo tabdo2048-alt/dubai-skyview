@@ -58,7 +58,7 @@ export function createStationModelLayer(
       lngLatToLocal(station.coord[0], station.coord[1], ref!, 0, clone.position);
       clone.rotation.x = Math.PI / 2;
       // Smaller footprint — the model previously read oversized on the map.
-      const scale = station.interchange ? 0.6 : 0.4;
+      const scale = station.interchange ? 0.34 : 0.24;
       clone.scale.setScalar(scale);
       clone.updateMatrixWorld(true);
       // Rest the model on the ground plane: lift so its lowest point sits at the
@@ -111,10 +111,10 @@ export function createStationModelLayer(
       ref = makeMercatorRef();
       renderer = acquireSharedRenderer(map.getCanvas(), gl);
 
-      const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+      const ambientLight = new THREE.AmbientLight(0xffffff, 1.15);
       scene.add(ambientLight);
 
-      const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+      const dirLight = new THREE.DirectionalLight(0xffffff, 1.1);
       dirLight.position.set(-0.5, -0.35, 0.79).multiplyScalar(2);
       dirLight.castShadow = true;
       dirLight.shadow.mapSize.set(2048, 2048);
