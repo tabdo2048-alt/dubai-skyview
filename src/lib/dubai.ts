@@ -16,7 +16,7 @@ export const DUBAI_BOUNDS = {
 export const MAP_MAX_BOUNDS = {
   south: 24.82,
   west: 54.88,
-  north: 25.35,
+  north: 25.32, // Al Nahda (Dubai–Sharjah border) is the NE-most point
   east: 55.58,
 };
 
