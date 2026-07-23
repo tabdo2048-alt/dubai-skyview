@@ -57,8 +57,15 @@ export function createStationModelLayer(
       const clone = template.clone(true) as THREE.Group;
       lngLatToLocal(station.coord[0], station.coord[1], ref!, 0, clone.position);
       clone.rotation.x = Math.PI / 2;
-      const scale = station.interchange ? 1.5 : 1;
+      // Smaller footprint — the model previously read oversized on the map.
+      const scale = station.interchange ? 0.6 : 0.4;
       clone.scale.setScalar(scale);
+      clone.updateMatrixWorld(true);
+      // Rest the model on the ground plane: lift so its lowest point sits at the
+      // placement altitude instead of floating or sinking (fixes mis-placement
+      // from the GLB's pivot not being at its base).
+      const box = new THREE.Box3().setFromObject(clone);
+      if (isFinite(box.min.z)) clone.position.z -= box.min.z;
       clone.visible = false;
       if (clone.type === "Group") {
         clone.traverse((child) => {

@@ -77,7 +77,7 @@ const routeLayerId = (key: string) => `roads-route-${key}`;
 // Every non-signature road/street shares ONE uniform color (--road-base, easy to
 // retheme later). Only the 10 named signature roads above get their own color.
 // Declared before ROADS_CSS because that template literal interpolates it.
-const BASE_ROAD_COLOR = "#000000"; // black — all non-signature roads/streets
+const BASE_ROAD_COLOR = "#5b6672"; // muted slate — all non-signature roads/streets (softer than black)
 
 const ROADS_CSS = `:root{${ROUTES.map((r) => `${r.cssVar}:${r.color};`).join("")}--road-base:${BASE_ROAD_COLOR};}
 .road-popup .mapboxgl-popup-content{background:rgba(12,16,22,.92);backdrop-filter:blur(8px);
