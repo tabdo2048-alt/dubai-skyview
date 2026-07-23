@@ -19,13 +19,37 @@ export const ZONE_FILL_OPACITY = 0.15;      // base zone color fill
 export const ZONE_FILL_PULSE = 0.05;        // extra opacity at the pulse peak
 export const ZONE_ANIM_MS = 700;            // fade duration (smooth)
 export const ZONE_PULSE = true;             // subtle breathing pulse on fills
-// World-sized outer ring for the mask; far exceeds the map's maxBounds so no
-// un-dimmed strip shows at the edges when zoomed/panned out.
-const WORLD_RING: [number, number][] = [
-  [-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85],
+// Outer ring for the dim mask — a generous rectangle around Dubai (well beyond
+// the map's maxBounds, so no un-dimmed strip shows at any reachable zoom) but
+// small enough to tessellate cleanly. Wound CCW (positive signed area); zone
+// holes are forced to the opposite winding in buildDimMask.
+const COVER_RING: [number, number][] = [
+  [50, 20], [60, 20], [60, 30], [50, 30], [50, 20],
 ];
 const DIM_SRC = "zone-dim-src";
 const DIM_LAYER = "zone-dim";
+
+// Signed area (shoelace) — sign encodes winding: >0 CCW, <0 CW.
+function ringSignedArea(ring: [number, number][]): number {
+  let a = 0;
+  for (let i = 0; i < ring.length - 1; i++) {
+    a += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
+  }
+  return a / 2;
+}
+
+// Normalize a zone ring to a valid mask hole: closed, and wound CW (opposite the
+// CCW cover ring) so mapbox's classifyRings treats it as a hole to punch out
+// rather than a second filled exterior (that misclassification is what drew a
+// dark shape over the zone instead of a clear window).
+function toHoleRing(ring: [number, number][]): [number, number][] {
+  const r = ring.slice();
+  const first = r[0];
+  const last = r[r.length - 1];
+  if (first[0] !== last[0] || first[1] !== last[1]) r.push(first);
+  if (ringSignedArea(r) > 0) r.reverse();
+  return r;
+}
 
 export type ZoneCategory = "RY" | "STR" | "HH";
 
@@ -139,15 +163,16 @@ export function buildZoneLabels(zones: ZoneRow[]): GeoJSON.FeatureCollection {
   return { type: "FeatureCollection", features };
 }
 
-// Inverted mask: one polygon whose outer ring is the whole world and whose
-// holes are the active zones. Filling it dark darkens everything EXCEPT the
-// zones (mapbox treats every ring after the first as a hole). Built by hand so
+// Inverted mask: one polygon whose outer ring is the local cover rectangle and
+// whose holes are the active zones. Filling it dark darkens everything EXCEPT
+// the zones. Each hole is normalized to CW winding (opposite the cover) so it
+// punches through instead of rendering as its own dark shape. Built by hand so
 // no turf import lands in the public map bundle.
 export function buildDimMask(activeZones: ZoneRow[]): GeoJSON.FeatureCollection {
   const holes: Ring[] = [];
   for (const z of activeZones) {
     const ring = polygonRings(z.geometry)[0];
-    if (ring && ring.length >= 4) holes.push(ring);
+    if (ring && ring.length >= 4) holes.push(toHoleRing(ring));
   }
   if (holes.length === 0) return emptyFC();
   return {
@@ -156,7 +181,7 @@ export function buildDimMask(activeZones: ZoneRow[]): GeoJSON.FeatureCollection 
       {
         type: "Feature",
         properties: {},
-        geometry: { type: "Polygon", coordinates: [WORLD_RING, ...holes] },
+        geometry: { type: "Polygon", coordinates: [COVER_RING, ...holes] },
       },
     ],
   };
