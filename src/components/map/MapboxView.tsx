@@ -630,14 +630,26 @@ export function MapboxView({
         });
       }
       if (!map.getLayer(`${srcId}-reveal`)) {
+        // Operational lines render solid; planned/under-construction lines render
+        // dashed so users see at a glance what runs today vs what's coming. Dash
+        // units are in line-widths, so [2,1.5] stays proportional as the width
+        // scales with zoom and never blurs into a solid line. line-butt caps keep
+        // the gaps crisp (round caps would fill them). The gradient still drives
+        // the reveal animation on both.
+        const future = line.status !== "operational";
         addLayerSafe(map, {
           id: `${srcId}-reveal`,
           type: "line",
           source: srcId,
-          layout: { "line-cap": "round", "line-join": "round", visibility: "none" },
+          layout: {
+            "line-cap": future ? "butt" : "round",
+            "line-join": "round",
+            visibility: "none",
+          },
           paint: {
             "line-width": ["interpolate", ["linear"], ["zoom"], 10, 3, 16, 8],
             "line-gradient": lineGradient(line.color, 0),
+            ...(future ? { "line-dasharray": [2, 1.5] } : {}),
           },
         });
       }

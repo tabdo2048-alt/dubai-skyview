@@ -436,7 +436,24 @@ export function MapContainer() {
                     </li>
                   ))}
                 </ul>
-                <p className="mt-2.5 border-t border-white/10 pt-2 text-[10px] leading-tight text-muted-foreground">
+                {/* Solid vs dashed key — mirrors the line rendering. */}
+                <div className="mt-2.5 flex items-center gap-3 border-t border-white/10 pt-2 text-[10px] text-cream/80">
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-0.5 w-5 shrink-0 rounded-full bg-cream/80" />
+                    Operating
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span
+                      className="h-0.5 w-5 shrink-0 rounded-full"
+                      style={{
+                        backgroundImage:
+                          "repeating-linear-gradient(90deg, rgba(245,240,224,0.85) 0 4px, transparent 4px 7px)",
+                      }}
+                    />
+                    Planned
+                  </span>
+                </div>
+                <p className="mt-2 text-[10px] leading-tight text-muted-foreground">
                   Watch the network draw itself across Dubai. Yachts &amp; ships sail the Marina,
                   Palm and Creek waters.
                 </p>
