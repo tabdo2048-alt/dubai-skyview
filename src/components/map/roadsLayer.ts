@@ -41,20 +41,28 @@ const LINE_OPACITY = 0.92;
 // that OSM tags only with the route number and an Arabic name, so each road now
 // spans its full length to the map edge instead of stopping where the English
 // name tag ends.
+// Palette re-picked 2026-07-23 (see scripts/optimizeRoadColors.mjs): the old
+// hues had five road-road pairs below the ΔE≈20 legibility floor (worst: SZR
+// indigo vs MBZ blue at ΔE 10.1, and a blue/indigo/purple triple). These ten
+// were optimized (CIEDE2000) so every road-road pair is ≥21.8 apart and all
+// stay clear of the metro-line, zone, gold-accent and water-blue palettes
+// (min cross ΔE 11.1). All sit at L*≥62 so they read as bright thin lines on
+// the dark satellite basemap. No pure red/green pair remains, easing
+// deuteranopia/protanopia confusion.
 const ROUTES = [
   // SZR: name-only. Ref E11 is a shared corridor (Sheikh Rashid Rd, Al Garhoud
   // Bridge, Al Ittihad Rd downtown all carry E11), so matching it by ref would
   // wrongly recolor those. The name tag already spans SZR's full in-bounds run.
-  { key: "szr", name: "Sheikh Zayed Road", colorName: "Indigo", cssVar: "--road-szr", color: "#4F46E5", match: /^sheikh zayed road/i, ref: null },
-  { key: "ummsuqeim", name: "Umm Suqeim Street", colorName: "Golden Yellow", cssVar: "--road-ummsuqeim", color: "#EAB308", match: /^umm suqeim street/i, ref: /^D\s*63$/i },
-  { key: "alkhail", name: "Al Khail Road", colorName: "Purple", cssVar: "--road-alkhail", color: "#8B5CF6", match: /^al khail road$/i, ref: /^E\s*44$/i },
-  { key: "hessa", name: "Hessa Street", colorName: "Cyan", cssVar: "--road-hessa", color: "#06B6D4", match: /^hessa street/i, ref: /^D\s*61$/i },
-  { key: "mbz", name: "Mohammed Bin Zayed Road", colorName: "Blue", cssVar: "--road-mbz", color: "#2563EB", match: /mohammed bin zayed/i, ref: /^E\s*311$/i },
-  { key: "expo", name: "Expo Road", colorName: "Pink", cssVar: "--road-expo", color: "#EC4899", match: /^expo road$/i, ref: null },
-  { key: "hamdan", name: "Zayed Bin Hamdan Road", colorName: "Green", cssVar: "--road-hamdan", color: "#16A34A", match: /zayed bin hamdan/i, ref: /^D\s*54$/i },
-  { key: "emirates", name: "Emirates Road", colorName: "Orange", cssVar: "--road-emirates", color: "#F97316", match: /^emirates road$/i, ref: /^E\s*611$/i },
-  { key: "alain", name: "Dubai–Al Ain Road", colorName: "Red", cssVar: "--road-alain", color: "#DC2626", match: /dubai\s*-\s*al ain road/i, ref: /^E\s*66$/i },
-  { key: "lehbab", name: "Lehbab Road", colorName: "Teal", cssVar: "--road-lehbab", color: "#14B8A6", match: /lahbab road/i, ref: /^E\s*77$/i },
+  { key: "szr", name: "Sheikh Zayed Road", colorName: "Pink", cssVar: "--road-szr", color: "#FF85A8", match: /^sheikh zayed road/i, ref: null },
+  { key: "ummsuqeim", name: "Umm Suqeim Street", colorName: "Coral", cssVar: "--road-ummsuqeim", color: "#FF8F68", match: /^umm suqeim street/i, ref: /^D\s*63$/i },
+  { key: "alkhail", name: "Al Khail Road", colorName: "Amber", cssVar: "--road-alkhail", color: "#CB8800", match: /^al khail road$/i, ref: /^E\s*44$/i },
+  { key: "hessa", name: "Hessa Street", colorName: "Chartreuse", cssVar: "--road-hessa", color: "#C2C900", match: /^hessa street/i, ref: /^D\s*61$/i },
+  { key: "mbz", name: "Mohammed Bin Zayed Road", colorName: "Green", cssVar: "--road-mbz", color: "#02AE09", match: /mohammed bin zayed/i, ref: /^E\s*311$/i },
+  { key: "expo", name: "Expo Road", colorName: "Turquoise", cssVar: "--road-expo", color: "#08DAB2", match: /^expo road$/i, ref: null },
+  { key: "hamdan", name: "Zayed Bin Hamdan Road", colorName: "Sky", cssVar: "--road-hamdan", color: "#24C5FF", match: /zayed bin hamdan/i, ref: /^D\s*54$/i },
+  { key: "emirates", name: "Emirates Road", colorName: "Blue", cssVar: "--road-emirates", color: "#6A90FF", match: /^emirates road$/i, ref: /^E\s*611$/i },
+  { key: "alain", name: "Dubai–Al Ain Road", colorName: "Lavender", cssVar: "--road-alain", color: "#D7B2FE", match: /dubai\s*-\s*al ain road/i, ref: /^E\s*66$/i },
+  { key: "lehbab", name: "Lehbab Road", colorName: "Magenta", cssVar: "--road-lehbab", color: "#FF2DFF", match: /lahbab road/i, ref: /^E\s*77$/i },
 ] as const;
 
 type Route = (typeof ROUTES)[number];
