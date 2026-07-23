@@ -558,6 +558,18 @@ export function MapboxView({
     return { shouldRender: () => isActiveRef.current && isVisibleRef.current };
   }
 
+  // Mapbox v3 evaluates hasStateDependentPaint on every layer during source-tile
+  // updates, but custom layers have `paint === undefined`, so it throws
+  // ("Cannot read properties of undefined (reading 'paint')") each tile refresh.
+  // Give our custom layers a harmless empty paint stub so that check no-ops.
+  // Purely internal — custom layers draw via their own render(), not paint.
+  function stubCustomLayerPaint(map: mapboxgl.Map, id: string) {
+    const layer = (map.style as unknown as { _layers?: Record<string, { paint?: unknown }> })._layers?.[id];
+    if (layer && layer.paint === undefined) {
+      layer.paint = { _values: {}, _properties: {}, get: () => undefined, isStateDependent: () => false };
+    }
+  }
+
   async function addWaterLayer(map: mapboxgl.Map) {
     if (map.getLayer("dubai-water-3d")) return;
     try {
@@ -569,6 +581,7 @@ export function MapboxView({
       map.addLayer(
         (createWaterLayer as typeof CreateWaterLayer)(makeRenderController(), mode),
       );
+      stubCustomLayerPaint(map, "dubai-water-3d");
       if (import.meta.env.DEV) console.log("[Water] layer added");
     } catch (err) {
       console.error("Failed to add water wave layer", err);
@@ -587,6 +600,7 @@ export function MapboxView({
         new Set(METRO_LINES.map((l) => l.id))
       );
       map.addLayer(handle.layer);
+      stubCustomLayerPaint(map, "metro-stations-3d-model");
       stationModelRef.current = handle;
     } catch (err) {
       console.error("Failed to add station model layer", err);
