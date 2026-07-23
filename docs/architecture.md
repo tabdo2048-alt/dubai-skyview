@@ -81,7 +81,6 @@ dubai-skyview/
 │       ├── utils.ts              # Utility functions
 │       ├── error-capture.ts      # Error handling
 │       ├── error-page.ts         # Error UI
-│       ├── lovable-error-reporting.ts
 │       ├── dubai.ts              # Dubai data/constants
 │       ├── water.ts              # Water features data
 │       ├── metro.ts              # Metro network data
@@ -221,7 +220,7 @@ Database (Supabase)
 ├─────────────────────────────────────────────────────────────────┤
 │  • @supabase/supabase-js - Database client                      │
 │  • integrations/supabase/ - Supabase integration                │
-│  • Authentication via @lovable.dev/cloud-auth-js               │
+│  • Authentication via Supabase Auth               │
 └─────────────────────────────────────────────────────────────────┘
                               ↕
 ┌─────────────────────────────────────────────────────────────────┐
@@ -289,7 +288,7 @@ Mapping:
 
 Database & Auth:
 ├── @supabase/supabase-js (database client)
-├── @lovable.dev/cloud-auth-js (authentication)
+├── Supabase Auth (authentication)
 └── PostgreSQL (backend database)
 
 Form & Validation:
@@ -356,7 +355,7 @@ __root (AppLayout)
 
 ```
 1. User visits app
-2. @lovable.dev/cloud-auth-js checks session
+2. Supabase Auth checks session
 3. If no session → auth.tsx route
 4. User authenticates via Supabase Auth
 5. JWT token stored in session
