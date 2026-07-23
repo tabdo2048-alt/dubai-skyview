@@ -128,6 +128,8 @@ const PROJECT_MARKER_CSS = `
   box-shadow:0 2px 12px rgba(0,0,0,.5);
   cursor:pointer;transform:translateZ(0);transition:transform .2s ease,box-shadow .2s ease}
 .poi-label .poi-dot{width:5px;height:5px;border-radius:9999px;background:currentColor;box-shadow:0 0 7px currentColor;flex:0 0 auto}
+.poi-label .poi-ico{font-size:12px;line-height:1;flex:0 0 auto}
+.poi-label .poi-thumb{width:16px;height:16px;border-radius:9999px;object-fit:cover;flex:0 0 auto;border:1px solid currentColor;box-shadow:0 0 6px currentColor;background:rgba(255,255,255,.1)}
 .poi-label .poi-nm{color:#fff;font:600 9px/1.15 'Work Sans',Arial,sans-serif;letter-spacing:.2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .poi-label:hover{transform:scale(1.06);box-shadow:0 0 18px currentColor}
 @media (prefers-reduced-motion:reduce){.poi-label{transition:none}}`;
@@ -223,10 +225,14 @@ export function MapboxView({
       zoom: isMobile ? mobileZoom : camera.zoom,
       pitch: isMobile ? mobilePitch : 0,
       bearing: 0,
+      // Pan limit: Dubai proper (+ a little) — can't drag out to Sharjah or the
+      // Abu Dhabi border.
       maxBounds: [
         [MAP_MAX_BOUNDS.west, MAP_MAX_BOUNDS.south],
         [MAP_MAX_BOUNDS.east, MAP_MAX_BOUNDS.north],
       ],
+      maxZoom: 16.5, // allow zooming in to street/building level
+
       // MSAA sharpens 3D building edges but costs fill-rate, most painfully on
       // high-DPI phones. Keep it on desktop, drop it on mobile for smoother frames.
       antialias: !isMobile,
@@ -241,8 +247,8 @@ export function MapboxView({
     const setBoundsMinZoom = () => {
       const cam = map.cameraForBounds(
         [
-          [DUBAI_BOUNDS.west, DUBAI_BOUNDS.south],
-          [DUBAI_BOUNDS.east, DUBAI_BOUNDS.north],
+          [MAP_MAX_BOUNDS.west, MAP_MAX_BOUNDS.south],
+          [MAP_MAX_BOUNDS.east, MAP_MAX_BOUNDS.north],
         ],
         { padding: 0 },
       ) as { zoom?: number } | undefined;
@@ -1426,17 +1432,31 @@ export function MapboxView({
     for (const poi of pois) {
       seen.add(poi.id);
       if (existing.has(poi.id)) continue;
-      // Name label (no icon): a glass pill with a colored accent dot + the
-      // place name, so the map reads as a set of highlighted names.
+      // Glass name pill with an icon + the place name. Tourism places show the
+      // real place's photo (first image) as a round thumbnail; other categories
+      // show the category emoji. Falls back to the emoji when no photo.
       const el = document.createElement("div");
       el.className = "poi-label";
-      el.style.color = meta?.color ?? "#c9a84c"; // drives the dot + border via currentColor
-      const dot = document.createElement("span");
-      dot.className = "poi-dot";
+      el.style.color = meta?.color ?? "#c9a84c"; // drives the border/icon via currentColor
+      const thumb = activeCategory === "tourism" ? poi.images?.[0] : undefined;
+      let iconEl: HTMLElement;
+      if (thumb) {
+        const img = document.createElement("img");
+        img.className = "poi-thumb";
+        img.src = thumb;
+        img.alt = "";
+        img.loading = "lazy";
+        img.decoding = "async";
+        iconEl = img;
+      } else {
+        iconEl = document.createElement("span");
+        iconEl.className = "poi-ico";
+        iconEl.textContent = meta?.icon ?? "•"; // category emoji
+      }
       const nm = document.createElement("span");
       nm.className = "poi-nm";
       nm.textContent = poi.name; // textContent — never inject as HTML
-      el.append(dot, nm);
+      el.append(iconEl, nm);
       el.title = poi.name;
       el.onclick = () => {
         map.flyTo({

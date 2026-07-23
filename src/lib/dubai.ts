@@ -10,15 +10,14 @@ export const DUBAI_BOUNDS = {
   east: 55.65,
 };
 
-// Pan/zoom limit for the map (maxBounds). Wider than DUBAI_BOUNDS so the whole
-// emirate can be framed at min zoom without the viewport being clamped against
-// the bounds, yet held inside the water coverage rectangle (see SEA_COVER in
-// scripts/generate-water-geometry.ts) so no black sea shows at the edges.
+// Pan limit for the map (maxBounds) — held tight to Dubai proper so the user
+// can't drag out to the neighbouring emirates (Sharjah to the NE, the Abu Dhabi
+// border / Ghantoot to the SW).
 export const MAP_MAX_BOUNDS = {
-  south: 24.45,
-  west: 54.53,
-  north: 25.92,
-  east: 56.02,
+  south: 24.82,
+  west: 54.88,
+  north: 25.35,
+  east: 55.58,
 };
 
 // Opening view: wide over Dubai, flat (pitch/bearing 0). After the map is idle
