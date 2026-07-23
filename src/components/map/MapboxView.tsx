@@ -18,6 +18,7 @@ import { addRoadsLayers, setRoadsVisible } from "./roadsLayer";
 import type { ProjectWithRelations } from "@/lib/types";
 import { useFiltersStore } from "@/store/filters";
 import { POI_TABLES, type PoiPoint, type PoiCategory } from "@/hooks/use-pois";
+import { LANDMARK_PHOTOS } from "@/lib/landmarkPhotos";
 import {
   ZONE_ORDER,
   ZONE_PULSE,
@@ -1438,7 +1439,14 @@ export function MapboxView({
       const el = document.createElement("div");
       el.className = "poi-label";
       el.style.color = meta?.color ?? "#c9a84c"; // drives the border/icon via currentColor
-      const thumb = activeCategory === "tourism" ? poi.images?.[0] : undefined;
+      const emojiIcon = () => {
+        const s = document.createElement("span");
+        s.className = "poi-ico";
+        s.textContent = meta?.icon ?? "•"; // category emoji
+        return s;
+      };
+      const thumb =
+        activeCategory === "tourism" ? poi.images?.[0] ?? LANDMARK_PHOTOS[poi.name] : undefined;
       let iconEl: HTMLElement;
       if (thumb) {
         const img = document.createElement("img");
@@ -1447,11 +1455,10 @@ export function MapboxView({
         img.alt = "";
         img.loading = "lazy";
         img.decoding = "async";
+        img.onerror = () => img.replaceWith(emojiIcon()); // broken photo → emoji
         iconEl = img;
       } else {
-        iconEl = document.createElement("span");
-        iconEl.className = "poi-ico";
-        iconEl.textContent = meta?.icon ?? "•"; // category emoji
+        iconEl = emojiIcon();
       }
       const nm = document.createElement("span");
       nm.className = "poi-nm";
