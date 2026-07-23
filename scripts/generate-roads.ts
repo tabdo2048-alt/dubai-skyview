@@ -18,7 +18,10 @@ import * as turf from "@turf/turf";
 import type { Feature, FeatureCollection, LineString } from "geojson";
 
 const REFRESH = process.argv.includes("--refresh");
-const DUBAI_BOUNDS = { west: 54.89, south: 24.79, east: 55.65, north: 25.55 };
+// Fetch across the map's pannable area (MAP_MAX_BOUNDS in src/lib/dubai.ts), not
+// just the tighter DUBAI_BOUNDS, so routes stay complete to the edges the wider
+// min-zoom view now reveals instead of ending mid-map.
+const DUBAI_BOUNDS = { west: 54.53, south: 24.45, east: 56.02, north: 25.92 };
 
 const OVERPASS_MIRRORS = [
   "https://overpass-api.de/api/interpreter",

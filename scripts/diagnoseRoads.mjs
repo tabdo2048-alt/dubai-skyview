@@ -14,7 +14,6 @@ const ROUTES = [
   { key: "alkhail", name: "Al Khail Road", ref: "E44", repoRef: /^E\s*44$/i, repoName: /^al khail road$/i },
   { key: "hessa", name: "Hessa Street", ref: "D61", repoRef: /^D\s*61$/i, repoName: /^hessa street/i },
   { key: "mbz", name: "Mohammed Bin Zayed Road", ref: "E311", repoRef: /^E\s*311$/i, repoName: /mohammed bin zayed/i },
-  { key: "expo", name: "Expo Road", ref: "E77", repoRef: null, repoName: /^expo road$/i },
   { key: "hamdan", name: "Zayed Bin Hamdan Road", ref: "D54", repoRef: /^D\s*54$/i, repoName: /zayed bin hamdan/i },
   { key: "emirates", name: "Emirates Road", ref: "E611", repoRef: /^E\s*611$/i, repoName: /^emirates road$/i },
   { key: "alain", name: "Dubai–Al Ain Road", ref: "E66", repoRef: /^E\s*66$/i, repoName: /dubai\s*-\s*al ain road/i },

@@ -58,7 +58,9 @@ const ROUTES = [
   { key: "alkhail", name: "Al Khail Road", colorName: "Amber", cssVar: "--road-alkhail", color: "#CB8800", match: /^al khail road$/i, ref: /^E\s*44$/i },
   { key: "hessa", name: "Hessa Street", colorName: "Chartreuse", cssVar: "--road-hessa", color: "#C2C900", match: /^hessa street/i, ref: /^D\s*61$/i },
   { key: "mbz", name: "Mohammed Bin Zayed Road", colorName: "Green", cssVar: "--road-mbz", color: "#02AE09", match: /mohammed bin zayed/i, ref: /^E\s*311$/i },
-  { key: "expo", name: "Expo Road", colorName: "Turquoise", cssVar: "--road-expo", color: "#08DAB2", match: /^expo road$/i, ref: null },
+  // "Expo Road" and "Lehbab Road" are the same E77 highway; lehbab (ref E77)
+  // already draws its full length, so a separate expo route was a duplicate that
+  // only ever matched a few stray name-tagged stubs. Removed.
   { key: "hamdan", name: "Zayed Bin Hamdan Road", colorName: "Sky", cssVar: "--road-hamdan", color: "#24C5FF", match: /zayed bin hamdan/i, ref: /^D\s*54$/i },
   { key: "emirates", name: "Emirates Road", colorName: "Blue", cssVar: "--road-emirates", color: "#6A90FF", match: /^emirates road$/i, ref: /^E\s*611$/i },
   { key: "alain", name: "Dubai–Al Ain Road", colorName: "Lavender", cssVar: "--road-alain", color: "#D7B2FE", match: /dubai\s*-\s*al ain road/i, ref: /^E\s*66$/i },
