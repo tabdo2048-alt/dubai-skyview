@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
-import { DUBAI_BOUNDS, DEFAULT_PITCH, DEFAULT_BEARING } from "@/lib/dubai";
+import { DUBAI_BOUNDS, MAP_MAX_BOUNDS, DEFAULT_PITCH, DEFAULT_BEARING } from "@/lib/dubai";
 import {
   METRO_LINES,
   TRAIN_LINES,
@@ -224,18 +224,37 @@ export function MapboxView({
       pitch: isMobile ? mobilePitch : 0,
       bearing: 0,
       maxBounds: [
-        [DUBAI_BOUNDS.west, DUBAI_BOUNDS.south],
-        [DUBAI_BOUNDS.east, DUBAI_BOUNDS.north],
+        [MAP_MAX_BOUNDS.west, MAP_MAX_BOUNDS.south],
+        [MAP_MAX_BOUNDS.east, MAP_MAX_BOUNDS.north],
       ],
       // MSAA sharpens 3D building edges but costs fill-rate, most painfully on
       // high-DPI phones. Keep it on desktop, drop it on mobile for smoother frames.
       antialias: !isMobile,
     });
 
+    // Cap zoom-out so the whole of DUBAI_BOUNDS fits the viewport at min zoom —
+    // computed per-viewport (cameraForBounds fits the tighter dimension), so a
+    // wide desktop and a tall phone each get the right floor instead of one
+    // static value that would over-zoom the desktop past the water coverage.
+    // No extra margin: the water rect only just accommodates the exact desktop
+    // fit; more breathing room would need a wider coverage rect.
+    const setBoundsMinZoom = () => {
+      const cam = map.cameraForBounds(
+        [
+          [DUBAI_BOUNDS.west, DUBAI_BOUNDS.south],
+          [DUBAI_BOUNDS.east, DUBAI_BOUNDS.north],
+        ],
+        { padding: 0 },
+      ) as { zoom?: number } | undefined;
+      if (typeof cam?.zoom === "number") map.setMinZoom(cam.zoom);
+    };
+    map.on("resize", setBoundsMinZoom);
+
     map.on("style.load", () => {
       // Trigger a resize to ensure the map renders properly after style loads
       setTimeout(() => {
         map.resize();
+        setBoundsMinZoom();
         if (isMobile) {
           map.easeTo({
             pitch: mode === "3d" ? 42 : 0,

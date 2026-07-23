@@ -1,12 +1,24 @@
 // Dubai geo constants shared across map surfaces.
 export const DUBAI_CENTER = { lat: 25.1972, lng: 55.2744 }; // Downtown Dubai
 
-// Emirate-scoped bounds so users can't pan out to other cities.
+// Emirate-scoped bounds. Used for framing (fitBounds, the min-zoom fit) so the
+// map opens and floors on Dubai proper.
 export const DUBAI_BOUNDS = {
   south: 24.79,
   west: 54.89,
   north: 25.55,
   east: 55.65,
+};
+
+// Pan/zoom limit for the map (maxBounds). Wider than DUBAI_BOUNDS so the whole
+// emirate can be framed at min zoom without the viewport being clamped against
+// the bounds, yet held inside the water coverage rectangle (see SEA_COVER in
+// scripts/generate-water-geometry.ts) so no black sea shows at the edges.
+export const MAP_MAX_BOUNDS = {
+  south: 24.45,
+  west: 54.53,
+  north: 25.92,
+  east: 56.02,
 };
 
 // Opening view: wide over Dubai, flat (pitch/bearing 0). After the map is idle
