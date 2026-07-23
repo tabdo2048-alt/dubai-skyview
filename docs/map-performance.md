@@ -149,10 +149,10 @@ map.once("idle", () => {
 ```
 
 **Expected result**: 
-- ✅ Map visible in ~500ms (Mapbox tiles + metro lines)
-- ✅ Water shimmer in ~1.5s
-- ✅ Boats in ~2s (during fly-in)
-- ✅ All done by ~3.5s total
+- Map visible in ~500ms (Mapbox tiles + metro lines)
+- Water shimmer in ~1.5s
+- Boats in ~2s (during fly-in)
+- All done by ~3.5s total
 
 ---
 

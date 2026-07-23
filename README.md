@@ -13,7 +13,7 @@ An interactive 3D real-estate map of Dubai. Browse off-plan and ready projects o
 | Map | Mapbox GL JS v3 with custom Three.js layers (3D models, animated water, clouds) |
 | State | Zustand (`src/store/filters.ts`) |
 | Backend | Supabase (PostgreSQL, Auth, RLS, migrations in `supabase/`) |
-| Auth | Lovable Cloud Auth (`@lovable.dev/cloud-auth-js`) |
+| Auth | Supabase Auth (`@supabase/supabase-js`) |
 | UI | Tailwind CSS v4, shadcn/ui (Radix primitives), Framer Motion, Lucide icons |
 | Forms / validation | react-hook-form + Zod |
 | Deployment | Vercel (`vercel.json`) |
@@ -25,7 +25,7 @@ An interactive 3D real-estate map of Dubai. Browse off-plan and ready projects o
 - **Dubai geodata** — metro network (generated from real route data), shorelines, marine/navigation routes, and community boundaries (`src/lib/`).
 - **Project browsing** — filterable listings by category, status, community, price range, and bedrooms; detail pages at `/projects/$slug`; communities and developers indexes.
 - **Admin tools** — protected `/admin` route with a location picker for placing projects on the map, plus a live water-styling debug editor.
-- **Auth-gated routes** — `src/routes/_authenticated/` is protected via Lovable auth with Supabase row-level security behind it.
+- **Auth-gated routes** — `src/routes/_authenticated/` is protected via Supabase auth with row-level security behind it.
 
 ## Getting Started
 
@@ -33,7 +33,7 @@ An interactive 3D real-estate map of Dubai. Browse off-plan and ready projects o
 
 - Node.js 22+ (or [Bun](https://bun.sh) — a `bun.lock` is included)
 - A [Mapbox](https://www.mapbox.com/) access token
-- A [Supabase](https://supabase.com/) project (or Lovable Cloud, which provisions one)
+- A [Supabase](https://supabase.com/) project
 
 ### Setup
 
@@ -83,7 +83,12 @@ psql < supabase/seed_dubai_sample_projects.sql    # optional sample data
 | `npm run preview` | Preview the production build locally |
 | `npm run lint` | Run ESLint |
 | `npm run format` | Format with Prettier |
-| `npm run validate:marine` | Validate the marine route/navigation data model |
+| `npm run generate:water` | Rebuild the sea geometry from OpenStreetMap |
+| `npm run generate:roads` | Rebuild the main-road network from Overpass |
+| `npm run generate:rail` | Rebuild the metro/rail alignments |
+| `npm run validate:water` | Check the water mask covers the map with no gaps |
+| `npm run validate:metro` | Check metro/rail line + station integrity |
+| `npm run verify:earcut` | Verify the water triangulation |
 
 ## Project Structure
 
@@ -113,21 +118,19 @@ dubai-skyview/
 │   │   └── water.ts          # Water feature data
 │   ├── hooks/                # use-auth, use-projects, use-map-config, use-mobile
 │   ├── store/                # Zustand filter store
-│   └── integrations/         # Supabase & Lovable clients
+│   └── integrations/         # Supabase client
 ├── supabase/                 # Config, migrations, seed SQL
 ├── scripts/                  # Data conversion & validation scripts
 └── vercel.json               # Vercel deployment config
 ```
 
-A deeper breakdown of the data model and architecture is in [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md).
+## Documentation
 
-## Additional Documentation
-
-- [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) — file tree, database schema, data-flow architecture
-- [MAP_LOADING_OPTIMIZATION.md](MAP_LOADING_OPTIMIZATION.md) — map performance notes
-- [WATER_CUSTOMIZATION.md](WATER_CUSTOMIZATION.md) — water layer styling guide
-- [AGENTS.md](AGENTS.md) — notes for AI coding agents
+- [docs/architecture.md](docs/architecture.md) — file tree, database schema, data flow
+- [docs/map-performance.md](docs/map-performance.md) — how the map is loaded and kept fast
+- [docs/water-layer.md](docs/water-layer.md) — water layer styling and geometry
+- [docs/geodata.md](docs/geodata.md) — regenerating metro/road/water data
 
 ## Deployment
 
-The app deploys to Vercel. Push to the connected branch and Vercel builds via `npm run build`. This project is also connected to [Lovable](https://lovable.dev) — avoid rewriting published git history (force-push, rebase, amend), as it desyncs the Lovable editor.
+Deploys to Vercel — push to the connected branch and Vercel builds via `npm run build` (config in `vercel.json`).

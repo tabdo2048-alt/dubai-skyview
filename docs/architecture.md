@@ -1,6 +1,6 @@
 # Dubai Skyview - Project Structure & Data Tree
 
-## 📁 File Structure Overview
+## File Structure
 
 ```
 dubai-skyview/
@@ -72,7 +72,6 @@ dubai-skyview/
 │   │   └── use-projects.ts       # Projects data fetching
 │   │
 │   ├── 🔗 Integrations
-│   │   ├── lovable/              # Lovable.dev integration
 │   │   └── supabase/             # Database integration
 │   │       └── types.ts
 │   │
@@ -97,15 +96,11 @@ dubai-skyview/
 │       ├── 20260707195936_*.sql  # Schema updates
 │       └── 20260707200009_*.sql  # More updates
 │
-└── 📄 Documentation Files
-    ├── AGENTS.md                 # Agent configuration
-    ├── CHANGES_SUMMARY.txt       # Recent changes
-    ├── FINAL_STATUS.md           # Project status
-    ├── REFACTOR_REPORT.md        # Refactoring notes
-    ├── MAP_LOADING_OPTIMIZATION.md
-    ├── SATELLITE_MODE_REFACTOR.md
-    ├── WATER_CUSTOMIZATION.md
-    └── DEPLOY_VERCEL.md          # Deployment guide
+└── docs/                        # Documentation
+    ├── architecture.md          # This file
+    ├── map-performance.md       # Map load/perf notes
+    ├── water-layer.md           # Water styling & geometry
+    └── geodata.md               # Regenerating metro/road/water data
 ```
 
 ---
@@ -311,7 +306,7 @@ Utilities:
 
 ---
 
-## 🚀 Build & Development Pipeline
+## Build & Development Pipeline
 
 ```
 Development:
@@ -363,7 +358,7 @@ __root (AppLayout)
 1. User visits app
 2. @lovable.dev/cloud-auth-js checks session
 3. If no session → auth.tsx route
-4. User authenticates via Lovable OAuth
+4. User authenticates via Supabase Auth
 5. JWT token stored in session
 6. use-auth hook provides auth state
 7. Protected routes via _authenticated/ folder
@@ -447,7 +442,7 @@ CREATE TABLE project_amenities (
 
 ---
 
-## ✅ Key Features Summary
+## Key Features
 
 | Feature | Location | Technology |
 |---------|----------|------------|
@@ -456,7 +451,7 @@ CREATE TABLE project_amenities (
 | Weather Layer | `CloudLayer.ts` | Custom map layer |
 | Water Features | `WaterLayer.ts` | GeoJSON + Mapbox |
 | Metro Network | `metroNetwork.generated.ts` | Generated data |
-| Authentication | `use-auth.ts` | Lovable OAuth |
+| Authentication | `use-auth.ts` | Supabase Auth |
 | Project Details | `projects.$slug.tsx` | Dynamic routing |
 | Communities View | `communities.index.tsx` | Table/Grid component |
 | Developers View | `developers.index.tsx` | Table/Grid component |
