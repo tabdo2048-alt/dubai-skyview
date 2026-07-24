@@ -14,7 +14,7 @@ import { DUBAI_BOUNDS, DUBAI_CENTER } from "@/lib/dubai";
 import {
   ZONE_ORDER,
   ZONE_CATEGORIES,
-  isZoneCategory,
+  normalizeZoneCategory,
   type ZoneCategory,
   type ZoneRow,
 } from "@/lib/zones";
@@ -159,7 +159,7 @@ export function AdminZoneEditor({ accessToken }: Props) {
     draw.deleteAll();
     draw.add({ type: "Feature", properties: {}, geometry: geom });
     setEditingId(z.id);
-    setForm({ name: z.name, category: isZoneCategory(z.category) ? z.category : "RY", value: z.value?.toString() ?? "" });
+    setForm({ name: z.name, category: normalizeZoneCategory(z.category) ?? "RY", value: z.value?.toString() ?? "" });
     setDrawn(geom);
     setWarning(null);
     // Frame the zone.
@@ -278,7 +278,7 @@ export function AdminZoneEditor({ accessToken }: Props) {
       {/* Existing zones, grouped by category. */}
       <div className="mt-6 grid gap-4 sm:grid-cols-3">
         {ZONE_ORDER.map((cat) => {
-          const rows = zones.filter((z) => z.category === cat);
+          const rows = zones.filter((z) => normalizeZoneCategory(z.category) === cat);
           return (
             <div key={cat}>
               <div className="flex items-center gap-2">

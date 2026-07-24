@@ -108,6 +108,22 @@
     text-rendering: optimizeLegibility;
   }
   h1, h2, h3, h4, .font-display { font-family: var(--font-serif); letter-spacing: -0.01em; }
+
+  /* Native <select> dropdown popups are drawn by the OS and never see
+     backdrop-filter, so the translucent white `glass` gradient the admin form
+     puts on them has no effect there — the popup falls back to a plain white
+     panel, and with .text-cream (near-white) options that reads as white on
+     white. Force an opaque dark popup regardless of the classes on the select.
+     The colour is deliberately opaque, not var(--popover) (which carries 0.85
+     alpha): a native popup has no page content behind it to blend with, so a
+     translucent value renders washed out instead of dark. */
+  select { color-scheme: dark; }
+  select,
+  select option,
+  select optgroup {
+    background-color: oklch(0.16 0.03 165);
+    color: var(--cream);
+  }
 }
 
 /* Liquid Glass utilities */

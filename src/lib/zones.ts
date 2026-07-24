@@ -51,7 +51,10 @@ function toHoleRing(ring: [number, number][]): [number, number][] {
   return r;
 }
 
-export type ZoneCategory = "RY" | "STR" | "HH";
+// FLIP was called STR ("Short-Term Rental") until the rename to Flipping.
+// Existing rows may still say 'STR' until the migration runs — read DB values
+// through normalizeZoneCategory, never compare them to a category directly.
+export type ZoneCategory = "RY" | "FLIP" | "HH";
 
 export type ZoneRow = {
   id: string;
@@ -70,18 +73,28 @@ export const ZONE_CATEGORIES: Record<
   // base  = dim outline for low/no-value zones (value interpolation floor)
   // color = the swatch shown in the button + legend
   RY: { label: "Rental Yield", full: "#E6B800", base: "#7a6410", color: "#E6B800" },
-  STR: { label: "Short-Term Rental", full: "#0FB5AE", base: "#0a5f5b", color: "#0FB5AE" },
+  FLIP: { label: "Flipping", full: "#0FB5AE", base: "#0a5f5b", color: "#0FB5AE" },
   HH: { label: "Holiday Home", full: "#8B5CF6", base: "#4a3184", color: "#8B5CF6" },
 };
 
-export const ZONE_ORDER: ZoneCategory[] = ["RY", "STR", "HH"];
+export const ZONE_ORDER: ZoneCategory[] = ["RY", "FLIP", "HH"];
 
 // Value scale used for the legend + the data-driven paint (yield %, roughly).
 export const ZONE_VALUE_MIN = 0;
 export const ZONE_VALUE_MAX = 12;
 
 export function isZoneCategory(v: string): v is ZoneCategory {
-  return v === "RY" || v === "STR" || v === "HH";
+  return v === "RY" || v === "FLIP" || v === "HH";
+}
+
+/**
+ * Read a category coming from the database, tolerating the legacy 'STR' value.
+ * The frontend deploy and the STR→FLIP migration are not atomic, so a row may
+ * still say 'STR' for a short window. Drop this once no 'STR' rows remain.
+ */
+export function normalizeZoneCategory(v: string): ZoneCategory | undefined {
+  const mapped = v === "STR" ? "FLIP" : v;
+  return isZoneCategory(mapped) ? mapped : undefined;
 }
 
 function srcId(cat: ZoneCategory) {
@@ -330,7 +343,7 @@ export function applyZones(
   const activeZones: ZoneRow[] = [];
   for (const cat of ZONE_ORDER) {
     const ids = zoneLayerIds(cat);
-    const rows = zones.filter((z) => z.category === cat);
+    const rows = zones.filter((z) => normalizeZoneCategory(z.category) === cat);
     if (active.has(cat)) activeZones.push(...rows);
     (map.getSource(ids.src) as mapboxgl.GeoJSONSource | undefined)?.setData(buildZonePolygons(rows));
     (map.getSource(`${ids.src}-lbl`) as mapboxgl.GeoJSONSource | undefined)?.setData(buildZoneLabels(rows));

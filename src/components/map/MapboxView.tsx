@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
-import { DUBAI_BOUNDS, MAP_MAX_BOUNDS, DEFAULT_PITCH, DEFAULT_BEARING } from "@/lib/dubai";
+import { DUBAI_BOUNDS, MAP_MAX_BOUNDS, ZOOM_OUT_BOUNDS, DEFAULT_PITCH, DEFAULT_BEARING } from "@/lib/dubai";
 import {
   METRO_LINES,
   TRAIN_LINES,
@@ -182,6 +182,7 @@ export function MapboxView({
   const stationModelRef = useRef<ReturnType<typeof import("./StationModelLayer").createStationModelLayer> | null>(null);
   const styleLoadedRef = useRef(false);
   const didFitWholeRef = useRef(false); // one-time: open framed on the whole map
+  const tightMinZoomRef = useRef<number | null>(null); // fit zoom for MAP_MAX_BOUNDS
   const stationInteractionAddedRef = useRef(false);
   const heavyLayerFallbackTimeoutRef = useRef<number | null>(null);
   const deferredLayerTimeoutsRef = useRef<number[]>([]);
@@ -232,11 +233,13 @@ export function MapboxView({
       zoom: isMobile ? mobileZoom : camera.zoom,
       pitch: isMobile ? mobilePitch : 0,
       bearing: 0,
-      // Pan limit: Dubai proper (+ a little) — can't drag out to Sharjah or the
-      // Abu Dhabi border.
+      // Mapbox's maxBounds clamps zoom-out as well as panning: it keeps the box
+      // filling the viewport, so a tight box also caps how far you can pull
+      // back. Hand it the WIDE rect so zooming out can actually show more area;
+      // the tight Dubai-only pan limit is enforced by clampCenterToBounds below.
       maxBounds: [
-        [MAP_MAX_BOUNDS.west, MAP_MAX_BOUNDS.south],
-        [MAP_MAX_BOUNDS.east, MAP_MAX_BOUNDS.north],
+        [ZOOM_OUT_BOUNDS.west, ZOOM_OUT_BOUNDS.south],
+        [ZOOM_OUT_BOUNDS.east, ZOOM_OUT_BOUNDS.north],
       ],
       maxZoom: 18, // deep zoom-in to street/building level
 
@@ -245,35 +248,65 @@ export function MapboxView({
       antialias: !isMobile,
     });
 
-    // Cap zoom-out so the whole of DUBAI_BOUNDS fits the viewport at min zoom —
-    // computed per-viewport (cameraForBounds fits the tighter dimension), so a
-    // wide desktop and a tall phone each get the right floor instead of one
-    // static value that would over-zoom the desktop past the water coverage.
-    // No extra margin: the water rect only just accommodates the exact desktop
-    // fit; more breathing room would need a wider coverage rect.
-    const setBoundsMinZoom = () => {
-      const cam = map.cameraForBounds(
+    // Two separate fits, computed per-viewport (cameraForBounds fits the tighter
+    // dimension, so a wide desktop and a tall phone each get the right value):
+    //   tight (MAP_MAX_BOUNDS) → the opening frame, and the zoom at/above which
+    //     the Dubai-only pan clamp starts being enforceable.
+    //   wide  (ZOOM_OUT_BOUNDS) → the actual min-zoom floor, i.e. how far the
+    //     user can pull back. Still inside the animated water coverage.
+    const fitZoomFor = (b: typeof MAP_MAX_BOUNDS) =>
+      map.cameraForBounds(
         [
-          [MAP_MAX_BOUNDS.west, MAP_MAX_BOUNDS.south],
-          [MAP_MAX_BOUNDS.east, MAP_MAX_BOUNDS.north],
+          [b.west, b.south],
+          [b.east, b.north],
         ],
         { padding: 0 },
       ) as { zoom?: number; center?: mapboxgl.LngLatLike } | undefined;
-      if (typeof cam?.zoom === "number") {
-        map.setMinZoom(cam.zoom);
-        // Open framed on the WHOLE map: jump to the fit (center + floor zoom) once
-        // so the entire map is visible on load without the user panning/zooming.
-        // Afterwards they can zoom in freely.
+
+    const setBoundsMinZoom = () => {
+      const tight = fitZoomFor(MAP_MAX_BOUNDS);
+      const wide = fitZoomFor(ZOOM_OUT_BOUNDS);
+      if (typeof wide?.zoom === "number") map.setMinZoom(wide.zoom);
+      if (typeof tight?.zoom === "number") {
+        tightMinZoomRef.current = tight.zoom;
+        // Open framed on the whole of Dubai (not the wider zoom-out rect), a
+        // touch tighter than the bare fit so the map reads large on arrival.
         if (!didFitWholeRef.current) {
           didFitWholeRef.current = true;
-          // Open a touch tighter than the bare fit so the map reads LARGER on
-          // arrival; the floor stays the exact fit, so a single zoom-out still
-          // shows the whole map.
-          map.jumpTo({ center: cam.center ?? map.getCenter(), zoom: cam.zoom + 0.45 });
+          map.jumpTo({ center: tight.center ?? map.getCenter(), zoom: tight.zoom + 0.45 });
         }
       }
+      syncPanBounds();
     };
+
+    // Keep the camera inside the tight Dubai box by nudging the CENTRE, which is
+    // what Mapbox's native maxBounds used to do before it had to be widened to
+    // unlock zoom-out. Below the tight fit zoom the box is smaller than the
+    // viewport, so containing it is geometrically impossible — there the wide
+    // native maxBounds is the only constraint, which is exactly the overview the
+    // user asked to be able to reach.
+    const clampCenterToBounds = (b: typeof MAP_MAX_BOUNDS) => {
+      const vb = map.getBounds();
+      if (!vb) return;
+      let dLng = 0;
+      let dLat = 0;
+      if (vb.getWest() < b.west) dLng = b.west - vb.getWest();
+      else if (vb.getEast() > b.east) dLng = b.east - vb.getEast();
+      if (vb.getSouth() < b.south) dLat = b.south - vb.getSouth();
+      else if (vb.getNorth() > b.north) dLat = b.north - vb.getNorth();
+      if (dLng || dLat) {
+        const c = map.getCenter();
+        map.setCenter([c.lng + dLng, c.lat + dLat]);
+      }
+    };
+
+    function syncPanBounds() {
+      const floor = tightMinZoomRef.current;
+      if (floor != null && map.getZoom() >= floor + 0.05) clampCenterToBounds(MAP_MAX_BOUNDS);
+    }
+
     map.on("resize", setBoundsMinZoom);
+    map.on("move", syncPanBounds);
 
     map.on("style.load", () => {
       // Trigger a resize to ensure the map renders properly after style loads
@@ -282,9 +315,11 @@ export function MapboxView({
         setBoundsMinZoom();
         if (isMobile) {
           // Tilt only on mobile too — hold the opening frame, no extra zoom-in.
+          // Uses the TIGHT fit, not getMinZoom(): the floor is now the wider
+          // zoom-out rect, which would open mobile further out than desktop.
           map.easeTo({
             pitch: mode === "3d" ? 42 : 0,
-            zoom: map.getMinZoom() + 0.45,
+            zoom: (tightMinZoomRef.current ?? map.getMinZoom()) + 0.45,
             duration: 600,
           });
         }

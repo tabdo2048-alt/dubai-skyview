@@ -12,6 +12,7 @@
     "generate:water": "esbuild scripts/generate-water-geometry.ts --bundle --platform=node --format=cjs --outfile=.output/generate-water.cjs && node .output/generate-water.cjs",
     "generate:roads": "esbuild scripts/generate-roads.ts --bundle --platform=node --format=cjs --outfile=.output/generate-roads.cjs && node .output/generate-roads.cjs",
     "generate:rail": "esbuild scripts/generate-rail.ts --bundle --platform=node --format=cjs --outfile=.output/generate-rail.cjs && node .output/generate-rail.cjs",
+    "generate:hospitals": "esbuild scripts/generate-hospitals.ts --bundle --platform=node --format=cjs --outfile=.output/generate-hospitals.cjs && node .output/generate-hospitals.cjs",
     "validate:water": "esbuild scripts/auditWaterOverlap.ts --bundle --platform=node --format=cjs --outfile=.output/audit-water.cjs && node .output/audit-water.cjs",
     "validate:metro": "esbuild scripts/validateMetro.ts --bundle --platform=node --format=cjs --outfile=.output/metro-validation.cjs && node .output/metro-validation.cjs",
     "verify:earcut": "esbuild scripts/earcut-check.ts --bundle --platform=node --format=cjs --outfile=.output/earcut-check.cjs && node .output/earcut-check.cjs",

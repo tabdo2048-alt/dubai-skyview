@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { emptyFilters, type ProjectFilters } from "@/lib/types";
 import type { LightPreset } from "@/components/map/MapboxView";
+import type { ZoneCategory } from "@/lib/zones";
 
 type MapMode = "satellite" | "3d";
 
@@ -38,10 +39,11 @@ type FiltersStore = {
   visibleProjectIds: Set<string>;
   toggleProjectVisible: (id: string) => void;
 
-  // Active zone-highlight categories (RY / STR / HH). Independent toggles — any
-  // combination can be shown at once, each in its own color.
-  zoneCategories: Set<"RY" | "STR" | "HH">;
-  toggleZoneCategory: (cat: "RY" | "STR" | "HH") => void;
+  // Active zone-highlight categories (RY / FLIP / HH). Independent toggles — any
+  // combination can be shown at once, each in its own color. Typed off
+  // ZoneCategory rather than a repeated literal union so a rename can't drift.
+  zoneCategories: Set<ZoneCategory>;
+  toggleZoneCategory: (cat: ZoneCategory) => void;
 };
 
 export const useFiltersStore = create<FiltersStore>((set) => ({
