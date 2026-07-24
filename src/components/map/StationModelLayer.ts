@@ -39,6 +39,7 @@ export function createStationModelLayer(
   let lastGoodMatrix: number[] = new Array(16).fill(0);
   lastGoodMatrix[15] = 1;
   let disposed = false;
+  let renderCount = 0;
 
   const stations = lines.flatMap((line) =>
     line.stations.map((s) => ({
@@ -120,27 +121,36 @@ export function createStationModelLayer(
       ref = makeMercatorRef();
       renderer = acquireSharedRenderer(map.getCanvas(), gl);
 
-      const ambientLight = new THREE.AmbientLight(0xffffff, 1.15);
+      const ambientLight = new THREE.AmbientLight(0xffffff, 1.8);
       scene.add(ambientLight);
 
+      // No shadow casting: with ~190 stations the shadow pass costs thousands of
+      // extra draw calls per frame, and the shadows themselves are invisible at
+      // city zoom. Shading comes from the ambient + directional light alone.
       const dirLight = new THREE.DirectionalLight(0xffffff, 1.1);
       dirLight.position.set(-0.5, -0.35, 0.79).multiplyScalar(2);
-      dirLight.castShadow = true;
-      dirLight.shadow.mapSize.set(2048, 2048);
-      dirLight.shadow.camera.far = 5;
-      dirLight.shadow.camera.left = -2;
-      dirLight.shadow.camera.right = 2;
-      dirLight.shadow.camera.top = 2;
-      dirLight.shadow.camera.bottom = -2;
       scene.add(dirLight);
-
-      renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
       // Procedural station — built synchronously, so there's no GLB fetch and no
       // race where render() fires before an async model finished loading.
       gltfTemplate = buildStationTemplate();
       buildClones(gltfTemplate);
+
+      if (import.meta.env.DEV) {
+        (window as unknown as Record<string, unknown>).__stationDebug = () => ({
+          count: clones.length,
+          renders: renderCount,
+          shouldRender: controller.shouldRender(),
+          sample: clones.slice(0, 3).map((c) => ({
+            id: c.station.id,
+            visible: c.mesh.visible,
+            target: c.target,
+            current: +c.current.toFixed(3),
+            scale: +c.mesh.scale.x.toFixed(3),
+            pos: c.mesh.position.toArray().map((n) => +n.toFixed(1)),
+          })),
+        });
+      }
 
       map.on("resize", () => {
         syncSharedRendererSize(map.getCanvas());
@@ -149,6 +159,7 @@ export function createStationModelLayer(
 
     render(_gl: WebGLRenderingContext, matrix: unknown) {
       if (!renderer || !scene || !camera || !controller.shouldRender() || !clock || !ref) return;
+      renderCount++;
 
       const dt = Math.min(1 / 16, clock.getDelta());
       let anyTweening = false;

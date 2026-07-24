@@ -16,13 +16,16 @@ export const LINE_ACCENT_NAME = "lineAccent";
 export const VAULT_STANDARD_NAME = "vaultStandard";
 export const VAULT_INTERCHANGE_NAME = "vaultInterchange";
 
-// Real-world-ish dimensions (metres) for a standard elevated station.
-const LENGTH = 95; // along +X
+// Real-world-ish dimensions (metres) for a standard elevated station. Kept on
+// the short side of the real range: a full 95 m barrel reads as a blank wall on
+// screen, while ~72 m lets the arch's curve actually register.
+const LENGTH = 72; // along +X
 const WIDTH = 14; // along +Y
 const COLUMN_H = 7.2; // ground → underside of the deck
 const DECK_T = 0.9;
 const DECK_TOP = COLUMN_H + 0.45 + DECK_T; // columns overlap the deck slightly
-const ROOF_RISE = 8.5; // deck → apex
+const ROOF_RISE = 10.5; // deck → apex; tall enough to read as a vault, not a lid
+const ROOF_SPAN = 12.4; // inboard of the deck edge, so the fascia stays visible
 
 /** Tapered octagonal pylons carrying the deck. */
 function buildColumns(material: THREE.Material): THREE.Group {
@@ -37,7 +40,6 @@ function buildColumns(material: THREE.Material): THREE.Group {
   for (let i = 0; i < count; i++) {
     const mesh = new THREE.Mesh(geo, material);
     mesh.position.set(x0 + i * pitch, 0, COLUMN_H / 2);
-    mesh.castShadow = true;
     group.add(mesh);
   }
   return group;
@@ -47,8 +49,6 @@ function buildColumns(material: THREE.Material): THREE.Group {
 function buildDeck(material: THREE.Material): THREE.Mesh {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(LENGTH, WIDTH, DECK_T), material);
   mesh.position.set(0, 0, DECK_TOP - DECK_T / 2);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
   return mesh;
 }
 
@@ -65,49 +65,34 @@ function buildGlassBalustrade(material: THREE.Material): THREE.Group {
 }
 
 /**
- * One arched shell vault: a 2D arch profile (drawn across the station's width,
- * rising in height) extruded along the station's length. The profile is drawn
- * in shape-XY then baked to the local frame, so shape-Y becomes world Z (up)
- * and the extrude axis becomes world X (length).
+ * The signature shell roof: a half-ellipsoid "pod" — Dubai Metro's golden
+ * lens. Deliberately NOT an extruded barrel vault: a barrel is a plain
+ * rectangle when seen from the side (the arch only shows at the two ends),
+ * which on the map just reads as a box. A dome curves on BOTH axes, so the
+ * silhouette stays curved from every bearing.
  */
-function buildVault(span: number, rise: number, length: number, material: THREE.Material): THREE.Mesh {
-  const half = span / 2;
-  const shape = new THREE.Shape();
-  shape.moveTo(-half, 0);
-  shape.quadraticCurveTo(-half * 0.55, rise * 1.16, 0, rise);
-  shape.quadraticCurveTo(half * 0.55, rise * 1.16, half, 0);
-  // Shell thickness: return along a slightly smaller arch so the roof is a
-  // shell, not a solid lump (cheap, and reads right at any pitch).
-  const t = 0.55;
-  shape.lineTo(half - t * 0.7, 0);
-  shape.quadraticCurveTo((half - t) * 0.55, (rise - t) * 1.16, 0, rise - t);
-  shape.quadraticCurveTo(-((half - t) * 0.55), (rise - t) * 1.16, -(half - t * 0.7), 0);
-  shape.closePath();
-
-  const geo = new THREE.ExtrudeGeometry(shape, {
-    depth: length,
-    bevelEnabled: false,
-    curveSegments: 10,
-  });
-  // Extrude runs along +Z (shape space). Swing so shape-Y → world Z (up) and
-  // the extrude axis → world X (length), then centre it on the station.
+function buildPod(length: number, span: number, rise: number, material: THREE.Material): THREE.Mesh {
+  // Upper hemisphere only (thetaLength = π/2), open underneath.
+  const geo = new THREE.SphereGeometry(1, 28, 10, 0, Math.PI * 2, 0, Math.PI / 2);
+  // Sphere is Y-up; swing +Y → +Z, then stretch the unit dome to the real
+  // length / width / height of the shell.
   geo.rotateX(Math.PI / 2);
-  geo.rotateZ(Math.PI / 2);
-  geo.translate(-length / 2, 0, 0);
-
-  const mesh = new THREE.Mesh(geo, material);
-  mesh.castShadow = true;
-  return mesh;
+  geo.scale(length / 2, span / 2, rise);
+  return new THREE.Mesh(geo, material);
 }
 
-/** Line-coloured fascia strips running along both roof springlines. */
+/**
+ * Line-coloured fascia strips. These sit on the OUTER face of the deck edge,
+ * below the roof springline — outboard of both the deck and the vault, so the
+ * band is actually visible from the side instead of buried inside the shell.
+ */
 function buildAccentBand(material: THREE.Material): THREE.Group {
   const group = new THREE.Group();
   group.name = LINE_ACCENT_NAME;
-  const geo = new THREE.BoxGeometry(LENGTH, 0.4, 0.5);
-  for (const y of [-WIDTH / 2 + 0.3, WIDTH / 2 - 0.3]) {
+  const geo = new THREE.BoxGeometry(LENGTH, 0.3, 0.75);
+  for (const y of [-WIDTH / 2 - 0.15, WIDTH / 2 + 0.15]) {
     const mesh = new THREE.Mesh(geo, material);
-    mesh.position.set(0, y, DECK_TOP + 0.35);
+    mesh.position.set(0, y, DECK_TOP - DECK_T / 2);
     group.add(mesh);
   }
   return group;
@@ -121,8 +106,21 @@ function buildAccentBand(material: THREE.Material): THREE.Group {
  * traverse-and-dispose teardown stays correct).
  */
 export function buildStationTemplate(): THREE.Group {
-  const concreteMat = new THREE.MeshStandardMaterial({ color: 0xe8e4da, roughness: 0.85, metalness: 0.05 });
-  const columnMat = new THREE.MeshStandardMaterial({ color: 0xc9c2b4, roughness: 0.75, metalness: 0.1 });
+  // Bright, low-metalness palette with a touch of emissive: the map's own dark
+  // 3D style composites over the custom layer, so materials that look correct in
+  // isolation come out muddy here. These are tuned against the live basemap.
+  const concreteMat = new THREE.MeshStandardMaterial({
+    color: 0xf7f4ec,
+    emissive: 0x2a2822,
+    roughness: 0.85,
+    metalness: 0.02,
+  });
+  const columnMat = new THREE.MeshStandardMaterial({
+    color: 0xded8ca,
+    emissive: 0x232019,
+    roughness: 0.75,
+    metalness: 0.05,
+  });
   const glassMat = new THREE.MeshStandardMaterial({
     color: 0x9fd0e0,
     roughness: 0.15,
@@ -133,18 +131,20 @@ export function buildStationTemplate(): THREE.Group {
   // DoubleSide: the extrude + axis bake can flip winding on the shell; this is
   // the cheap safety net against black/inside-out roof faces at some bearings.
   const roofShellMat = new THREE.MeshStandardMaterial({
-    color: 0xf2e9c9,
-    roughness: 0.4,
-    metalness: 0.35,
+    color: 0xfff3d2,
+    emissive: 0x554527,
+    roughness: 0.35,
+    metalness: 0.2,
     side: THREE.DoubleSide,
   });
-  // Template default — every clone swaps in its own tinted copy.
+  // Template default — every clone swaps in its own tinted copy. Strongly
+  // emissive so the line colour still reads once the basemap dims the layer.
   const accentMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     emissive: 0xffffff,
-    emissiveIntensity: 0.6,
+    emissiveIntensity: 1.4,
     roughness: 0.3,
-    metalness: 0.5,
+    metalness: 0.1,
   });
 
   const root = new THREE.Group();
@@ -152,17 +152,17 @@ export function buildStationTemplate(): THREE.Group {
   root.add(buildDeck(concreteMat));
   root.add(buildGlassBalustrade(glassMat));
 
-  // Standard: one wide vault over the whole platform.
-  const vaultStandard = buildVault(WIDTH, ROOF_RISE, LENGTH, roofShellMat);
+  // Standard: one pod over the whole platform.
+  const vaultStandard = buildPod(LENGTH, ROOF_SPAN, ROOF_RISE, roofShellMat);
   vaultStandard.name = VAULT_STANDARD_NAME;
   vaultStandard.position.z = DECK_TOP;
   root.add(vaultStandard);
 
-  // Interchange: twin narrower vaults — grander, and instantly distinguishable.
+  // Interchange: twin pods side by side — grander, instantly distinguishable.
   const vaultInterchange = new THREE.Group();
   vaultInterchange.name = VAULT_INTERCHANGE_NAME;
-  for (const y of [-4, 4]) {
-    const v = buildVault(6, ROOF_RISE, LENGTH, roofShellMat);
+  for (const y of [-3.4, 3.4]) {
+    const v = buildPod(LENGTH, 6.4, ROOF_RISE * 0.92, roofShellMat);
     v.position.set(0, y, DECK_TOP);
     vaultInterchange.add(v);
   }
