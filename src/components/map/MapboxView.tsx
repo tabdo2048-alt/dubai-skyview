@@ -144,17 +144,17 @@ const PROJECT_MARKER_CSS = `
 
 /* Landmark markers: the place's logo in a glass tile with the name below,
    bottom-anchored on the coordinate. currentColor carries the category colour. */
-.poi-lm{display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;
+.poi-lm{display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;
   transform:translateZ(0);transition:opacity .25s ease}
-.poi-lm-badge{display:grid;place-items:center;width:40px;height:40px;border-radius:12px;overflow:hidden;
+.poi-lm-badge{display:grid;place-items:center;width:30px;height:30px;border-radius:9px;overflow:hidden;
   background:rgba(10,12,16,.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
   border:1px solid rgba(255,255,255,.28);
   box-shadow:0 0 0 2px color-mix(in oklab,currentColor 60%,transparent),0 4px 12px rgba(0,0,0,.5);
   color:#fff;transition:transform .15s ease,box-shadow .15s ease}
-.poi-lm-logo{width:100%;height:100%;object-fit:contain;padding:4px}
+.poi-lm-logo{width:100%;height:100%;object-fit:contain;padding:3px}
 .poi-lm-fallback{display:grid;place-items:center;width:100%;height:100%;color:currentColor}
-.poi-lm-fallback svg{width:20px;height:20px}
-.poi-lm-name{max-width:96px;text-align:center;color:#fff;font:600 10px/1.15 'Work Sans',Arial,sans-serif;
+.poi-lm-fallback svg{width:16px;height:16px}
+.poi-lm-name{max-width:84px;text-align:center;color:#fff;font:600 9px/1.15 'Work Sans',Arial,sans-serif;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
   text-shadow:0 1px 2px rgba(0,0,0,.9),0 0 6px rgba(0,0,0,.7);transition:opacity .25s ease}
 .poi-lm:hover .poi-lm-badge{transform:scale(1.12);box-shadow:0 0 0 2px currentColor,0 6px 16px rgba(0,0,0,.55)}
