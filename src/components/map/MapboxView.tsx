@@ -19,6 +19,8 @@ import type { ProjectWithRelations } from "@/lib/types";
 import { useFiltersStore } from "@/store/filters";
 import { POI_TABLES, type PoiPoint, type PoiCategory } from "@/hooks/use-pois";
 import { LANDMARK_PHOTOS } from "@/lib/landmarkPhotos";
+import { LANDMARK_LOGOS } from "@/lib/landmarkLogos";
+import { fallbackIcon } from "./poiIcons";
 import {
   ZONE_ORDER,
   ZONE_PULSE,
@@ -138,7 +140,30 @@ const PROJECT_MARKER_CSS = `
 .poi-label:hover .poi-btn{box-shadow:0 0 10px currentColor,inset 0 1px 1px rgba(255,255,255,.45)}
 .poi-label .poi-nm{color:#fff;font:600 9px/1.15 'Work Sans',Arial,sans-serif;letter-spacing:.2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .poi-label:hover{transform:scale(1.06);box-shadow:0 0 18px currentColor}
-@media (prefers-reduced-motion:reduce){.poi-label{transition:none}}`;
+@media (prefers-reduced-motion:reduce){.poi-label{transition:none}}
+
+/* Landmark markers: the place's logo in a glass tile with the name below,
+   bottom-anchored on the coordinate. currentColor carries the category colour. */
+.poi-lm{display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;
+  transform:translateZ(0);transition:opacity .25s ease}
+.poi-lm-badge{display:grid;place-items:center;width:40px;height:40px;border-radius:12px;overflow:hidden;
+  background:rgba(10,12,16,.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  border:1px solid rgba(255,255,255,.28);
+  box-shadow:0 0 0 2px color-mix(in oklab,currentColor 60%,transparent),0 4px 12px rgba(0,0,0,.5);
+  color:#fff;transition:transform .15s ease,box-shadow .15s ease}
+.poi-lm-logo{width:100%;height:100%;object-fit:contain;padding:4px}
+.poi-lm-fallback{display:grid;place-items:center;width:100%;height:100%;color:currentColor}
+.poi-lm-fallback svg{width:20px;height:20px}
+.poi-lm-name{max-width:96px;text-align:center;color:#fff;font:600 10px/1.15 'Work Sans',Arial,sans-serif;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  text-shadow:0 1px 2px rgba(0,0,0,.9),0 0 6px rgba(0,0,0,.7);transition:opacity .25s ease}
+.poi-lm:hover .poi-lm-badge{transform:scale(1.12);box-shadow:0 0 0 2px currentColor,0 6px 16px rgba(0,0,0,.55)}
+/* Zoom gating, driven by a data-poi-tier attribute on the map container so the
+   whole marker set toggles via CSS (no per-marker DOM writes on zoom). */
+[data-poi-tier="hidden"] .poi-lm{opacity:0;pointer-events:none}
+[data-poi-tier="icon"] .poi-lm-name{opacity:0}
+[data-poi-tier="icon"] .poi-lm--priority .poi-lm-name{opacity:1}
+@media (prefers-reduced-motion:reduce){.poi-lm,.poi-lm-name,.poi-lm-badge{transition:none}}`;
 
 function ensureProjectMarkerStyles() {
   if (typeof document === "undefined" || document.getElementById("proj-marker-style")) return;
@@ -1504,48 +1529,43 @@ export function MapboxView({
     for (const poi of pois) {
       seen.add(poi.id);
       if (existing.has(poi.id)) continue;
-      // Glass name pill with an icon + the place name. Tourism places show the
-      // real place's photo (first image) as a round thumbnail; other categories
-      // show the category emoji. Falls back to the emoji when no photo.
+      // Landmark marker: the place's logo in a glass tile, name below. Icon
+      // source order: an uploaded image → a curated per-category logo → (tourism
+      // only) a Wikipedia photo → the category fallback glyph. A place with none
+      // still renders the glyph, never a broken image.
+      const cat = activeCategory as PoiCategory;
       const el = document.createElement("div");
-      el.className = "poi-label";
-      el.style.color = meta?.color ?? "#c9a84c"; // drives the border/icon via currentColor
-      const emojiIcon = () => {
-        const s = document.createElement("span");
-        s.className = "poi-ico";
-        s.textContent = meta?.icon ?? "•"; // category emoji
-        return s;
-      };
-      // Schools/hospitals get a raised, category-colored round button badge
-      // (a crisp glyph) instead of a flat emoji.
-      const btnIcon = () => {
-        const s = document.createElement("span");
-        s.className = "poi-btn";
-        s.style.background = meta?.color ?? "#c9a84c";
-        s.textContent = meta?.icon ?? "•";
-        return s;
-      };
-      const thumb =
-        activeCategory === "tourism" ? poi.images?.[0] ?? LANDMARK_PHOTOS[poi.name] : undefined;
-      let iconEl: HTMLElement;
-      if (thumb) {
+      el.className = "poi-lm";
+      el.style.color = meta?.color ?? "#c9a84c"; // category colour via currentColor
+      // Marquee places (in the curated logo/photo maps) label one zoom tier
+      // earlier, so at mid zoom the notable names show without every school piling on.
+      if (LANDMARK_LOGOS[cat]?.[poi.name] || LANDMARK_PHOTOS[poi.name]) {
+        el.classList.add("poi-lm--priority");
+      }
+
+      const badge = document.createElement("div");
+      badge.className = "poi-lm-badge";
+      const logoUrl =
+        poi.images?.[0] ??
+        LANDMARK_LOGOS[cat]?.[poi.name] ??
+        (cat === "tourism" ? LANDMARK_PHOTOS[poi.name] : undefined);
+      if (logoUrl) {
         const img = document.createElement("img");
-        img.className = "poi-thumb";
-        img.src = thumb;
+        img.className = "poi-lm-logo";
+        img.src = logoUrl;
         img.alt = "";
         img.loading = "lazy";
         img.decoding = "async";
-        img.onerror = () => img.replaceWith(emojiIcon()); // broken photo → emoji
-        iconEl = img;
-      } else if (activeCategory === "schools" || activeCategory === "hospitals") {
-        iconEl = btnIcon();
+        img.onerror = () => img.replaceWith(fallbackIcon(cat)); // broken logo → glyph
+        badge.append(img);
       } else {
-        iconEl = emojiIcon();
+        badge.append(fallbackIcon(cat));
       }
+
       const nm = document.createElement("span");
-      nm.className = "poi-nm";
+      nm.className = "poi-lm-name";
       nm.textContent = poi.name; // textContent — never inject as HTML
-      el.append(iconEl, nm);
+      el.append(badge, nm);
       el.title = poi.name;
       el.onclick = () => {
         map.flyTo({
@@ -1555,7 +1575,9 @@ export function MapboxView({
           essential: true,
         });
       };
-      const m = new mapboxgl.Marker({ element: el }).setLngLat([poi.lng, poi.lat]).addTo(map);
+      // Bottom-center anchor so the badge base sits on the coordinate and the
+      // name hangs below without shifting the geographic anchor.
+      const m = new mapboxgl.Marker({ element: el, anchor: "bottom" }).setLngLat([poi.lng, poi.lat]).addTo(map);
       existing.set(poi.id, m);
     }
     for (const [id, marker] of existing.entries()) {
@@ -1565,6 +1587,26 @@ export function MapboxView({
       }
     }
   }, [pois, activeCategory]);
+
+  // Zoom-gate the landmark markers via a single data attribute on the map
+  // container, so all markers show/hide through CSS instead of per-marker DOM
+  // writes: hidden when zoomed way out, badge-only at city zoom, name added
+  // once close. The tier changes at most twice per zoom gesture.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const apply = () => {
+      const z = map.getZoom();
+      const tier = z < 11.25 ? "hidden" : z < 12.75 ? "icon" : "full";
+      const c = map.getContainer();
+      if (c.dataset.poiTier !== tier) c.dataset.poiTier = tier;
+    };
+    apply();
+    map.on("zoom", apply);
+    return () => {
+      map.off("zoom", apply);
+    };
+  }, [mapReady]);
 
   // Zone spotlight (RY / STR / HH). Layers are added once; toggling a category
   // drives an inverted dim-mask (darkens everything but the zones) + a color

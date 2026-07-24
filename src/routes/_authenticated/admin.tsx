@@ -131,6 +131,7 @@ function AdminPage() {
         </div>
 
         <DeveloperManager />
+        <CommunityManager />
         <PoiManager />
         <ZoneSection />
       </div>
@@ -156,6 +157,7 @@ function ZoneSection() {
 const ADMIN_SECTIONS = [
   { id: "admin-projects", label: "Projects" },
   { id: "admin-developers", label: "Developers" },
+  { id: "admin-communities", label: "Communities" },
   { id: "admin-poi", label: "Places of interest" },
   { id: "admin-zones", label: "Zone editor" },
 ] as const;
@@ -412,6 +414,133 @@ function DeveloperManager() {
             </div>
             <Button size="icon" variant="ghost" onClick={() => startEdit(d as DeveloperRow)}><Edit3 className="h-4 w-4 text-cream" /></Button>
             <Button size="icon" variant="ghost" onClick={() => del(d as DeveloperRow)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+type CommunityRow = {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  hero_image_url: string | null;
+  center_lat: number | null;
+  center_lng: number | null;
+  sort_order: number;
+};
+
+// Add / edit / delete communities. The table already exists (name, slug,
+// description, hero image, map centre, sort order) and feeds the project form's
+// community dropdown; this just gives it a CRUD surface. Mirrors DeveloperManager.
+function CommunityManager() {
+  const { data: communities = [] } = useCommunities();
+  const qc = useQueryClient();
+  const empty = { name: "", slug: "", description: "", hero_image_url: "", center_lat: "", center_lng: "", sort_order: "0" };
+  const [editId, setEditId] = useState<string | null>(null);
+  const [form, setForm] = useState(empty);
+  const [saving, setSaving] = useState(false);
+
+  const startEdit = (c: CommunityRow) => {
+    setEditId(c.id);
+    setForm({
+      name: c.name,
+      slug: c.slug,
+      description: c.description ?? "",
+      hero_image_url: c.hero_image_url ?? "",
+      center_lat: c.center_lat != null ? String(c.center_lat) : "",
+      center_lng: c.center_lng != null ? String(c.center_lng) : "",
+      sort_order: String(c.sort_order ?? 0),
+    });
+  };
+  const reset = () => { setEditId(null); setForm(empty); };
+  const refresh = () => { qc.invalidateQueries({ queryKey: ["communities"] }); };
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.name.trim()) return toast.error("Name is required");
+    // These feed map coordinates — reject garbage before it reaches the DB.
+    if (form.center_lat.trim() && Number.isNaN(Number(form.center_lat))) return toast.error("Latitude must be a number");
+    if (form.center_lng.trim() && Number.isNaN(Number(form.center_lng))) return toast.error("Longitude must be a number");
+    setSaving(true);
+    try {
+      const payload = {
+        name: form.name.trim(),
+        slug: form.slug.trim() || form.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
+        description: form.description.trim() || null,
+        hero_image_url: form.hero_image_url.trim() || null,
+        center_lat: form.center_lat.trim() === "" ? null : Number(form.center_lat),
+        center_lng: form.center_lng.trim() === "" ? null : Number(form.center_lng),
+        sort_order: form.sort_order.trim() === "" ? 0 : Number(form.sort_order),
+      };
+      if (editId) {
+        const { error } = await supabase.from("communities").update(payload).eq("id", editId);
+        if (error) throw error;
+        toast.success("Community updated");
+      } else {
+        const { error } = await supabase.from("communities").insert(payload);
+        if (error) throw error;
+        toast.success("Community added");
+      }
+      reset();
+      refresh();
+    } catch (err) {
+      toast.error(errMsg(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const del = async (c: CommunityRow) => {
+    // projects.community_id is ON DELETE SET NULL, so this only orphans projects.
+    if (!confirm(`Delete community "${c.name}"?`)) return;
+    const { error } = await supabase.from("communities").delete().eq("id", c.id);
+    if (error) return toast.error(error.message);
+    toast.success("Community deleted");
+    if (editId === c.id) reset();
+    refresh();
+  };
+
+  return (
+    <div id="admin-communities" className="mt-10 scroll-mt-24">
+      <h2 className="font-display text-3xl text-cream">Communities</h2>
+
+      <form onSubmit={save} className="glass-strong gold-hairline mt-4 grid gap-3 rounded-2xl p-5 sm:grid-cols-2">
+        <Field label="Name"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></Field>
+        <Field label="Slug (optional)"><Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} /></Field>
+        <Field label="Hero image URL"><Input value={form.hero_image_url} onChange={(e) => setForm({ ...form, hero_image_url: e.target.value })} placeholder="https://" /></Field>
+        <Field label="Sort order"><Input type="number" value={form.sort_order} onChange={(e) => setForm({ ...form, sort_order: e.target.value })} /></Field>
+        <Field label="Center latitude"><Input type="number" step="any" value={form.center_lat} onChange={(e) => setForm({ ...form, center_lat: e.target.value })} placeholder="25.19" /></Field>
+        <Field label="Center longitude"><Input type="number" step="any" value={form.center_lng} onChange={(e) => setForm({ ...form, center_lng: e.target.value })} placeholder="55.27" /></Field>
+        <div className="sm:col-span-2">
+          <Field label="Description"><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2} /></Field>
+        </div>
+        <div className="flex gap-2 sm:col-span-2">
+          <Button type="submit" disabled={saving} className="bg-gold text-gold-foreground hover:bg-gold/90">
+            {editId ? "Update community" : "Add community"}
+          </Button>
+          {editId && <Button type="button" variant="ghost" onClick={reset} className="text-muted-foreground">Cancel</Button>}
+        </div>
+      </form>
+
+      <div className="mt-4 grid gap-2">
+        {communities.map((c) => (
+          <div key={c.id} className="glass gold-hairline flex items-center gap-3 rounded-2xl p-3">
+            <div className="h-10 w-10 overflow-hidden rounded-md bg-muted">
+              {c.hero_image_url && <img src={c.hero_image_url} alt="" className="h-full w-full object-cover" />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-display text-lg text-cream">{c.name}</div>
+              <div className="truncate text-xs text-muted-foreground">
+                {c.slug}
+                {c.center_lat != null && c.center_lng != null ? ` · ${c.center_lat}, ${c.center_lng}` : ""}
+                {` · #${c.sort_order}`}
+              </div>
+            </div>
+            <Button size="icon" variant="ghost" onClick={() => startEdit(c as CommunityRow)}><Edit3 className="h-4 w-4 text-cream" /></Button>
+            <Button size="icon" variant="ghost" onClick={() => del(c as CommunityRow)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
           </div>
         ))}
       </div>

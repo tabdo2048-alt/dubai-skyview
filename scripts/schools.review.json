@@ -1,0 +1,1022 @@
+[
+  {
+    "name": "Abu Hanifa School for Basic Education",
+    "lat": 25.1698189,
+    "lng": 55.2545997
+  },
+  {
+    "name": "Ahmed Bin Sulyem School for Basic Education",
+    "lat": 25.2873073,
+    "lng": 55.3535242
+  },
+  {
+    "name": "Al Adab Iranian Private School For Boys",
+    "lat": 25.2764029,
+    "lng": 55.368736
+  },
+  {
+    "name": "Al Ahmadiya School",
+    "lat": 25.2822045,
+    "lng": 55.3423593
+  },
+  {
+    "name": "Al Aqsa School for Basic Education C/1 Boys",
+    "lat": 25.2228434,
+    "lng": 55.3942333
+  },
+  {
+    "name": "Al Arqam Private School",
+    "lat": 25.1084629,
+    "lng": 55.1891416
+  },
+  {
+    "name": "Al Bashra Kindergarten",
+    "lat": 25.0863693,
+    "lng": 55.239892
+  },
+  {
+    "name": "Al Eman Private School",
+    "lat": 25.230544,
+    "lng": 55.3892335
+  },
+  {
+    "name": "Al Falah University",
+    "lat": 25.2364435,
+    "lng": 55.349477
+  },
+  {
+    "name": "Al Ghurair University",
+    "lat": 25.110032,
+    "lng": 55.4071838
+  },
+  {
+    "name": "Al Ittihad Private School",
+    "lat": 25.3004318,
+    "lng": 55.3448255
+  },
+  {
+    "name": "Al Khansa'a Girls School",
+    "lat": 25.2903825,
+    "lng": 55.341987
+  },
+  {
+    "name": "Al Kuweit Middle School for Girls",
+    "lat": 25.2720766,
+    "lng": 55.3647492
+  },
+  {
+    "name": "Al Mareef Pvt. School",
+    "lat": 25.2866798,
+    "lng": 55.3670562
+  },
+  {
+    "name": "Al Mawakeb School",
+    "lat": 25.2347892,
+    "lng": 55.3581223
+  },
+  {
+    "name": "Al Raya Girl's School",
+    "lat": 25.1995103,
+    "lng": 55.2527046
+  },
+  {
+    "name": "Al Sadiq Islamic English School",
+    "lat": 25.2657833,
+    "lng": 55.3856227
+  },
+  {
+    "name": "Al Safa High School",
+    "lat": 25.1906706,
+    "lng": 55.2509773
+  },
+  {
+    "name": "Al Salam Private School",
+    "lat": 25.2886967,
+    "lng": 55.3696266
+  },
+  {
+    "name": "Al Salam School for Elementary and Secondary Education",
+    "lat": 25.0932745,
+    "lng": 55.1973908
+  },
+  {
+    "name": "Al Shoroq Private School",
+    "lat": 25.2130297,
+    "lng": 55.2551844
+  },
+  {
+    "name": "Al Wahidah Boys' School for Cycle2 and Secondary Education. C2 & C3",
+    "lat": 25.2779835,
+    "lng": 55.3177155
+  },
+  {
+    "name": "Al-Jahiah Boys School for Basic Education",
+    "lat": 25.224202,
+    "lng": 55.3908637
+  },
+  {
+    "name": "Ambassador school (manhol)",
+    "lat": 25.2460282,
+    "lng": 55.2881279
+  },
+  {
+    "name": "American College of Dubai",
+    "lat": 25.2358955,
+    "lng": 55.349048
+  },
+  {
+    "name": "American International School",
+    "lat": 25.2834205,
+    "lng": 55.3688425
+  },
+  {
+    "name": "American School of Dubai ELC - Gate 4",
+    "lat": 25.101612,
+    "lng": 55.1809938
+  },
+  {
+    "name": "American University in Dubai",
+    "lat": 25.0915004,
+    "lng": 55.1557772
+  },
+  {
+    "name": "American University in The Emirates",
+    "lat": 25.1248428,
+    "lng": 55.4096879
+  },
+  {
+    "name": "Amity English School",
+    "lat": 25.2796949,
+    "lng": 55.3667676
+  },
+  {
+    "name": "Amity School Dubai",
+    "lat": 25.2782602,
+    "lng": 55.3673319
+  },
+  {
+    "name": "Amity University Dubai",
+    "lat": 25.1228778,
+    "lng": 55.4200163
+  },
+  {
+    "name": "Amled School Dubai",
+    "lat": 25.1496005,
+    "lng": 55.2481553
+  },
+  {
+    "name": "Apple International School",
+    "lat": 25.2697472,
+    "lng": 55.3781771
+  },
+  {
+    "name": "Arabic School",
+    "lat": 25.2478383,
+    "lng": 55.3066344
+  },
+  {
+    "name": "Asmaa Bint Al Noman Model School",
+    "lat": 25.2496609,
+    "lng": 55.3951868
+  },
+  {
+    "name": "Australian International School Dubai (AIS Dubai)",
+    "lat": 25.0604647,
+    "lng": 55.2323892
+  },
+  {
+    "name": "Block 2B - Michigan State University & Offices",
+    "lat": 25.104311,
+    "lng": 55.1636704
+  },
+  {
+    "name": "Block 3 - Eton Institute & Innovative HR Solutions",
+    "lat": 25.1045701,
+    "lng": 55.1648641
+  },
+  {
+    "name": "Block 4 - Islamic Azad University & Offices",
+    "lat": 25.1041804,
+    "lng": 55.1649427
+  },
+  {
+    "name": "Canadian University Dubai",
+    "lat": 25.2085739,
+    "lng": 55.2703292
+  },
+  {
+    "name": "Capital School",
+    "lat": 25.2839227,
+    "lng": 55.371696
+  },
+  {
+    "name": "Cedar School",
+    "lat": 25.1900962,
+    "lng": 55.3999328
+  },
+  {
+    "name": "Choueifat School",
+    "lat": 25.1072747,
+    "lng": 55.1716839
+  },
+  {
+    "name": "Collegiate American School",
+    "lat": 25.150944,
+    "lng": 55.2077051
+  },
+  {
+    "name": "Coventry University UAE Regional Hub",
+    "lat": 25.1042656,
+    "lng": 55.1632649
+  },
+  {
+    "name": "Crescent English School",
+    "lat": 25.281476,
+    "lng": 55.3673369
+  },
+  {
+    "name": "Dar Al Marefa School",
+    "lat": 25.227729,
+    "lng": 55.4320169
+  },
+  {
+    "name": "De Montfort University Dubai",
+    "lat": 25.1295172,
+    "lng": 55.4164449
+  },
+  {
+    "name": "Dehli Public School Academy",
+    "lat": 25.1056236,
+    "lng": 55.4023943
+  },
+  {
+    "name": "Deira Private School",
+    "lat": 25.2425589,
+    "lng": 55.3983858
+  },
+  {
+    "name": "Delhi Private School",
+    "lat": 25.0390465,
+    "lng": 55.1214621
+  },
+  {
+    "name": "DEWA Academy",
+    "lat": 25.2435815,
+    "lng": 55.280465
+  },
+  {
+    "name": "Diyafah High School",
+    "lat": 25.2901428,
+    "lng": 55.3747592
+  },
+  {
+    "name": "Dubai American Academy",
+    "lat": 25.1034496,
+    "lng": 55.180715
+  },
+  {
+    "name": "Dubai British School Emirates Hills - Islands Campus",
+    "lat": 25.0547744,
+    "lng": 55.1667363
+  },
+  {
+    "name": "Dubai Carmel School",
+    "lat": 25.2964142,
+    "lng": 55.3794647
+  },
+  {
+    "name": "Dubai College",
+    "lat": 25.1098549,
+    "lng": 55.1694007
+  },
+  {
+    "name": "Dubai English Speaking College",
+    "lat": 25.1060976,
+    "lng": 55.400183
+  },
+  {
+    "name": "Dubai Heights Academy",
+    "lat": 25.0796965,
+    "lng": 55.2269193
+  },
+  {
+    "name": "Dubai International Academy",
+    "lat": 25.0776195,
+    "lng": 55.1785325
+  },
+  {
+    "name": "Dubai International School",
+    "lat": 25.1686084,
+    "lng": 55.2640707
+  },
+  {
+    "name": "Dubai Medical College",
+    "lat": 25.2504299,
+    "lng": 55.4174183
+  },
+  {
+    "name": "Dubai Men's College",
+    "lat": 25.108641,
+    "lng": 55.3923334
+  },
+  {
+    "name": "Dubai Modern Education School",
+    "lat": 25.2386674,
+    "lng": 55.4276915
+  },
+  {
+    "name": "Dubai National School",
+    "lat": 25.2787741,
+    "lng": 55.3683563
+  },
+  {
+    "name": "Dubai Pharmacy College for Girls",
+    "lat": 25.2510067,
+    "lng": 55.4165421
+  },
+  {
+    "name": "Dubai Scholars School",
+    "lat": 25.2804627,
+    "lng": 55.3644032
+  },
+  {
+    "name": "Dubai School for Secondary Education for Boys",
+    "lat": 25.2861186,
+    "lng": 55.3529606
+  },
+  {
+    "name": "Dwight School Dubai",
+    "lat": 25.0351181,
+    "lng": 55.2287363
+  },
+  {
+    "name": "Emirates Aviation University",
+    "lat": 25.11282,
+    "lng": 55.4129782
+  },
+  {
+    "name": "Emirates College",
+    "lat": 25.2919877,
+    "lng": 55.3750975
+  },
+  {
+    "name": "Emirates Institute for Banking & Financial Studies",
+    "lat": 25.0994683,
+    "lng": 55.3980749
+  },
+  {
+    "name": "Emirates International School",
+    "lat": 25.1347385,
+    "lng": 55.2100541
+  },
+  {
+    "name": "Etisalat Academy",
+    "lat": 25.2600041,
+    "lng": 55.4107873
+  },
+  {
+    "name": "Eton University",
+    "lat": 25.1046239,
+    "lng": 55.164507
+  },
+  {
+    "name": "GEMS Al Khaleej International School",
+    "lat": 25.1897906,
+    "lng": 55.4297998
+  },
+  {
+    "name": "GEMS Cambridge International School",
+    "lat": 25.265474,
+    "lng": 55.3746725
+  },
+  {
+    "name": "Gems First Point School (The Villa)",
+    "lat": 25.0892121,
+    "lng": 55.3759042
+  },
+  {
+    "name": "GEMS Founders school",
+    "lat": 25.0795461,
+    "lng": 55.2286191
+  },
+  {
+    "name": "GEMS International School, Al Khail",
+    "lat": 25.1226216,
+    "lng": 55.2556902
+  },
+  {
+    "name": "GEMS Legacy School Primary Campus",
+    "lat": 25.2484623,
+    "lng": 55.3393501
+  },
+  {
+    "name": "GEMS Legacy School Secondary Campus",
+    "lat": 25.2343302,
+    "lng": 55.3529688
+  },
+  {
+    "name": "GEMS Metropole School Motor City",
+    "lat": 25.0418485,
+    "lng": 55.243921
+  },
+  {
+    "name": "GEMS National school for Boys",
+    "lat": 25.0794989,
+    "lng": 55.2313342
+  },
+  {
+    "name": "GEMS National school for Girls",
+    "lat": 25.0797006,
+    "lng": 55.2335481
+  },
+  {
+    "name": "GEMS New Millenium School",
+    "lat": 25.1238966,
+    "lng": 55.256867
+  },
+  {
+    "name": "GEMS Our Indian School",
+    "lat": 25.1717641,
+    "lng": 55.2602577
+  },
+  {
+    "name": "Gems our own English high school",
+    "lat": 25.1927017,
+    "lng": 55.4255917
+  },
+  {
+    "name": "GEMS Sports Academy",
+    "lat": 25.1186887,
+    "lng": 55.3870069
+  },
+  {
+    "name": "GEMS Wellington Academy Silicon Oasis",
+    "lat": 25.1176935,
+    "lng": 55.3886003
+  },
+  {
+    "name": "GEMS Wellington International School",
+    "lat": 25.1121304,
+    "lng": 55.1833971
+  },
+  {
+    "name": "GEMS Wellington Primary School",
+    "lat": 25.2113735,
+    "lng": 55.2714781
+  },
+  {
+    "name": "GEMS Winchester School",
+    "lat": 25.2351978,
+    "lng": 55.3157215
+  },
+  {
+    "name": "GEMS World Academy",
+    "lat": 25.0827969,
+    "lng": 55.2190504
+  },
+  {
+    "name": "German International School Dubai",
+    "lat": 25.1074915,
+    "lng": 55.4016633
+  },
+  {
+    "name": "Greenfield International School",
+    "lat": 24.9820428,
+    "lng": 55.1841446
+  },
+  {
+    "name": "Greenwood International School",
+    "lat": 25.2442347,
+    "lng": 55.4182557
+  },
+  {
+    "name": "Hair & Beauty Academy",
+    "lat": 25.1012892,
+    "lng": 55.1602731
+  },
+  {
+    "name": "Hamdan Bin Mohammed Smart University",
+    "lat": 25.1040889,
+    "lng": 55.3927937
+  },
+  {
+    "name": "Hartland International School",
+    "lat": 25.1784762,
+    "lng": 55.3031486
+  },
+  {
+    "name": "Heriot-Watt University - Dubai Campus",
+    "lat": 25.1016378,
+    "lng": 55.1620482
+  },
+  {
+    "name": "Higher College of Technology (Girls)",
+    "lat": 25.2856646,
+    "lng": 55.3760637
+  },
+  {
+    "name": "Horizon English School",
+    "lat": 25.18971,
+    "lng": 55.2503806
+  },
+  {
+    "name": "Hult International Business School, Dubai",
+    "lat": 25.103747,
+    "lng": 55.1677426
+  },
+  {
+    "name": "I.A.U - Islamic Azad University",
+    "lat": 25.1046725,
+    "lng": 55.164979
+  },
+  {
+    "name": "Ignite School",
+    "lat": 25.1892023,
+    "lng": 55.4105132
+  },
+  {
+    "name": "Indian International School",
+    "lat": 25.1162086,
+    "lng": 55.3761004
+  },
+  {
+    "name": "Institute Of Applied Technology",
+    "lat": 25.2750634,
+    "lng": 55.3937275
+  },
+  {
+    "name": "Institute of Managment Technology",
+    "lat": 25.123651,
+    "lng": 55.4151973
+  },
+  {
+    "name": "International Academic School",
+    "lat": 25.1865166,
+    "lng": 55.4032667
+  },
+  {
+    "name": "International School of Arts and Sciences",
+    "lat": 25.1899501,
+    "lng": 55.4019094
+  },
+  {
+    "name": "International School of Creative Science",
+    "lat": 25.1484217,
+    "lng": 55.3777779
+  },
+  {
+    "name": "Islamic School For Education Training",
+    "lat": 25.2522029,
+    "lng": 55.4169123
+  },
+  {
+    "name": "Jebel Ali Primary School",
+    "lat": 25.0297763,
+    "lng": 55.1139623
+  },
+  {
+    "name": "Jebel Ali School",
+    "lat": 25.0097812,
+    "lng": 55.2549254
+  },
+  {
+    "name": "JSS International School",
+    "lat": 25.0752886,
+    "lng": 55.2155678
+  },
+  {
+    "name": "JSS School",
+    "lat": 25.1921489,
+    "lng": 55.2524059
+  },
+  {
+    "name": "Jumeira University",
+    "lat": 25.1465587,
+    "lng": 55.2563626
+  },
+  {
+    "name": "Jumeirah Baccalaureate School",
+    "lat": 25.2187215,
+    "lng": 55.2597303
+  },
+  {
+    "name": "Jumeirah College",
+    "lat": 25.176385,
+    "lng": 55.2355487
+  },
+  {
+    "name": "Jumeirah English Speaking School",
+    "lat": 25.1799075,
+    "lng": 55.242957
+  },
+  {
+    "name": "Jumeirah Engllish Speaking School",
+    "lat": 25.0564368,
+    "lng": 55.2724957
+  },
+  {
+    "name": "Jumeirah Primary School",
+    "lat": 25.1760791,
+    "lng": 55.2387056
+  },
+  {
+    "name": "Kent College",
+    "lat": 25.12524,
+    "lng": 55.3583475
+  },
+  {
+    "name": "Kings College",
+    "lat": 25.0847194,
+    "lng": 55.2514114
+  },
+  {
+    "name": "little flower school",
+    "lat": 25.2790638,
+    "lng": 55.3384346
+  },
+  {
+    "name": "Manipal University Dubai",
+    "lat": 25.1336423,
+    "lng": 55.4253611
+  },
+  {
+    "name": "Mareya AlQibtiya High School for Girls",
+    "lat": 25.2645393,
+    "lng": 55.3720031
+  },
+  {
+    "name": "Middlesex University - Block 16",
+    "lat": 25.1035031,
+    "lng": 55.1643832
+  },
+  {
+    "name": "Middlesex University - Block 19",
+    "lat": 25.102772,
+    "lng": 55.1629013
+  },
+  {
+    "name": "Mirdif Private School",
+    "lat": 25.2374369,
+    "lng": 55.4368754
+  },
+  {
+    "name": "MSB Private School - Primary Block",
+    "lat": 25.2910081,
+    "lng": 55.3781056
+  },
+  {
+    "name": "MSB Private School - Secondary Block",
+    "lat": 25.2908661,
+    "lng": 55.3752239
+  },
+  {
+    "name": "Nadd Al Hamar Primary School",
+    "lat": 25.1998544,
+    "lng": 55.3768513
+  },
+  {
+    "name": "New academy school",
+    "lat": 25.2509422,
+    "lng": 55.2842903
+  },
+  {
+    "name": "New Indian Model School",
+    "lat": 25.2374363,
+    "lng": 55.3473105
+  },
+  {
+    "name": "Newlands School",
+    "lat": 25.1861674,
+    "lng": 55.4019351
+  },
+  {
+    "name": "Nord Anglia International School",
+    "lat": 25.0618708,
+    "lng": 55.2266874
+  },
+  {
+    "name": "North London Collegiate School",
+    "lat": 25.178414,
+    "lng": 55.3064981
+  },
+  {
+    "name": "Oaktree Primary School",
+    "lat": 25.1494317,
+    "lng": 55.2479635
+  },
+  {
+    "name": "Omar Bin Khattab School",
+    "lat": 25.275932,
+    "lng": 55.3426221
+  },
+  {
+    "name": "Online Trading Academy",
+    "lat": 25.1040934,
+    "lng": 55.1628707
+  },
+  {
+    "name": "Ontario International Canadian School",
+    "lat": 25.2210393,
+    "lng": 55.4263487
+  },
+  {
+    "name": "Our Own High School",
+    "lat": 25.1910328,
+    "lng": 55.4008552
+  },
+  {
+    "name": "Pakistan School",
+    "lat": 25.2851665,
+    "lng": 55.3698547
+  },
+  {
+    "name": "Pearl Wisdom School",
+    "lat": 25.27767,
+    "lng": 55.3447491
+  },
+  {
+    "name": "Philadelphia Private School",
+    "lat": 25.2788217,
+    "lng": 55.4021322
+  },
+  {
+    "name": "Philippines School",
+    "lat": 25.2297985,
+    "lng": 55.3831315
+  },
+  {
+    "name": "Primus Private School",
+    "lat": 25.1869045,
+    "lng": 55.4026298
+  },
+  {
+    "name": "Pristine Private School",
+    "lat": 25.2936284,
+    "lng": 55.3749402
+  },
+  {
+    "name": "Queen international school",
+    "lat": 25.2831389,
+    "lng": 55.3487844
+  },
+  {
+    "name": "Raffles International School",
+    "lat": 25.1365001,
+    "lng": 55.1945416
+  },
+  {
+    "name": "Raffles World Academy",
+    "lat": 25.1402844,
+    "lng": 55.196608
+  },
+  {
+    "name": "Ranches Primary School",
+    "lat": 25.0297425,
+    "lng": 55.2723069
+  },
+  {
+    "name": "Regent International School",
+    "lat": 25.0882201,
+    "lng": 55.1738146
+  },
+  {
+    "name": "Repton School Dubai",
+    "lat": 25.1453752,
+    "lng": 55.3789638
+  },
+  {
+    "name": "Rochester Institute of Technology",
+    "lat": 25.1224278,
+    "lng": 55.3778891
+  },
+  {
+    "name": "Russian International School",
+    "lat": 25.2826821,
+    "lng": 55.4044713
+  },
+  {
+    "name": "Sabari Indian School",
+    "lat": 25.2895848,
+    "lng": 55.3411184
+  },
+  {
+    "name": "Safa British School",
+    "lat": 25.1781921,
+    "lng": 55.241238
+  },
+  {
+    "name": "Safa Community School",
+    "lat": 25.0618836,
+    "lng": 55.2480103
+  },
+  {
+    "name": "Safa Private School",
+    "lat": 25.172989,
+    "lng": 55.2586307
+  },
+  {
+    "name": "Salma al Ansaria School",
+    "lat": 25.2100285,
+    "lng": 55.2679274
+  },
+  {
+    "name": "Salman Farsi Iranian Boys School",
+    "lat": 25.2805175,
+    "lng": 55.3698265
+  },
+  {
+    "name": "School of Modern Skills",
+    "lat": 25.2444686,
+    "lng": 55.4159431
+  },
+  {
+    "name": "School of Research Science",
+    "lat": 25.2008061,
+    "lng": 55.4394873
+  },
+  {
+    "name": "Second of December Primary School for Girls",
+    "lat": 25.2712091,
+    "lng": 55.3641303
+  },
+  {
+    "name": "Sheikh Rashid bin Saied Islamic Institute",
+    "lat": 25.1034263,
+    "lng": 55.4102779
+  },
+  {
+    "name": "South View School",
+    "lat": 25.0049128,
+    "lng": 55.2443744
+  },
+  {
+    "name": "Springdales Indian School Dubai",
+    "lat": 25.1484656,
+    "lng": 55.2544686
+  },
+  {
+    "name": "St. Mary's Catholic High School, Muhaizinah",
+    "lat": 25.2805077,
+    "lng": 55.4079214
+  },
+  {
+    "name": "Sukainah High School",
+    "lat": 25.2063478,
+    "lng": 55.3864498
+  },
+  {
+    "name": "Swiss International Scientific School in Dubai",
+    "lat": 25.208614,
+    "lng": 55.3312289
+  },
+  {
+    "name": "Synergy University Dubai",
+    "lat": 25.068293,
+    "lng": 55.1450698
+  },
+  {
+    "name": "Szabist University Dubai",
+    "lat": 25.1242201,
+    "lng": 55.4099431
+  },
+  {
+    "name": "The Alpha School",
+    "lat": 25.260726,
+    "lng": 55.3931422
+  },
+  {
+    "name": "The Arbor School",
+    "lat": 25.023251,
+    "lng": 55.1369509
+  },
+  {
+    "name": "The Central School",
+    "lat": 25.2914798,
+    "lng": 55.3756834
+  },
+  {
+    "name": "The City School International",
+    "lat": 25.1936302,
+    "lng": 55.3886139
+  },
+  {
+    "name": "The Elite English School",
+    "lat": 25.288919,
+    "lng": 55.3403931
+  },
+  {
+    "name": "The Emirates Academy Of Hospitality Management",
+    "lat": 25.1366711,
+    "lng": 55.1907257
+  },
+  {
+    "name": "The English College",
+    "lat": 25.1695602,
+    "lng": 55.2377264
+  },
+  {
+    "name": "The Indian Academy",
+    "lat": 25.2815162,
+    "lng": 55.4017019
+  },
+  {
+    "name": "The Indian High School",
+    "lat": 25.240557,
+    "lng": 55.3152581
+  },
+  {
+    "name": "The Millenium School",
+    "lat": 25.2862157,
+    "lng": 55.3680647
+  },
+  {
+    "name": "The National Charity School",
+    "lat": 25.2387207,
+    "lng": 55.3455341
+  },
+  {
+    "name": "The Oxford School",
+    "lat": 25.2809744,
+    "lng": 55.4021636
+  },
+  {
+    "name": "The Philippine School - Dubai",
+    "lat": 25.2579038,
+    "lng": 55.4191324
+  },
+  {
+    "name": "The Sheffield Private School",
+    "lat": 25.2932123,
+    "lng": 55.385724
+  },
+  {
+    "name": "The Westminster School",
+    "lat": 25.2828471,
+    "lng": 55.37083
+  },
+  {
+    "name": "The Winchester School",
+    "lat": 25.040006,
+    "lng": 55.1200922
+  },
+  {
+    "name": "Universal American School",
+    "lat": 25.2215061,
+    "lng": 55.3654605
+  },
+  {
+    "name": "University of Birmingham Dubai",
+    "lat": 25.1318997,
+    "lng": 55.4226924
+  },
+  {
+    "name": "University of Dubai",
+    "lat": 25.1077415,
+    "lng": 55.41439
+  },
+  {
+    "name": "University Of Jazeera",
+    "lat": 25.2441619,
+    "lng": 55.393558
+  },
+  {
+    "name": "University of Wollongong Dubai",
+    "lat": 25.1017922,
+    "lng": 55.1621726
+  },
+  {
+    "name": "University of Wollongong in Dubai - Block 14",
+    "lat": 25.1037987,
+    "lng": 55.165369
+  },
+  {
+    "name": "Uptown School",
+    "lat": 25.2098293,
+    "lng": 55.4230237
+  },
+  {
+    "name": "Victory Heights Primary School",
+    "lat": 25.0351744,
+    "lng": 55.2224569
+  },
+  {
+    "name": "Woodlem Park School",
+    "lat": 25.2818957,
+    "lng": 55.3699521
+  },
+  {
+    "name": "Za'abeel Secondary School For Girls",
+    "lat": 25.2501786,
+    "lng": 55.3068008
+  },
+  {
+    "name": "Zayed University - Dubai Campus",
+    "lat": 25.1041878,
+    "lng": 55.3857163
+  },
+  {
+    "name": "Zayed University - Knowledge Village Campus",
+    "lat": 25.1044566,
+    "lng": 55.1669916
+  }
+]
