@@ -30,9 +30,9 @@ import { ROAD_GUIDE, setRouteHighlight } from "./roadsLayer";
 import { useMapConfig } from "@/hooks/use-map-config";
 import { useFiltersStore } from "@/store/filters";
 import { useProjects, filterProjects } from "@/hooks/use-projects";
-import { usePoi, usePoiRealtime } from "@/hooks/use-pois";
+import { usePois, usePoiRealtime } from "@/hooks/use-pois";
 import { useZones, useZonesRealtime } from "@/hooks/use-zones";
-import { ZONE_ORDER, ZONE_CATEGORIES } from "@/lib/zones";
+import { ZONE_ORDER, ZONE_CATEGORIES, type ZoneCategory } from "@/lib/zones";
 import { DUBAI_CENTER, DEFAULT_ZOOM } from "@/lib/dubai";
 import { CATEGORY_COLORS } from "@/lib/metro";
 import { Button } from "@/components/ui/button";
@@ -73,12 +73,16 @@ export function MapContainer() {
     setLightPreset,
     selectedProjectId,
     setSelectedProjectId,
-    activeCategory,
+    activeCategories,
     visibleProjectIds,
     zoneCategories,
     toggleZoneCategory,
   } = useFiltersStore();
-  const { data: pois = [] } = usePoi(activeCategory);
+  const { data: pois = [] } = usePois(activeCategories);
+  // While browsing places, the map goes clean: projects, metro/train/roads and
+  // the (dark-dimming) zone spotlight all hide, leaving just the POI markers.
+  const browsingPois = activeCategories.size > 0;
+  const EMPTY_ZONES = useMemo(() => new Set<ZoneCategory>(), []);
   usePoiRealtime();
   const { data: zones = [] } = useZones();
   useZonesRealtime();
@@ -105,10 +109,10 @@ export function MapContainer() {
   // markers. Category mode hides all project markers regardless.
   const projectsToShow = useMemo(
     () =>
-      activeCategory
+      browsingPois
         ? []
         : filtered.filter((p) => visibleProjectIds.has(p.id)),
-    [filtered, activeCategory, visibleProjectIds]
+    [filtered, browsingPois, visibleProjectIds]
   );
   const selected =
     projectsToShow.find((p) => p.id === selectedProjectId) ??
@@ -155,16 +159,16 @@ export function MapContainer() {
                 accessToken={cfg.mapboxAccessToken}
                 projects={projectsToShow}
                 pois={pois}
-                activeCategory={activeCategory}
+                browsingPois={browsingPois}
                 zones={zones}
-                zoneCategories={zoneCategories}
+                zoneCategories={browsingPois ? EMPTY_ZONES : zoneCategories}
                 camera={camera}
                 onCameraChange={setCamera}
                 onReady={() => mapMode === "satellite" && setMapReady(true)}
                 active={mapMode === "satellite"}
-                metroMode={activeCategory ? false : metroMode}
-                trainMode={activeCategory ? false : trainMode}
-                roadsMode={activeCategory ? false : roadsMode}
+                metroMode={browsingPois ? false : metroMode}
+                trainMode={browsingPois ? false : trainMode}
+                roadsMode={browsingPois ? false : roadsMode}
                 lightPreset={lightPreset}
                 mode="satellite"
               />
@@ -184,17 +188,17 @@ export function MapContainer() {
                 accessToken={cfg.mapboxAccessToken}
                 projects={projectsToShow}
                 pois={pois}
-                activeCategory={activeCategory}
+                browsingPois={browsingPois}
                 zones={zones}
-                zoneCategories={zoneCategories}
+                zoneCategories={browsingPois ? EMPTY_ZONES : zoneCategories}
                 camera={camera}
                 onCameraChange={setCamera}
                 onReady={() => mapMode === "3d" && setMapReady(true)}
                 onMapReady={waterEditorEnabled ? setEditorMap : undefined}
                 active={mapMode === "3d"}
-                metroMode={activeCategory ? false : metroMode}
-                trainMode={activeCategory ? false : trainMode}
-                roadsMode={activeCategory ? false : roadsMode}
+                metroMode={browsingPois ? false : metroMode}
+                trainMode={browsingPois ? false : trainMode}
+                roadsMode={browsingPois ? false : roadsMode}
                 lightPreset={lightPreset}
                 mode="3d"
               />

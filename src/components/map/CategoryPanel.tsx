@@ -11,7 +11,7 @@ const CATEGORIES = [
 ] as const;
 
 export function CategoryPanel() {
-  const { activeCategory, setActiveCategory } = useFiltersStore();
+  const { activeCategories, togglePoiCategory } = useFiltersStore();
 
   return (
     <motion.div
@@ -23,13 +23,13 @@ export function CategoryPanel() {
     >
       <div className="flex flex-col gap-2">
         {CATEGORIES.map(({ id, icon: Icon, label }) => {
-          const isActive = activeCategory === id;
+          const isActive = activeCategories.has(id);
           return (
             <motion.button
               key={id}
               title={label}
               onClick={() => {
-                setActiveCategory(isActive ? null : (id as never));
+                togglePoiCategory(id);
                 if (!isActive) track("open_poi_category", { category: id });
               }}
               whileHover={{ scale: 1.08 }}

@@ -31,8 +31,11 @@ type FiltersStore = {
   sidebarOpen: boolean;
   setSidebarOpen: (open: boolean) => void;
 
-  activeCategory: "hospitals" | "schools" | "tourism" | null;
-  setActiveCategory: (cat: "hospitals" | "schools" | "tourism" | null) => void;
+  // POI categories shown on the map. Independent toggles — schools, hospitals
+  // and tourism can be on together. While any is on the map switches to a clean
+  // "browse places" view (projects, metro/train/roads and zones are hidden).
+  activeCategories: Set<"hospitals" | "schools" | "tourism">;
+  togglePoiCategory: (cat: "hospitals" | "schools" | "tourism") => void;
 
   // Projects are hidden on the map by default; a project's marker only shows
   // once its id is added here (via the eye toggle in the sidebar).
@@ -72,8 +75,13 @@ export const useFiltersStore = create<FiltersStore>((set) => ({
   sidebarOpen: true,
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
 
-  activeCategory: null,
-  setActiveCategory: (cat) => set({ activeCategory: cat }),
+  activeCategories: new Set(),
+  togglePoiCategory: (cat) => set((s) => {
+    const next = new Set(s.activeCategories);
+    if (next.has(cat)) next.delete(cat);
+    else next.add(cat);
+    return { activeCategories: next };
+  }),
 
   visibleProjectIds: new Set(),
   toggleProjectVisible: (id) => set((s) => {

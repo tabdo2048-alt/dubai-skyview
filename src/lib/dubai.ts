@@ -18,7 +18,7 @@ export const DUBAI_BOUNDS = {
 // user has zoomed past the wide overview.
 export const MAP_MAX_BOUNDS = {
   south: 24.82,
-  west: 54.88,
+  west: 54.74, // extended west to show more of the Jebel Ali / western coast
   north: 25.32, // Al Nahda (Dubai–Sharjah border) is the NE-most point
   east: 55.58,
 };
@@ -35,7 +35,7 @@ export const MAP_MAX_BOUNDS = {
 // the viewport past the generated water geometry, which showed as pale seams.
 export const ZOOM_OUT_BOUNDS = {
   south: 24.645,
-  west: 54.635,
+  west: 54.55, // a touch more west than MAP_MAX_BOUNDS, still inside SEA_COVER (54.51)
   north: 25.495,
   east: 55.825,
 };

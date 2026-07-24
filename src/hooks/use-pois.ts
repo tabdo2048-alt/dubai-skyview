@@ -11,6 +11,7 @@ export type PoiPoint = {
   lng: number;
   images: string[];
   created_at: string;
+  category: PoiCategory; // which table it came from — drives marker colour/glyph
 };
 
 // Table names deliberately equal the category ids, and all three POI tables
@@ -48,18 +49,29 @@ export const POI_TABLES: Record<
   },
 };
 
-export function usePoi(category: PoiCategory | null) {
+/**
+ * Load every POI in the given active categories, tagging each row with the
+ * category it came from so markers can be coloured per-category when several
+ * are shown together. The query key is the sorted category list, so toggling a
+ * category refetches (and cached results are reused).
+ */
+export function usePois(categories: Set<PoiCategory>) {
+  const list = [...categories].sort();
   return useQuery({
-    queryKey: ["pois", category],
+    queryKey: ["pois", list],
     queryFn: async (): Promise<PoiPoint[]> => {
-      if (!category) return [];
-      const table = POI_TABLES[category].table;
-      const { data, error } = await supabase.from(table).select("*");
-      if (error) throw error;
-      return (data ?? []) as PoiPoint[];
+      if (list.length === 0) return [];
+      const perCategory = await Promise.all(
+        list.map(async (category) => {
+          const { data, error } = await supabase.from(POI_TABLES[category].table).select("*");
+          if (error) throw error;
+          return (data ?? []).map((row) => ({ ...row, category }) as PoiPoint);
+        }),
+      );
+      return perCategory.flat();
     },
     staleTime: 60_000,
-    enabled: !!category,
+    enabled: list.length > 0,
   });
 }
 

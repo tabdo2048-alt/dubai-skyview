@@ -53,7 +53,8 @@ type Props = {
   accessToken: string;
   projects: ProjectWithRelations[];
   pois?: PoiPoint[];
-  activeCategory?: string | null;
+  /** True while any POI category is on — the map is in clean "browse places" mode. */
+  browsingPois?: boolean;
   /** All zones (any category); the map only draws the categories in `zoneCategories`. */
   zones?: ZoneRow[];
   /** Which RY/STR/HH highlight buttons are currently on. */
@@ -180,7 +181,7 @@ export function MapboxView({
   accessToken,
   projects,
   pois = [],
-  activeCategory,
+  browsingPois,
   zones = [],
   zoneCategories,
   camera,
@@ -1516,27 +1517,28 @@ export function MapboxView({
     }
   }, [selectedProjectId]);
 
-  // POI markers (tourism / schools / hospitals). The `pois` prop is only
-  // populated when a category is active; each point becomes a colored glass pin
-  // carrying that category's emoji, with a name popup on click.
+  // POI markers (tourism / schools / hospitals). `pois` holds every point in the
+  // active categories, each tagged with its own `category`, so markers stay
+  // colour-coded when several categories are shown together. Keyed by
+  // category:id so ids from different tables never clash in the cache.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     ensureProjectMarkerStyles();
     const existing = poiMarkersRef.current;
-    const meta = activeCategory ? POI_TABLES[activeCategory as PoiCategory] : null;
     const seen = new Set<string>();
     for (const poi of pois) {
-      seen.add(poi.id);
-      if (existing.has(poi.id)) continue;
+      const cat = poi.category;
+      const key = `${cat}:${poi.id}`;
+      seen.add(key);
+      if (existing.has(key)) continue;
       // Landmark marker: the place's logo in a glass tile, name below. Icon
       // source order: an uploaded image → a curated per-category logo → (tourism
       // only) a Wikipedia photo → the category fallback glyph. A place with none
       // still renders the glyph, never a broken image.
-      const cat = activeCategory as PoiCategory;
       const el = document.createElement("div");
       el.className = "poi-lm";
-      el.style.color = meta?.color ?? "#c9a84c"; // category colour via currentColor
+      el.style.color = POI_TABLES[cat].color; // category colour via currentColor
       // Marquee places (in the curated logo/photo maps) label one zoom tier
       // earlier, so at mid zoom the notable names show without every school piling on.
       if (LANDMARK_LOGOS[cat]?.[poi.name] || LANDMARK_PHOTOS[poi.name]) {
@@ -1578,7 +1580,7 @@ export function MapboxView({
       // Bottom-center anchor so the badge base sits on the coordinate and the
       // name hangs below without shifting the geographic anchor.
       const m = new mapboxgl.Marker({ element: el, anchor: "bottom" }).setLngLat([poi.lng, poi.lat]).addTo(map);
-      existing.set(poi.id, m);
+      existing.set(key, m);
     }
     for (const [id, marker] of existing.entries()) {
       if (!seen.has(id)) {
@@ -1586,7 +1588,7 @@ export function MapboxView({
         existing.delete(id);
       }
     }
-  }, [pois, activeCategory]);
+  }, [pois]);
 
   // Zoom-gate the landmark markers via a single data attribute on the map
   // container, so all markers show/hide through CSS instead of per-marker DOM
@@ -1655,7 +1657,7 @@ export function MapboxView({
   // that category's points. Only the active map instance moves its camera.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !active || !activeCategory || pois.length === 0) return;
+    if (!map || !active || !browsingPois || pois.length === 0) return;
     const bounds = new mapboxgl.LngLatBounds();
     for (const p of pois) bounds.extend([p.lng, p.lat]);
     map.fitBounds(bounds, {
@@ -1666,7 +1668,7 @@ export function MapboxView({
       essential: true,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeCategory, pois, active]);
+  }, [browsingPois, pois, active]);
 
   // Zoom-in fly to the selected project (sidebar or marker click). Only the
   // active map instance animates.
