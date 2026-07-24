@@ -385,6 +385,14 @@ export function MapboxView({
         }
       }
 
+      // Hide the emirate/country boundary lines — this is a Dubai map, the
+      // admin borders just add clutter over the imagery.
+      try {
+        hideAdminBoundaries(map);
+      } catch (err) {
+        console.warn("hideAdminBoundaries failed (non-fatal)", err);
+      }
+
       styleLoadedRef.current = true;
 
       // Far-field water: the animated water mesh only covers the COVER rectangle
@@ -512,6 +520,29 @@ export function MapboxView({
           mode === "satellite" ? "rgba(255,255,255,0)" : "#eee8df",
         );
         map.setPaintProperty(layer.id, "fill-opacity", mode === "satellite" ? 0 : 0.2);
+      }
+    }
+  }
+
+  // Hide the emirate/country admin boundary lines. Satellite-streets ships them
+  // as admin-0/admin-1 line layers; the Standard style draws them from its
+  // `showAdminBoundaries` config. Handle both, and sweep any other boundary
+  // line layer by id/source-layer as a safety net.
+  function hideAdminBoundaries(map: mapboxgl.Map) {
+    if (mode === "3d") {
+      try {
+        (map as unknown as { setConfigProperty: (i: string, k: string, v: unknown) => void })
+          .setConfigProperty("basemap", "showAdminBoundaries", false);
+      } catch {
+        // Older styles ignore this; the layer sweep below still catches them.
+      }
+    }
+    for (const layer of map.getStyle()?.layers ?? []) {
+      const meta = layer as { id: string; type?: string; ["source-layer"]?: string };
+      const id = meta.id.toLowerCase();
+      const src = (meta["source-layer"] ?? "").toLowerCase();
+      if (layer.type === "line" && (id.includes("admin") || id.includes("boundary") || src.includes("admin") || src.includes("boundary"))) {
+        map.setLayoutProperty(layer.id, "visibility", "none");
       }
     }
   }
