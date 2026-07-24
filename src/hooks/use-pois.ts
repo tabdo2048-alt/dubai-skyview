@@ -31,7 +31,7 @@ export const POI_TABLES: Record<
   hospitals: {
     table: "hospitals",
     label: "Hospitals",
-    icon: "🏥",
+    icon: "✚", // white medical cross on the red button badge
     color: "#ef4444",
   },
   schools: {

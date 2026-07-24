@@ -1,6 +1,11 @@
 import * as THREE from "three";
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import mapboxgl from "mapbox-gl";
+import {
+  buildStationTemplate,
+  LINE_ACCENT_NAME,
+  VAULT_STANDARD_NAME,
+  VAULT_INTERCHANGE_NAME,
+} from "./stationModel";
 import { acquireSharedRenderer, releaseSharedRenderer, syncSharedRendererSize, extractProjectionMatrix } from "@/lib/mapbox/sharedThreeRenderer";
 import { makeMercatorRef, lngLatToLocal, composeLocalToMercator } from "@/lib/mapbox/mercatorLocal";
 import type { MetroLine, MetroStation } from "@/lib/metro";
@@ -34,7 +39,6 @@ export function createStationModelLayer(
   let lastGoodMatrix: number[] = new Array(16).fill(0);
   lastGoodMatrix[15] = 1;
   let disposed = false;
-  let fgltfMissing = false;
 
   const stations = lines.flatMap((line) =>
     line.stations.map((s) => ({
@@ -56,10 +60,29 @@ export function createStationModelLayer(
     for (const station of stations) {
       const clone = template.clone(true) as THREE.Group;
       lngLatToLocal(station.coord[0], station.coord[1], ref!, 0, clone.position);
-      clone.rotation.x = Math.PI / 2;
-      // Small footprint, sat on the ground (street level) at the station point.
-      const scale = station.interchange ? 0.4 : 0.3;
+      // The template is authored Z-up at true metres, so scale ~1 IS real size
+      // (95 m platform); interchange stations get a genuine size bump.
+      const scale = station.interchange ? 1.3 : 1.0;
       clone.scale.setScalar(scale);
+
+      // Roof variant: single wide vault, or the grander twin vault for interchanges.
+      const vStd = clone.getObjectByName(VAULT_STANDARD_NAME);
+      const vInt = clone.getObjectByName(VAULT_INTERCHANGE_NAME);
+      if (vStd) vStd.visible = !station.interchange;
+      if (vInt) vInt.visible = station.interchange;
+
+      // Tint the accent band to this station's line colour. clone(true) shares
+      // materials, so the accent meshes need their OWN material copy or the
+      // colour would bleed across every station.
+      const accent = clone.getObjectByName(LINE_ACCENT_NAME);
+      accent?.traverse((child) => {
+        if (!(child instanceof THREE.Mesh)) return;
+        const mat = (child.material as THREE.MeshStandardMaterial).clone();
+        mat.color.set(station.color);
+        mat.emissive.set(station.color);
+        child.material = mat;
+      });
+
       clone.updateMatrixWorld(true);
       // Rest the model on the ground plane: lift so its lowest point sits at the
       // placement altitude instead of floating or sinking (fixes mis-placement
@@ -83,20 +106,6 @@ export function createStationModelLayer(
         baseScale: scale,
       });
     }
-  }
-
-  function makeBoxFallback(): THREE.Group {
-    const group = new THREE.Group();
-    for (const station of stations) {
-      const geo = new THREE.BoxGeometry(0.0008, station.interchange ? 0.00024 : 0.00015, station.interchange ? 0.00024 : 0.00015);
-      const mat = new THREE.MeshStandardMaterial({ color: station.color, emissive: station.color, emissiveIntensity: 0.3 });
-      const mesh = new THREE.Mesh(geo, mat);
-      lngLatToLocal(station.coord[0], station.coord[1], ref!, 0, mesh.position);
-      mesh.scale.z = station.interchange ? 0.2 : 0.15;
-      mesh.castShadow = true;
-      group.add(mesh);
-    }
-    return group;
   }
 
   const layer: mapboxgl.CustomLayerInterface = {
@@ -128,24 +137,10 @@ export function createStationModelLayer(
       renderer.shadowMap.enabled = true;
       renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-      new GLTFLoader().load(
-        import.meta.env.BASE_URL + "models/metro-station.glb",
-        (gltf: { scene: THREE.Group }) => {
-          if (disposed) return;
-          gltfTemplate = gltf.scene;
-          buildClones(gltf.scene);
-        },
-        undefined,
-        () => {
-          if (!fgltfMissing) {
-            console.warn("[StationModel] metro-station.glb missing — using box fallback");
-            fgltfMissing = true;
-          }
-          if (disposed) return;
-          gltfTemplate = makeBoxFallback();
-          buildClones(gltfTemplate);
-        }
-      );
+      // Procedural station — built synchronously, so there's no GLB fetch and no
+      // race where render() fires before an async model finished loading.
+      gltfTemplate = buildStationTemplate();
+      buildClones(gltfTemplate);
 
       map.on("resize", () => {
         syncSharedRendererSize(map.getCanvas());

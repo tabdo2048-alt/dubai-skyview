@@ -131,6 +131,11 @@ const PROJECT_MARKER_CSS = `
 .poi-label .poi-dot{width:5px;height:5px;border-radius:9999px;background:currentColor;box-shadow:0 0 7px currentColor;flex:0 0 auto}
 .poi-label .poi-ico{font-size:12px;line-height:1;flex:0 0 auto}
 .poi-label .poi-thumb{width:16px;height:16px;border-radius:9999px;object-fit:cover;flex:0 0 auto;border:1px solid currentColor;box-shadow:0 0 6px currentColor;background:rgba(255,255,255,.1)}
+.poi-label .poi-btn{display:grid;place-items:center;width:18px;height:18px;border-radius:9999px;flex:0 0 auto;
+  color:#fff;font:800 11px/1 'Work Sans',Arial,sans-serif;
+  border:1px solid rgba(255,255,255,.85);box-shadow:0 1px 5px rgba(0,0,0,.55),inset 0 1px 1px rgba(255,255,255,.45);
+  text-shadow:0 1px 1px rgba(0,0,0,.35)}
+.poi-label:hover .poi-btn{box-shadow:0 0 10px currentColor,inset 0 1px 1px rgba(255,255,255,.45)}
 .poi-label .poi-nm{color:#fff;font:600 9px/1.15 'Work Sans',Arial,sans-serif;letter-spacing:.2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .poi-label:hover{transform:scale(1.06);box-shadow:0 0 18px currentColor}
 @media (prefers-reduced-motion:reduce){.poi-label{transition:none}}`;
@@ -176,6 +181,7 @@ export function MapboxView({
   const trainMotionRef = useRef<Map<string, TrainMotionState>>(new globalThis.Map());
   const stationModelRef = useRef<ReturnType<typeof import("./StationModelLayer").createStationModelLayer> | null>(null);
   const styleLoadedRef = useRef(false);
+  const didFitWholeRef = useRef(false); // one-time: open framed on the whole map
   const stationInteractionAddedRef = useRef(false);
   const heavyLayerFallbackTimeoutRef = useRef<number | null>(null);
   const deferredLayerTimeoutsRef = useRef<number[]>([]);
@@ -232,7 +238,7 @@ export function MapboxView({
         [MAP_MAX_BOUNDS.west, MAP_MAX_BOUNDS.south],
         [MAP_MAX_BOUNDS.east, MAP_MAX_BOUNDS.north],
       ],
-      maxZoom: 16.5, // allow zooming in to street/building level
+      maxZoom: 18, // deep zoom-in to street/building level
 
       // MSAA sharpens 3D building edges but costs fill-rate, most painfully on
       // high-DPI phones. Keep it on desktop, drop it on mobile for smoother frames.
@@ -252,8 +258,20 @@ export function MapboxView({
           [MAP_MAX_BOUNDS.east, MAP_MAX_BOUNDS.north],
         ],
         { padding: 0 },
-      ) as { zoom?: number } | undefined;
-      if (typeof cam?.zoom === "number") map.setMinZoom(cam.zoom);
+      ) as { zoom?: number; center?: mapboxgl.LngLatLike } | undefined;
+      if (typeof cam?.zoom === "number") {
+        map.setMinZoom(cam.zoom);
+        // Open framed on the WHOLE map: jump to the fit (center + floor zoom) once
+        // so the entire map is visible on load without the user panning/zooming.
+        // Afterwards they can zoom in freely.
+        if (!didFitWholeRef.current) {
+          didFitWholeRef.current = true;
+          // Open a touch tighter than the bare fit so the map reads LARGER on
+          // arrival; the floor stays the exact fit, so a single zoom-out still
+          // shows the whole map.
+          map.jumpTo({ center: cam.center ?? map.getCenter(), zoom: cam.zoom + 0.45 });
+        }
+      }
     };
     map.on("resize", setBoundsMinZoom);
 
@@ -263,9 +281,10 @@ export function MapboxView({
         map.resize();
         setBoundsMinZoom();
         if (isMobile) {
+          // Tilt only on mobile too — hold the opening frame, no extra zoom-in.
           map.easeTo({
             pitch: mode === "3d" ? 42 : 0,
-            zoom: mode === "3d" ? 11.5 : 10.5,
+            zoom: map.getMinZoom() + 0.45,
             duration: 600,
           });
         }
@@ -1369,10 +1388,10 @@ export function MapboxView({
           map.easeTo({
             pitch: DEFAULT_PITCH,
             bearing: DEFAULT_BEARING,
-            // Cinematic 3D view — a gentle push-in, NOT a deep city zoom (keeps
-            // the wide Dubai overview + clouds readable). Clamped to 11.2–12.2.
-            zoom: Math.min(12.2, Math.max(camera.zoom + 0.8, 11.2)), // Reduced zoom-in for faster load
-            duration: 1800, // Reduced from 2600ms for snappier interaction
+            // Cinematic 3D view — tilt only, NO zoom-in. Opens framed on the whole
+            // map (the fit floor set by setBoundsMinZoom); the user zooms in after.
+            zoom: map.getZoom(),
+            duration: 1800,
             easing: (t2) => t2 * (2 - t2),
           });
         }, 150);
@@ -1462,6 +1481,15 @@ export function MapboxView({
         s.textContent = meta?.icon ?? "•"; // category emoji
         return s;
       };
+      // Schools/hospitals get a raised, category-colored round button badge
+      // (a crisp glyph) instead of a flat emoji.
+      const btnIcon = () => {
+        const s = document.createElement("span");
+        s.className = "poi-btn";
+        s.style.background = meta?.color ?? "#c9a84c";
+        s.textContent = meta?.icon ?? "•";
+        return s;
+      };
       const thumb =
         activeCategory === "tourism" ? poi.images?.[0] ?? LANDMARK_PHOTOS[poi.name] : undefined;
       let iconEl: HTMLElement;
@@ -1474,6 +1502,8 @@ export function MapboxView({
         img.decoding = "async";
         img.onerror = () => img.replaceWith(emojiIcon()); // broken photo → emoji
         iconEl = img;
+      } else if (activeCategory === "schools" || activeCategory === "hospitals") {
+        iconEl = btnIcon();
       } else {
         iconEl = emojiIcon();
       }
