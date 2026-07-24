@@ -18,9 +18,9 @@ export const DUBAI_BOUNDS = {
 // user has zoomed past the wide overview.
 export const MAP_MAX_BOUNDS = {
   south: 24.82,
-  west: 54.74, // extended west to show more of the Jebel Ali / western coast
+  west: 54.90, // Ghantoot — the Abu Dhabi border, SW-most pannable point
   north: 25.32, // Al Nahda (Dubai–Sharjah border) is the NE-most point
-  east: 55.58,
+  east: 55.48, // Dubai–Sharjah border (past Academic City, before Sharjah proper)
 };
 
 // The rect handed to Mapbox as the native `maxBounds`, and the one the min-zoom
