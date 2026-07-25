@@ -36,6 +36,22 @@ import {
 // map's most important place stands out. Keyed by exact POI name.
 const HERO_POIS = new Set<string>(["Burj Khalifa"]);
 
+// Satellite land tint — a warm-sepia grade over the Maxar imagery. The land is a
+// PHOTO, so this adjusts the image rather than painting a flat colour. To change
+// the land's look, edit these four values (all applied to the "satellite" raster
+// layer on load):
+//   raster-saturation    -1..1   (negative = muted, positive = vivid)
+//   raster-hue-rotate     deg     (negative = warmer/sepia, positive = cooler)
+//   raster-contrast      -1..1
+//   raster-brightness-max 0..1    (lower = darker land)
+// Set them all to the neutral defaults (0,0,0,1) to restore the raw imagery.
+const SATELLITE_TINT: Record<string, number> = {
+  "raster-saturation": -0.15,
+  "raster-hue-rotate": -14,
+  "raster-contrast": 0.1,
+  "raster-brightness-max": 0.95,
+};
+
 // mapbox-gl v3 style expression — an array that can nest to arbitrary depth.
 // We build these by hand, so TypeScript sees them as `any[]` but Mapbox knows better.
 type Expr = [string, ...unknown[]];
@@ -440,6 +456,19 @@ export function MapboxView({
         hideBasemapPois(map);
       } catch (err) {
         console.warn("hideBasemapPois failed (non-fatal)", err);
+      }
+
+      // Warm-sepia grade the satellite imagery (see SATELLITE_TINT to change it).
+      if (mode === "satellite" && map.getLayer("satellite")) {
+        for (const [prop, val] of Object.entries(SATELLITE_TINT)) {
+          try {
+            map.setPaintProperty(
+              "satellite",
+              prop as "raster-saturation",
+              val,
+            );
+          } catch { /* prop not supported by this style — skip */ }
+        }
       }
 
       styleLoadedRef.current = true;
