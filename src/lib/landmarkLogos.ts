@@ -14,10 +14,26 @@
 import type { PoiCategory } from "@/hooks/use-pois";
 
 export const LANDMARK_LOGOS: Record<PoiCategory, Record<string, string>> = {
-  // Tourism already has photo thumbnails via landmarkPhotos.ts; add branded
-  // logos here only when preferred over the photo.
+  // Brand logos for tourism landmarks, hosted locally in public/landmarks/ so
+  // they always load (official sites block hotlinking). A place without a logo
+  // here falls back to its Wikipedia photo (landmarkPhotos.ts) then the glyph —
+  // e.g. Burj Khalifa, the Dubai Fountain, and the pure areas (Palm Jumeirah,
+  // JBR Beach, Dubai Creek, Gold Souk, Jumeirah Mosque) stay on their photo.
   tourism: {
-    // "Burj Khalifa": "https://.../burj-khalifa.png",
+    "Museum of the Future": "/landmarks/museum-of-future.png",
+    "Dubai Marina": "/landmarks/dubai-marina.png",
+    "Dubai Frame": "/landmarks/dubai-frame.jpg",
+    "Dubai Opera": "/landmarks/dubai-opera.png",
+    "IMG Worlds of Adventure": "/landmarks/img-worlds.png",
+    "The Dubai Mall": "/landmarks/dubai-mall.png",
+    "Burj Al Arab": "/landmarks/burj-al-arab.png",
+    "Atlantis The Palm": "/landmarks/atlantis-palm.png",
+    "Ain Dubai": "/landmarks/ain-dubai.png",
+    "Global Village": "/landmarks/global-village.png",
+    "Dubai Miracle Garden": "/landmarks/miracle-garden.png",
+    "Ski Dubai": "/landmarks/ski-dubai.png",
+    "La Mer": "/landmarks/la-mer.png",
+    "Wild Wadi Waterpark": "/landmarks/wild-wadi.ico",
   },
   // Universities/schools — drop official logos in as they're sourced.
   schools: {

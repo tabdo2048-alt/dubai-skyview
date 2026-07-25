@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <style data-vite-theme="" data-inject-first="">:root {
+      --background: 144 46% 97%;
+--foreground: 144 100% 1%;
+--muted: 145 46% 84%;
+--muted-foreground: 144 100% 1%;
+--popover: 144 46% 97%;
+--popover-foreground: 144 100% 1%;
+--card: 144 46% 97%;
+--card-foreground: 144 100% 1%;
+--border: 145 46% 84%;
+--input: 145 46% 84%;
+--primary: 153 56% 29%;
+--primary-foreground: 144 21% 98%;
+--secondary: 145 69% 89%;
+--secondary-foreground: 144 100% 1%;
+--accent: 145 69% 89%;
+--accent-foreground: 144 100% 1%;
+--destructive: 0 84.2% 60.2%;
+--destructive-foreground: 60 9.1% 97.8%;
+--ring: 153 56% 29%;
+--radius: 0.5rem;
+  }
+  .dark {
+      --background: 147 28% 8%;
+--foreground: 145 46% 84%;
+--muted: 157 100% 10%;
+--muted-foreground: 145 46% 84%;
+--popover: 147 28% 8%;
+--popover-foreground: 145 46% 84%;
+--card: 147 28% 8%;
+--card-foreground: 145 46% 84%;
+--border: 157 100% 10%;
+--input: 157 100% 10%;
+--primary: 149 34% 54%;
+--primary-foreground: 144 33% 99%;
+--secondary: 157 100% 10%;
+--secondary-foreground: 145 46% 84%;
+--accent: 157 100% 10%;
+--accent-foreground: 145 46% 84%;
+--destructive: 0 62.8% 30.6%;
+--destructive-foreground: 0 0% 98%;
+--ring: 149 34% 54%;
+--radius: 0.5rem;
+  }</style>
+
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Favicons -->
+    <link rel="shortcut icon" href="/assets/img/favicon.png" type="image/x-icon">
+    <link rel="icon" href="/assets/img/favicon.ico" type="image/x-icon">
+    <!-- Add Adyen Web SDK -->
+    <link rel="stylesheet" href="https://checkoutshopper-test.adyen.com/checkoutshopper/sdk/5.53.2/adyen.css" />
+    <script src="https://checkoutshopper-test.adyen.com/checkoutshopper/sdk/5.53.2/adyen.js" type="b8232333f6705833e110a152-text/javascript"></script>
+    
+    <!-- N-Genius Web SDK is loaded dynamically based on environment -->
+    <!-- Apple Pay will be handled entirely by N-Genius Hosted Session -->
+    
+    <!-- Google tag (gtag.js) - Google Analytics 4 -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-0R2LNQ9LX7" type="b8232333f6705833e110a152-text/javascript"></script>
+    <!-- Google tag (gtag.js) - Google Ads -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=AW-17687103410" type="b8232333f6705833e110a152-text/javascript"></script>
+    <script type="b8232333f6705833e110a152-text/javascript">
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      
+      // Configure Google Analytics 4
+      gtag('config', 'G-0R2LNQ9LX7');
+      
+      // Configure Google Ads
+      gtag('config', 'AW-17687103410');
+    </script>
+    
+    <!-- Meta Pixel Code -->
+    <script type="b8232333f6705833e110a152-text/javascript">
+      !function(f,b,e,v,n,t,s)
+      {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+      n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+      if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+      n.queue=[];t=b.createElement(e);t.async=!0;
+      t.src=v;s=b.getElementsByTagName(e)[0];
+      s.parentNode.insertBefore(t,s)}(window, document,'script',
+      'https://connect.facebook.net/en_US/fbevents.js');
+      fbq('init', '1411156253761642');
+      fbq('track', 'PageView');
+    </script>
+    <!-- End Meta Pixel Code -->
+    
+    <!-- HTML Website Styles -->
+    <link rel="stylesheet" href="/assets/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/assets/css/fontawesome.min.css">
+    <link rel="stylesheet" href="/assets/css/style.css">
+    
+    <!-- Global Preloader Styles -->
+    <style>
+      /* Global Preloader Styles */
+      .dmg-preloader {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(135deg, #faf5ff 0%, #d6e7da 50%, #fdf2f8 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        transition: opacity 0.5s ease, visibility 0.5s ease;
+      }
+      
+      .dmg-preloader.hidden {
+        opacity: 0;
+        visibility: hidden;
+      }
+      
+      .preloader-logo {
+        width: 120px;
+        height: 120px;
+        animation: preloaderPulse 2s ease-in-out infinite;
+      }
+      
+      @keyframes preloaderPulse {
+        0% {
+          transform: scale(1);
+          opacity: 0.7;
+        }
+        50% {
+          transform: scale(1.1);
+          opacity: 1;
+        }
+        100% {
+          transform: scale(1);
+          opacity: 0.7;
+        }
+      }
+      
+      /* Hide body content initially */
+      body {
+        opacity: 0;
+        transition: opacity 0.5s ease;
+      }
+      
+      body.content-loaded {
+        opacity: 1;
+      }
+    </style>
+    <script type="b8232333f6705833e110a152-module" crossorigin src="/assets/index-Bf3EWiiT.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CmrCV9pA.css">
+  </head>
+  <body>
+    <noscript>
+      <img height="1" width="1" style="display:none"
+      src="https://www.facebook.com/tr?id=1411156253761642&ev=PageView&noscript=1"
+      />
+    </noscript>
+    <!-- Global Preloader -->
+    <div id="dmg-preloader" class="dmg-preloader">
+      <img src="/assets/img/dmg-logo-color.png" alt="Dubai Miracle Garden" class="preloader-logo">
+    </div>
+    
+    <div id="root"></div>
+    
+    <!-- Global Preloader Script -->
+    <script type="b8232333f6705833e110a152-text/javascript">
+      // Global preloader functionality
+      function hideGlobalPreloader() {
+        const preloader = document.getElementById('dmg-preloader');
+        if (preloader) {
+          preloader.classList.add('hidden');
+          setTimeout(() => {
+            if (preloader.parentNode) {
+              preloader.parentNode.removeChild(preloader);
+            }
+          }, 500);
+        }
+        
+        // Show body content
+        document.body.classList.add('content-loaded');
+      }
+      
+      // Hide preloader when page is fully loaded
+      window.addEventListener('load', () => {
+        setTimeout(hideGlobalPreloader, 500);
+      });
+      
+      // Also hide preloader when DOM is ready (for faster pages)
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+          setTimeout(hideGlobalPreloader, 500);
+        });
+      } else {
+        setTimeout(hideGlobalPreloader, 500);
+      }
+      
+      // Make function globally available
+      window.hideGlobalPreloader = hideGlobalPreloader;
+    </script>
+  <script src="/cdn-cgi/scripts/7d0fa10a/cloudflare-static/rocket-loader.min.js" data-cf-settings="b8232333f6705833e110a152-|49" defer></script></body>
+</html>
