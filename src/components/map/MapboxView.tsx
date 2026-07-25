@@ -429,6 +429,14 @@ export function MapboxView({
         console.warn("hideAdminBoundaries failed (non-fatal)", err);
       }
 
+      // Hide Mapbox's own POIs so only our markers show. Runs on every style.load
+      // (re-applied after any Satellite↔3D style swap, the classic regression).
+      try {
+        hideBasemapPois(map);
+      } catch (err) {
+        console.warn("hideBasemapPois failed (non-fatal)", err);
+      }
+
       styleLoadedRef.current = true;
 
       // Far-field water: the animated water mesh only covers the COVER rectangle
@@ -580,6 +588,24 @@ export function MapboxView({
       if (layer.type === "line" && (id.includes("admin") || id.includes("boundary") || src.includes("admin") || src.includes("boundary"))) {
         map.setLayoutProperty(layer.id, "visibility", "none");
       }
+    }
+  }
+
+  // Hide Mapbox's OWN built-in POIs so only our registered landmark/metro markers
+  // show. `poi-label` is the basemap's commercial/amenity POIs (restaurants,
+  // hospitals, schools, shops) and `transit-label` its bus/metro stops — both
+  // clash with our data. Road / water / district / country labels are kept for
+  // context. Idempotent + guarded, and re-run on every style load.
+  function hideBasemapPois(map: mapboxgl.Map) {
+    for (const id of ["poi-label", "transit-label"]) {
+      if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none");
+    }
+    // The Standard-based 3D style keeps POIs in a config fragment (not listed as
+    // layers), so flip the basemap flags too. try/catch: classic styles lack them.
+    if (mode === "3d") {
+      const cfg = map as unknown as { setConfigProperty?: (i: string, k: string, v: unknown) => void };
+      try { cfg.setConfigProperty?.("basemap", "showPointOfInterestLabels", false); } catch { /* not a Standard style */ }
+      try { cfg.setConfigProperty?.("basemap", "showTransitLabels", false); } catch { /* not a Standard style */ }
     }
   }
 
