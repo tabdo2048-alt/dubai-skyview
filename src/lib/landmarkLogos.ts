@@ -34,7 +34,7 @@ export const LANDMARK_LOGOS: Record<PoiCategory, Record<string, string>> = {
     "Dubai Miracle Garden": "/landmarks/miracle-garden.png",
     "Ski Dubai": "/landmarks/ski-dubai.png",
     "La Mer": "/landmarks/la-mer.png",
-    "Wild Wadi Waterpark": "/landmarks/wild-wadi.ico",
+    "Wild Wadi Waterpark": "/landmarks/wild-wadi.png",
   },
   // Universities/schools — drop official logos in as they're sourced.
   schools: {

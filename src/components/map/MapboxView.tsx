@@ -362,8 +362,13 @@ export function MapboxView({
       const floor = tightMinZoomRef.current;
       if (floor != null && map.getZoom() >= floor + 0.05) {
         clamping = true;
-        clampCenterToBounds(MAP_MAX_BOUNDS);
-        clamping = false;
+        // finally: never leave the flag stuck true if setCenter throws, or the
+        // clamp would silently stop working for the rest of the session.
+        try {
+          clampCenterToBounds(MAP_MAX_BOUNDS);
+        } finally {
+          clamping = false;
+        }
       }
     }
 
