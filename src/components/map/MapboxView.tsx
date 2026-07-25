@@ -311,15 +311,31 @@ export function MapboxView({
     // viewport, so containing it is geometrically impossible — there the wide
     // native maxBounds is the only constraint, which is exactly the overview the
     // user asked to be able to reach.
+    // Re-entrancy guard: setCenter below fires another "move", which would call
+    // syncPanBounds again → setCenter → infinite recursion (stack overflow that
+    // kills the render loop and every custom layer). The flag makes the nudge
+    // fire once per user move.
+    let clamping = false;
     const clampCenterToBounds = (b: typeof MAP_MAX_BOUNDS) => {
       const vb = map.getBounds();
       if (!vb) return;
+      const vbW = vb.getWest();
+      const vbE = vb.getEast();
+      const vbS = vb.getSouth();
+      const vbN = vb.getNorth();
       let dLng = 0;
       let dLat = 0;
-      if (vb.getWest() < b.west) dLng = b.west - vb.getWest();
-      else if (vb.getEast() > b.east) dLng = b.east - vb.getEast();
-      if (vb.getSouth() < b.south) dLat = b.south - vb.getSouth();
-      else if (vb.getNorth() > b.north) dLat = b.north - vb.getNorth();
+      // Only clamp an axis the viewport can actually fit inside the box — if the
+      // view is wider than the box, both edges are violated and nudging one just
+      // pushes the other out, so leave that axis to the native maxBounds.
+      if (vbE - vbW < b.east - b.west) {
+        if (vbW < b.west) dLng = b.west - vbW;
+        else if (vbE > b.east) dLng = b.east - vbE;
+      }
+      if (vbN - vbS < b.north - b.south) {
+        if (vbS < b.south) dLat = b.south - vbS;
+        else if (vbN > b.north) dLat = b.north - vbN;
+      }
       if (dLng || dLat) {
         const c = map.getCenter();
         map.setCenter([c.lng + dLng, c.lat + dLat]);
@@ -327,8 +343,13 @@ export function MapboxView({
     };
 
     function syncPanBounds() {
+      if (clamping) return;
       const floor = tightMinZoomRef.current;
-      if (floor != null && map.getZoom() >= floor + 0.05) clampCenterToBounds(MAP_MAX_BOUNDS);
+      if (floor != null && map.getZoom() >= floor + 0.05) {
+        clamping = true;
+        clampCenterToBounds(MAP_MAX_BOUNDS);
+        clamping = false;
+      }
     }
 
     map.on("resize", setBoundsMinZoom);
