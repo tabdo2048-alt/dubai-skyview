@@ -32,6 +32,10 @@ import {
   type ZoneCategory,
 } from "@/lib/zones";
 
+// Headline landmark(s) — rendered bigger, always visible and labelled, so the
+// map's most important place stands out. Keyed by exact POI name.
+const HERO_POIS = new Set<string>(["Burj Khalifa"]);
+
 // mapbox-gl v3 style expression — an array that can nest to arbitrary depth.
 // We build these by hand, so TypeScript sees them as `any[]` but Mapbox knows better.
 type Expr = [string, ...unknown[]];
@@ -164,6 +168,17 @@ const PROJECT_MARKER_CSS = `
 [data-poi-tier="hidden"] .poi-lm{opacity:0;pointer-events:none}
 [data-poi-tier="icon"] .poi-lm-name{opacity:0}
 [data-poi-tier="icon"] .poi-lm--priority .poi-lm-name{opacity:1}
+/* Hero landmark (the map's headline place): bigger, light badge so its dark logo
+   reads, gold ring, and always shown + labelled regardless of the zoom tier. */
+.poi-lm--hero{z-index:5}
+.poi-lm--hero .poi-lm-badge{width:46px;height:46px;border-radius:12px;
+  background:rgba(255,255,255,.94);
+  box-shadow:0 0 0 2px #d4af37,0 6px 18px rgba(0,0,0,.55)}
+.poi-lm--hero .poi-lm-logo{padding:5px}
+.poi-lm--hero .poi-lm-name{max-width:110px;font-size:11px;font-weight:700}
+[data-poi-tier="hidden"] .poi-lm--hero{opacity:1;pointer-events:auto}
+[data-poi-tier="hidden"] .poi-lm--hero .poi-lm-name,
+[data-poi-tier="icon"] .poi-lm--hero .poi-lm-name{opacity:1}
 @media (prefers-reduced-motion:reduce){.poi-lm,.poi-lm-name,.poi-lm-badge{transition:none}}`;
 
 function ensureProjectMarkerStyles() {
@@ -1596,6 +1611,9 @@ export function MapboxView({
       if (LANDMARK_LOGOS[cat]?.[poi.name] || LANDMARK_PHOTOS[poi.name]) {
         el.classList.add("poi-lm--priority");
       }
+      // The hero landmark — bigger, always visible/labelled, light badge so its
+      // dark logo reads. Dubai's headline place.
+      if (HERO_POIS.has(poi.name)) el.classList.add("poi-lm--hero");
 
       const badge = document.createElement("div");
       badge.className = "poi-lm-badge";
