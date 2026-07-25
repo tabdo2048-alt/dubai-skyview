@@ -20,6 +20,7 @@ export const LANDMARK_LOGOS: Record<PoiCategory, Record<string, string>> = {
   // e.g. Burj Khalifa, the Dubai Fountain, and the pure areas (Palm Jumeirah,
   // JBR Beach, Dubai Creek, Gold Souk, Jumeirah Mosque) stay on their photo.
   tourism: {
+    "Burj Khalifa": "/landmarks/burj-khalifa.png",
     "Museum of the Future": "/landmarks/museum-of-future.png",
     "Dubai Marina": "/landmarks/dubai-marina.png",
     "Dubai Frame": "/landmarks/dubai-frame.jpg",
