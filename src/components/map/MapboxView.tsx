@@ -46,10 +46,10 @@ const HERO_POIS = new Set<string>(["Burj Khalifa"]);
 //   raster-brightness-max 0..1    (lower = darker land)
 // Set them all to the neutral defaults (0,0,0,1) to restore the raw imagery.
 const SATELLITE_TINT: Record<string, number> = {
-  "raster-saturation": -0.15,
-  "raster-hue-rotate": -14,
-  "raster-contrast": 0.1,
-  "raster-brightness-max": 0.95,
+  "raster-saturation": 0.06, // slight vividness, no wash-out
+  "raster-hue-rotate": 0, // neutral (was -14 warm sepia) — natural land like the reference
+  "raster-contrast": 0.06,
+  "raster-brightness-max": 1.0, // full brightness — cleaner, brighter imagery
 };
 
 // mapbox-gl v3 style expression — an array that can nest to arbitrary depth.
@@ -57,6 +57,9 @@ const SATELLITE_TINT: Record<string, number> = {
 type Expr = [string, ...unknown[]];
 type MapboxFilter = Parameters<mapboxgl.Map["setFilter"]>[1];
 type MapboxExpression = mapboxgl.ExpressionSpecification;
+// The style's layer list as returned by getStyle(). Snapshotted once per
+// style.load and passed to the setup helpers so the style isn't re-cloned per call.
+type StyleLayers = NonNullable<ReturnType<mapboxgl.Map["getStyle"]>>["layers"];
 
 type TrainMotionState = {
   t: number;
@@ -137,7 +140,17 @@ const PROJECT_MARKER_CSS = `
   background:linear-gradient(158deg,#e9c766,#c19a3c);
   box-shadow:0 0 28px rgba(201,168,76,.95),0 8px 22px rgba(0,0,0,.5)}
 .proj-pin.selected::after{background:#c19a3c;border-color:#f0d488}
-@media (prefers-reduced-motion:reduce){.proj-pin{transition:none}}
+/* Project marker wrapper: the pin with the project name pill directly below it,
+   bottom-anchored so the pin base sits on the coordinate (name hangs beneath). */
+.proj-lm{display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer}
+.proj-nm{max-width:118px;padding:2px 7px;border-radius:9999px;
+  background:rgba(255,255,255,.92);color:#12181f;
+  font:700 9px/1.2 'Work Sans',Arial,sans-serif;letter-spacing:.2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center;
+  box-shadow:0 2px 8px rgba(0,0,0,.35);transition:background .28s ease,color .28s ease}
+.proj-lm:hover .proj-nm{background:#fff}
+.proj-lm:has(.proj-pin.selected) .proj-nm{background:linear-gradient(158deg,#e9c766,#c19a3c);color:#1a1206}
+@media (prefers-reduced-motion:reduce){.proj-pin,.proj-nm{transition:none}}
 .poi-marker{display:grid;place-items:center;width:36px;height:36px;border-radius:9999px;
   background:rgba(10,15,20,.88);
   border:2px solid currentColor;
@@ -165,16 +178,30 @@ const PROJECT_MARKER_CSS = `
 
 /* Landmark markers: the place's logo in a glass tile with the name below,
    bottom-anchored on the coordinate. currentColor carries the category colour. */
-.poi-lm{display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;
+.poi-lm{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;
   transform:translateZ(0);transition:opacity .25s ease}
+/* Live category colour: the badge is a tinted glass in the category hue (via
+   currentColor, set per-marker), with a solid coloured ring. No more #fff wash —
+   the colour is the point. */
 .poi-lm-badge{display:grid;place-items:center;width:30px;height:30px;border-radius:9px;overflow:hidden;
-  background:rgba(10,12,16,.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
-  border:1px solid rgba(255,255,255,.28);
-  box-shadow:0 0 0 2px color-mix(in oklab,currentColor 60%,transparent),0 4px 12px rgba(0,0,0,.5);
-  color:#fff;transition:transform .15s ease,box-shadow .15s ease}
+  background:color-mix(in oklab,currentColor 24%,rgba(8,11,15,.72));
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  border:1px solid color-mix(in oklab,currentColor 45%,rgba(255,255,255,.4));
+  box-shadow:0 0 0 2px currentColor,0 4px 12px rgba(0,0,0,.5);
+  transition:transform .15s ease,box-shadow .15s ease}
 .poi-lm-logo{width:100%;height:100%;object-fit:contain;padding:3px}
-.poi-lm-fallback{display:grid;place-items:center;width:100%;height:100%;color:currentColor}
-.poi-lm-fallback svg{width:16px;height:16px}
+.poi-lm-fallback{display:grid;place-items:center;width:100%;height:100%;color:#fff}
+.poi-lm-fallback svg{width:16px;height:16px;filter:drop-shadow(0 0 3px currentColor)}
+/* "Ping": an expanding ring in the category colour behind the badge. Animates
+   transform+opacity only (compositor-friendly), so it's cheap across hundreds of
+   markers. Sits behind the badge; grows past its edge then fades. */
+.poi-lm::after{content:"";position:absolute;top:0;left:50%;width:30px;height:30px;
+  margin-left:-15px;border-radius:9px;box-shadow:0 0 0 1.5px currentColor;
+  pointer-events:none;z-index:-1;opacity:0;animation:poi-ping 3s ease-out infinite}
+@keyframes poi-ping{
+  0%{transform:translateX(0) scale(1);opacity:.55}
+  70%{opacity:0}
+  100%{transform:translateX(0) scale(1.7);opacity:0}}
 .poi-lm-name{max-width:84px;text-align:center;color:#fff;font:600 9px/1.15 'Work Sans',Arial,sans-serif;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
   text-shadow:0 1px 2px rgba(0,0,0,.9),0 0 6px rgba(0,0,0,.7);transition:opacity .25s ease}
@@ -195,7 +222,11 @@ const PROJECT_MARKER_CSS = `
 [data-poi-tier="hidden"] .poi-lm--hero{opacity:1;pointer-events:auto}
 [data-poi-tier="hidden"] .poi-lm--hero .poi-lm-name,
 [data-poi-tier="icon"] .poi-lm--hero .poi-lm-name{opacity:1}
-@media (prefers-reduced-motion:reduce){.poi-lm,.poi-lm-name,.poi-lm-badge{transition:none}}`;
+.poi-lm--hero::after{width:46px;height:46px;margin-left:-23px;border-radius:12px}
+/* Hidden tier: no marker shown, so stop the ping too (nothing to pulse). */
+[data-poi-tier="hidden"] .poi-lm:not(.poi-lm--hero)::after{animation:none;opacity:0}
+@media (prefers-reduced-motion:reduce){.poi-lm,.poi-lm-name,.poi-lm-badge{transition:none}
+  .poi-lm::after{animation:none;opacity:0}}`;
 
 function ensureProjectMarkerStyles() {
   if (typeof document === "undefined" || document.getElementById("proj-marker-style")) return;
@@ -408,24 +439,32 @@ export function MapboxView({
         }
       }, 50);
 
+      // getStyle() deep-clones the whole (large Standard) style spec on every
+      // call, so snapshot the layer list ONCE and thread it through every helper
+      // that only reads layer identity (id/type/source-layer). This runs on each
+      // style.load — i.e. every mode switch — so collapsing the 4-5 separate
+      // getStyle() clones into one is a real interactive win. None of these
+      // helpers add/remove layers, so a single snapshot stays valid throughout.
+      const styleLayers = map.getStyle()?.layers ?? [];
+
       // 3D-only scene setup: Standard-style recoloring, decluttered labels, and
       // exaggerated terrain. Flat satellite imagery has no vector fills/symbols to
       // touch and shouldn't be exaggerated, so this is skipped in satellite mode.
       if (mode === "3d") {
         try {
-          applyStandardConfig(map, lightPreset);
+          applyStandardConfig(map, lightPreset, styleLayers);
         } catch (err) {
           console.warn("applyStandardConfig failed (non-fatal)", err);
         }
 
         try {
-          hideLabelsAndPois(map);
+          hideLabelsAndPois(map, styleLayers);
         } catch (err) {
           console.warn("hideLabelsAndPois failed (non-fatal)", err);
         }
 
         try {
-          neutralizeRoadColors(map);
+          neutralizeRoadColors(map, styleLayers);
         } catch (err) {
           console.warn("neutralizeRoadColors failed (non-fatal)", err);
         }
@@ -436,7 +475,7 @@ export function MapboxView({
         // flat — the exaggerated terrain added nothing visually.
       } else {
         try {
-          neutralizeRoadColors(map);
+          neutralizeRoadColors(map, styleLayers);
         } catch (err) {
           console.warn("neutralizeRoadColors failed (non-fatal)", err);
         }
@@ -445,7 +484,7 @@ export function MapboxView({
       // Hide the emirate/country boundary lines — this is a Dubai map, the
       // admin borders just add clutter over the imagery.
       try {
-        hideAdminBoundaries(map);
+        hideAdminBoundaries(map, styleLayers);
       } catch (err) {
         console.warn("hideAdminBoundaries failed (non-fatal)", err);
       }
@@ -481,8 +520,8 @@ export function MapboxView({
       // reads as continuous sea instead of black. The animated mesh sits on top
       // within COVER; the seam is tens of km out and foreshortened at pitch.
       try {
-        const seaHex = mode === "satellite" ? "#1d7187" : "#1a6d82";
-        for (const layer of map.getStyle().layers ?? []) {
+        const seaHex = mode === "satellite" ? "#1487b0" : "#1a6d82";
+        for (const layer of styleLayers) {
           const isWater =
             layer.id === "water" ||
             layer.id.startsWith("water") ||
@@ -564,8 +603,7 @@ export function MapboxView({
 
   // Hide every symbol layer in the base style — this removes place/street/POI
   // text labels and POI icons, giving a clean uncluttered surface.
-  function hideLabelsAndPois(map: mapboxgl.Map) {
-    const layers = map.getStyle()?.layers ?? [];
+  function hideLabelsAndPois(map: mapboxgl.Map, layers: StyleLayers) {
     for (const layer of layers) {
       if (layer.type === "symbol") {
         map.setLayoutProperty(layer.id, "visibility", "none");
@@ -573,8 +611,7 @@ export function MapboxView({
     }
   }
 
-  function neutralizeRoadColors(map: mapboxgl.Map) {
-    const layers = map.getStyle()?.layers ?? [];
+  function neutralizeRoadColors(map: mapboxgl.Map, layers: StyleLayers) {
     for (const layer of layers) {
       const layerMeta = layer as { id: string; type?: string; ["source-layer"]?: string };
       const id = layerMeta.id.toLowerCase();
@@ -606,7 +643,7 @@ export function MapboxView({
   // as admin-0/admin-1 line layers; the Standard style draws them from its
   // `showAdminBoundaries` config. Handle both, and sweep any other boundary
   // line layer by id/source-layer as a safety net.
-  function hideAdminBoundaries(map: mapboxgl.Map) {
+  function hideAdminBoundaries(map: mapboxgl.Map, layers: StyleLayers) {
     if (mode === "3d") {
       try {
         (map as unknown as { setConfigProperty: (i: string, k: string, v: unknown) => void })
@@ -615,7 +652,7 @@ export function MapboxView({
         // Older styles ignore this; the layer sweep below still catches them.
       }
     }
-    for (const layer of map.getStyle()?.layers ?? []) {
+    for (const layer of layers) {
       const meta = layer as { id: string; type?: string; ["source-layer"]?: string };
       const id = meta.id.toLowerCase();
       const src = (meta["source-layer"] ?? "").toLowerCase();
@@ -645,7 +682,7 @@ export function MapboxView({
 
   // Configure Mapbox Standard's built-in basemap: light preset (day/dawn/dusk/
   // night), a warm premium color theme, and decluttered labels.
-  function applyStandardConfig(map: mapboxgl.Map, preset: LightPreset) {
+  function applyStandardConfig(map: mapboxgl.Map, preset: LightPreset, layers: StyleLayers) {
     // For custom styles, use paint properties to brighten
     const setColor = (id: string, prop: string, value: unknown) => {
       if (map.getLayer(id))
@@ -657,7 +694,6 @@ export function MapboxView({
     };
 
     // Brighten land/background for premium look
-    const layers = map.getStyle()?.layers ?? [];
     for (const layer of layers) {
       if (layer.type === "fill" && (layer.id.includes("land") || layer.id === "background")) {
         setColor(layer.id, "fill-color", "#f5f3f0"); // bright beige
@@ -1622,11 +1658,19 @@ export function MapboxView({
       seen.add(p.id);
       if (existing.has(p.id)) continue;
       const el = document.createElement("div");
-      el.className = "proj-pin";
-      el.innerHTML = PROJECT_ICON_SVG; // static building glyph — no user data injected
-      el.title = p.name; // name shown as native tooltip on hover
+      el.className = "proj-lm";
+      const pin = document.createElement("div");
+      pin.className = "proj-pin";
+      pin.innerHTML = PROJECT_ICON_SVG; // static building glyph — no user data injected
+      const nm = document.createElement("span");
+      nm.className = "proj-nm";
+      nm.textContent = p.name; // textContent — never inject as HTML
+      el.append(pin, nm);
+      el.title = p.name; // name also shown as native tooltip on hover
       el.onclick = () => setSelectedProjectId(p.id);
-      const m = new mapboxgl.Marker({ element: el }).setLngLat([p.lng, p.lat]).addTo(map);
+      // Bottom-anchored so the pin base sits on the coordinate and the name pill
+      // hangs beneath without shifting the geographic anchor.
+      const m = new mapboxgl.Marker({ element: el, anchor: "bottom" }).setLngLat([p.lng, p.lat]).addTo(map);
       existing.set(p.id, m);
     }
     for (const [id, marker] of existing.entries()) {
@@ -1640,7 +1684,10 @@ export function MapboxView({
   // Highlight selected — toggle the .selected class (styling lives in CSS).
   useEffect(() => {
     for (const [id, m] of markersRef.current.entries()) {
-      m.getElement().classList.toggle("selected", id === selectedProjectId);
+      // The marker element is now the `.proj-lm` wrapper; the `.selected` styling
+      // lives on the inner `.proj-pin`, so toggle the class there.
+      const pin = m.getElement().querySelector(".proj-pin");
+      pin?.classList.toggle("selected", id === selectedProjectId);
     }
   }, [selectedProjectId]);
 
@@ -1729,7 +1776,19 @@ export function MapboxView({
     if (!map) return;
     const apply = () => {
       const z = map.getZoom();
-      const tier = z < 11.25 ? "hidden" : z < 12.75 ? "icon" : "full";
+      // In browse mode (a POI category is toggled on) the user explicitly asked
+      // for these places, and fitBounds to all of them can land below the
+      // "hidden" threshold — which would leave them invisible until a zoom-in.
+      // So never fully hide while browsing: floor the tier at "icon".
+      const tier = browsingPois
+        ? z < 12.75
+          ? "icon"
+          : "full"
+        : z < 11.25
+          ? "hidden"
+          : z < 12.75
+            ? "icon"
+            : "full";
       const c = map.getContainer();
       if (c.dataset.poiTier !== tier) c.dataset.poiTier = tier;
     };
@@ -1738,7 +1797,7 @@ export function MapboxView({
     return () => {
       map.off("zoom", apply);
     };
-  }, [mapReady]);
+  }, [mapReady, browsingPois]);
 
   // Zone spotlight (RY / STR / HH). Layers are added once; toggling a category
   // drives an inverted dim-mask (darkens everything but the zones) + a color

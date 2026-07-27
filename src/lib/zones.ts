@@ -67,14 +67,19 @@ export type ZoneRow = {
 
 export const ZONE_CATEGORIES: Record<
   ZoneCategory,
-  { label: string; full: string; base: string; color: string }
+  { code: string; label: string; full: string; base: string; color: string }
 > = {
+  // code  = the short caption on the toolbar toggle button
   // full  = strong outline for high-value zones
   // base  = dim outline for low/no-value zones (value interpolation floor)
   // color = the swatch shown in the button + legend
-  RY: { label: "Rental Yield", full: "#E6B800", base: "#7a6410", color: "#E6B800" },
-  FLIP: { label: "Flipping", full: "#0FB5AE", base: "#0a5f5b", color: "#0FB5AE" },
-  HH: { label: "Holiday Home", full: "#8B5CF6", base: "#4a3184", color: "#8B5CF6" },
+  RY: { code: "RY", label: "Rental Yield", full: "#E6B800", base: "#7a6410", color: "#E6B800" },
+  // FLIP and HH swapped per request: the FLIP-keyed zones now present entirely as
+  // "HH / Holiday Home" (purple) and HH-keyed zones present as "FLIP / Flipping"
+  // (teal) — caption, colour, and label all swap together. Only the presentation
+  // swaps; the DB keys stay bound to their existing rows.
+  FLIP: { code: "HH", label: "Holiday Home", full: "#8B5CF6", base: "#4a3184", color: "#8B5CF6" },
+  HH: { code: "FLIP", label: "Flipping", full: "#0FB5AE", base: "#0a5f5b", color: "#0FB5AE" },
 };
 
 export const ZONE_ORDER: ZoneCategory[] = ["RY", "FLIP", "HH"];

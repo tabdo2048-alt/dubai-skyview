@@ -278,7 +278,7 @@ export function MapContainer() {
             each lights its saved zones with its own colored border. */}
         {ZONE_ORDER.map((cat) => {
           const on = zoneCategories.has(cat);
-          const { color, label } = ZONE_CATEGORIES[cat];
+          const { color, label, code } = ZONE_CATEGORIES[cat];
           return (
             <Button
               key={cat}
@@ -291,7 +291,7 @@ export function MapContainer() {
                 className="mr-1 inline-block h-2.5 w-2.5 rounded-full"
                 style={{ background: color, boxShadow: `0 0 6px ${color}` }}
               />
-              {cat}
+              {code}
             </Button>
           );
         })}

@@ -939,7 +939,10 @@ function makeWaterMaterial({
   // stays low-opacity (it must read as the real sea, not hide tile detail); a
   // small bump gives it more presence without washing the imagery out. The 3D
   // basemap has no photographic sea under it, so its water can be richer.
-  const opacity = satellite ? (openSea ? 0.25 : 0.23) : openSea ? 0.34 : 0.3;
+  // Satellite water opacity: enough that the deep Gulf reads azure (not dark navy
+  // imagery through a thin overlay), but dialled back so it isn't an overpowering
+  // flat wash — some real sea still shows through.
+  const opacity = satellite ? (openSea ? 0.42 : 0.36) : openSea ? 0.34 : 0.3;
   return new THREE.ShaderMaterial({
     vertexShader: WATER_VERTEX,
     fragmentShader: WATER_FRAGMENT,
@@ -960,9 +963,11 @@ function makeWaterMaterial({
       uMaxAmp: { value: MAX_WAVE_AMPLITUDE },
       uCamLocal: { value: new THREE.Vector3() },
       uSunDir: { value: new THREE.Vector3(-0.5, -0.35, 0.79).normalize() },
-      uDeepColor: { value: new THREE.Color(satellite ? 0x155f75 : 0x11536a) },
-      uShallowColor: { value: new THREE.Color(satellite ? 0x60b1c1 : 0x57adbf) },
-      uSkyColor: { value: new THREE.Color(satellite ? 0x8fc9d6 : 0x8bc7d2) },
+      // Satellite water pushed to a vivid azure/cyan to match the reference map
+      // (was a muted teal). 3D keeps its richer, darker sea.
+      uDeepColor: { value: new THREE.Color(satellite ? 0x1785ad : 0x11536a) },
+      uShallowColor: { value: new THREE.Color(satellite ? 0x5cc8e4 : 0x57adbf) },
+      uSkyColor: { value: new THREE.Color(satellite ? 0x9fdcee : 0x8bc7d2) },
       uFoamColor: { value: new THREE.Color(0xffffff) },
       uOpacity: { value: opacity },
       // Satellite view is top-down (pitch 0) — turn on the wave-legibility terms

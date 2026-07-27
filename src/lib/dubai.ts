@@ -19,8 +19,8 @@ export const DUBAI_BOUNDS = {
 export const MAP_MAX_BOUNDS = {
   south: 24.82,
   west: 54.90, // Ghantoot — the Abu Dhabi border, SW-most pannable point
-  north: 25.32, // Al Nahda (Dubai–Sharjah border) is the NE-most point
-  east: 55.48, // Dubai–Sharjah border (past Academic City, before Sharjah proper)
+  north: 25.44, // Ajman coast (NE-most) — panning now reaches the Ajman border
+  east: 55.62, // Ajman (past Sharjah). Pan reach now matches what you see zoomed out. Stays inside ZOOM_OUT_BOUNDS (east 55.825).
 };
 
 // The rect handed to Mapbox as the native `maxBounds`, and the one the min-zoom

@@ -24,6 +24,7 @@ export function CategoryPanel() {
       <div className="flex flex-col gap-2">
         {CATEGORIES.map(({ id, icon: Icon, label }) => {
           const isActive = activeCategories.has(id);
+          const color = POI_TABLES[id].color; // category hue for the active glass glow
           return (
             <motion.button
               key={id}
@@ -34,11 +35,19 @@ export function CategoryPanel() {
               }}
               whileHover={{ scale: 1.08 }}
               whileTap={{ scale: 0.92 }}
+              // Active state is liquid glass with a category-colour ring + glow
+              // (no more gold fill). Inactive stays the plain gold-hairline glass.
               className={`flex h-12 w-12 flex-col items-center justify-center gap-0.5 rounded-xl transition-all ${
-                isActive
-                  ? "bg-gold text-gold-foreground shadow-lg shadow-gold/30"
-                  : "glass gold-hairline text-cream hover:text-gold"
+                isActive ? "glass" : "glass gold-hairline text-cream hover:text-gold"
               }`}
+              style={
+                isActive
+                  ? {
+                      color,
+                      boxShadow: `0 0 0 1.5px ${color}, 0 6px 20px ${color}55, inset 0 0 12px ${color}22`,
+                    }
+                  : undefined
+              }
             >
               <Icon className="h-4 w-4" />
               <span className="text-[7px] font-semibold uppercase tracking-wider leading-none">
