@@ -17,10 +17,13 @@ export const DUBAI_BOUNDS = {
 // centre clamp in MapboxView (clampCenterToBounds) that only engages once the
 // user has zoomed past the wide overview.
 export const MAP_MAX_BOUNDS = {
-  south: 24.82,
-  west: 54.90, // Ghantoot — the Abu Dhabi border, SW-most pannable point
-  north: 25.44, // Ajman coast (NE-most) — panning now reaches the Ajman border
-  east: 55.62, // Ajman (past Sharjah). Pan reach now matches what you see zoomed out. Stays inside ZOOM_OUT_BOUNDS (east 55.825).
+  // Expanded on all sides — a much larger free-pan area (Abu Dhabi border in the
+  // SW through Sharjah / Ajman / Umm Al Quwain in the NE). Still a bit inside
+  // ZOOM_OUT_BOUNDS so the custom pan clamp has room to work.
+  south: 24.72,
+  west: 54.78,
+  north: 25.55,
+  east: 55.75,
 };
 
 // The rect handed to Mapbox as the native `maxBounds`, and the one the min-zoom
@@ -34,10 +37,14 @@ export const MAP_MAX_BOUNDS = {
 // SEA_COVER bbox: fitting to that pulled the floor out to the whole UAE and ran
 // the viewport past the generated water geometry, which showed as pale seams.
 export const ZOOM_OUT_BOUNDS = {
-  south: 24.645,
-  west: 54.55, // a touch more west than MAP_MAX_BOUNDS, still inside SEA_COVER (54.51)
-  north: 25.495,
-  east: 55.825,
+  // Widened toward the water mesh's SEA_COVER limits (west 54.51 / south 24.41 /
+  // east 56.03 / north 25.93) so the user can zoom OUT much further — the whole
+  // Dubai–Sharjah–Abu Dhabi-coast region — without ever revealing the mesh edge.
+  // Kept a small margin inside SEA_COVER on every side.
+  south: 24.55,
+  west: 54.53,
+  north: 25.8,
+  east: 55.98,
 };
 
 // Opening view: wide over Dubai, flat (pitch/bearing 0). After the map is idle

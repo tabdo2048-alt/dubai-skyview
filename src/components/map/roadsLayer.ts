@@ -65,6 +65,14 @@ const ROUTES = [
   { key: "emirates", name: "Emirates Road", colorName: "Blue", cssVar: "--road-emirates", color: "#6A90FF", match: /^emirates road$/i, ref: /^E\s*611$/i },
   { key: "alain", name: "Dubai–Al Ain Road", colorName: "Lavender", cssVar: "--road-alain", color: "#D7B2FE", match: /dubai\s*-\s*al ain road/i, ref: /^E\s*66$/i },
   { key: "lehbab", name: "Lehbab Road", colorName: "Magenta", cssVar: "--road-lehbab", color: "#FF2DFF", match: /lahbab road/i, ref: /^E\s*77$/i },
+  // User-requested extra colours. NAMES ARE PLACEHOLDERS — the two requested
+  // streets ("AL alfy" / "alblays") couldn't be decoded to OSM names, so these
+  // match Al Wasl (mint) + Al Sufouh (orange) for now. Swap the `match` regex to
+  // the real street names to recolour the intended roads.
+  // Orange = Al Yalayis St (confirmed by user). Mint is still a placeholder
+  // (Al Wasl) until road 1's real name ("AL alfy") is provided.
+  { key: "roadmint", name: "Al Wasl Road", colorName: "Mint", cssVar: "--road-mint", color: "#35E0A1", match: /^al wasl road/i, ref: null },
+  { key: "roadorange", name: "Al Yalayis Street", colorName: "Orange", cssVar: "--road-orange", color: "#FF8A3D", match: /al yalayis/i, ref: null },
 ] as const;
 
 type Route = (typeof ROUTES)[number];

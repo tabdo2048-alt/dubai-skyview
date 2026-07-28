@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Hospital, GraduationCap, Palmtree } from "lucide-react";
+import { Hospital, GraduationCap, Camera } from "lucide-react";
 import { useFiltersStore } from "@/store/filters";
 import { POI_TABLES } from "@/hooks/use-pois";
 import { track } from "@/lib/analytics";
@@ -7,7 +7,7 @@ import { track } from "@/lib/analytics";
 const CATEGORIES = [
   { id: "hospitals", icon: Hospital, label: "Hospitals" },
   { id: "schools", icon: GraduationCap, label: "Schools" },
-  { id: "tourism", icon: Palmtree, label: "Tourism" },
+  { id: "tourism", icon: Camera, label: "Tourism" },
 ] as const;
 
 export function CategoryPanel() {
