@@ -17,6 +17,7 @@ import {
 import type mapboxgl from "mapbox-gl";
 import { MapboxView, type LightPreset } from "./MapboxView";
 import { CloudLayer } from "./CloudLayer";
+import { CategoryPanel } from "./CategoryPanel";
 import { ProjectPopup } from "./ProjectPopup";
 // Dev-only editor. Lazy so its static WaterLayer import (Three.js + the ~1.6 MB
 // coastline) never enters the production bundle and doesn't defeat the dynamic
@@ -209,9 +210,9 @@ export function MapContainer() {
       {/* Premium aerial cloud layer — fades out as you zoom into the city (both modes) */}
       <CloudLayer zoom={camera.zoom} />
 
-      {/* Places (tourism / education / hospitals) are intentionally NOT shown on the
-          public map — they are managed in the admin only. Do not re-add CategoryPanel
-          here without a product decision. */}
+      {/* Places (tourism / education / hospitals) toggle buttons — tap a category
+          to show its markers on the map (drives activeCategories → usePois). */}
+      <CategoryPanel />
 
       {/* Dev-only Water Debug Editor (3D mode) — never mounted in production. */}
       {waterEditorEnabled && mapMode === "3d" && (
