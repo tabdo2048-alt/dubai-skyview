@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -12,6 +12,7 @@ export type PoiPoint = {
   images: string[];
   created_at: string;
   category: PoiCategory; // which table it came from — drives marker colour/glyph
+  icon?: string | null; // optional per-place glyph override (see poiIcons.iconFor)
 };
 
 // Table names deliberately equal the category ids, and all three POI tables
@@ -61,15 +62,27 @@ export function usePois(categories: Set<PoiCategory>) {
     queryKey: ["pois", list],
     queryFn: async (): Promise<PoiPoint[]> => {
       if (list.length === 0) return [];
-      const perCategory = await Promise.all(
+      // allSettled, not all: one category's failure must NOT drop the others'
+      // markers — the categories are shown together, so keep every category that
+      // loaded and just log the one that didn't.
+      const results = await Promise.allSettled(
         list.map(async (category) => {
           const { data, error } = await supabase.from(POI_TABLES[category].table).select("*");
           if (error) throw error;
           return (data ?? []).map((row) => ({ ...row, category }) as PoiPoint);
         }),
       );
-      return perCategory.flat();
+      const out: PoiPoint[] = [];
+      for (const r of results) {
+        if (r.status === "fulfilled") out.push(...r.value);
+        else console.error("[usePois] a category failed to load:", r.reason);
+      }
+      return out;
     },
+    // Keep the already-shown markers on screen while the new union refetches, so
+    // turning a second/third category ON never flashes the others off — this is
+    // what made it look like they "don't work together".
+    placeholderData: keepPreviousData,
     staleTime: 60_000,
     enabled: list.length > 0,
   });

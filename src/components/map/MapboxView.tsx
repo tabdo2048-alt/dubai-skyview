@@ -17,10 +17,8 @@ import type { createStationModelLayer as CreateStationModelLayer } from "./Stati
 import { addRoadsLayers, setRoadsVisible } from "./roadsLayer";
 import type { ProjectWithRelations } from "@/lib/types";
 import { useFiltersStore } from "@/store/filters";
-import { POI_TABLES, type PoiPoint, type PoiCategory } from "@/hooks/use-pois";
-import { LANDMARK_PHOTOS } from "@/lib/landmarkPhotos";
-import { LANDMARK_LOGOS } from "@/lib/landmarkLogos";
-import { fallbackIcon } from "./poiIcons";
+import { POI_TABLES, type PoiPoint } from "@/hooks/use-pois";
+import { iconFor } from "./poiIcons";
 import {
   ZONE_ORDER,
   ZONE_PULSE,
@@ -31,10 +29,6 @@ import {
   type ZoneRow,
   type ZoneCategory,
 } from "@/lib/zones";
-
-// Headline landmark(s) — rendered bigger, always visible and labelled, so the
-// map's most important place stands out. Keyed by exact POI name.
-const HERO_POIS = new Set<string>(["Burj Khalifa"]);
 
 // Satellite land tint — a warm-sepia grade over the Maxar imagery. The land is a
 // PHOTO, so this adjusts the image rather than painting a flat colour. To change
@@ -176,77 +170,35 @@ const PROJECT_MARKER_CSS = `
 .poi-label:hover{transform:scale(1.06);box-shadow:0 0 18px currentColor}
 @media (prefers-reduced-motion:reduce){.poi-label{transition:none}}
 
-/* Landmark markers: the place's logo in a glass tile with the name below,
-   bottom-anchored on the coordinate. currentColor carries the category colour. */
-.poi-lm{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;
-  transform:translateZ(0);transition:opacity .2s ease;
-  /* Hit area = only the visible badge + name. The wrapper (and its ping ring)
-     must not capture pointer events, or empty space beside a marker phantom-hovers. */
-  pointer-events:none}
-/* Focus: while one marker is hovered, the others fade so it stands out. */
-[data-poi-focus] .poi-lm:not(.poi-lm--focus){opacity:.32}
-.poi-lm--focus{z-index:6}
-/* Liquid glass: light frosted tile so a black line-icon reads on it, with a thin
-   category-colour ring (currentColor, set per-marker) as the only colour cue. */
-.poi-lm-badge{display:grid;place-items:center;width:30px;height:30px;border-radius:9px;overflow:hidden;
-  background:rgba(255,255,255,.6);
-  backdrop-filter:blur(8px) saturate(1.2);-webkit-backdrop-filter:blur(8px) saturate(1.2);
-  border:1px solid rgba(255,255,255,.7);
-  box-shadow:0 0 0 1.5px currentColor,0 4px 12px rgba(0,0,0,.4),inset 0 1px 1px rgba(255,255,255,.65);
-  transition:transform .18s ease,box-shadow .18s ease;pointer-events:auto}
-.poi-lm--focus .poi-lm-badge{transform:scale(1.16);box-shadow:0 0 0 2px currentColor,0 8px 20px rgba(0,0,0,.5)}
-.poi-lm-logo{width:100%;height:100%;object-fit:contain;padding:3px}
-/* Black line-art glyph on the light glass. */
-.poi-lm-fallback{display:grid;place-items:center;width:100%;height:100%;color:#0b0d10}
-.poi-lm-fallback svg{width:17px;height:17px}
-/* "Ping": an expanding ring in the category colour behind the badge. Animates
-   transform+opacity only (compositor-friendly), so it's cheap across hundreds of
-   markers. Sits behind the badge; grows past its edge then fades. */
-.poi-lm::after{content:"";position:absolute;top:0;left:50%;width:30px;height:30px;
-  margin-left:-15px;border-radius:9px;box-shadow:0 0 0 1.5px currentColor;
-  pointer-events:none;z-index:-1;opacity:0;animation:poi-ping 3s ease-out infinite}
-@keyframes poi-ping{
-  0%{transform:translateX(0) scale(1);opacity:.55}
-  70%{opacity:0}
-  100%{transform:translateX(0) scale(1.7);opacity:0}}
-.poi-lm-name{max-width:84px;text-align:center;color:#fff;font:600 9px/1.15 'Work Sans',Arial,sans-serif;
+/* Landmark chips (tourism / education / hospitals). Phantom-hit-area is made
+   structurally impossible: the ROOT is pointer-events:none, ONLY the chip is
+   interactive, and the label is absolutely positioned OUTSIDE the root's box and
+   never receives events. currentColor (set per-marker) carries the category ring
+   colour; the glyph is forced dark for contrast. */
+.lm{position:relative;pointer-events:none;transform:translateZ(0);transition:opacity .2s ease}
+.lm-chip{display:grid;place-items:center;width:38px;height:38px;border-radius:12px;
+  background:rgba(255,255,255,.9);
+  backdrop-filter:blur(9px) saturate(1.2);-webkit-backdrop-filter:blur(9px) saturate(1.2);
+  border:1px solid rgba(255,255,255,.85);
+  /* category ring (currentColor) + faint dark edge so the tile separates from
+     bright desert, + real drop shadow so it lifts on any ground. */
+  box-shadow:0 0 0 2px currentColor,0 0 0 3px rgba(0,0,0,.16),0 3px 11px rgba(0,0,0,.5);
+  cursor:pointer;pointer-events:auto;transition:transform .18s ease,box-shadow .18s ease}
+.lm-chip svg{width:20px;height:20px;stroke-width:1.9px;color:#0e1116}
+.lm-chip:hover{transform:scale(1.14);box-shadow:0 0 0 2px currentColor,0 8px 20px rgba(0,0,0,.55)}
+/* Label: absolutely positioned below the chip so it never inflates the root box
+   or the interactive area. Never interactive. */
+.lm-label{position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:4px;
+  max-width:96px;text-align:center;pointer-events:none;
+  color:#fff;font:600 10px/1.2 'Work Sans',Arial,sans-serif;letter-spacing:.2px;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
-  text-shadow:0 1px 2px rgba(0,0,0,.9),0 0 6px rgba(0,0,0,.7);transition:opacity .25s ease;pointer-events:auto}
-.poi-lm:hover .poi-lm-badge{transform:scale(1.12);box-shadow:0 0 0 2px currentColor,0 6px 16px rgba(0,0,0,.55)}
-/* Zoom gating, driven by a data-poi-tier attribute on the map container so the
-   whole marker set toggles via CSS (no per-marker DOM writes on zoom). */
-[data-poi-tier="hidden"] .poi-lm{opacity:0;pointer-events:none}
-/* Invisible markers must not stay hoverable via the badge (which carries its own
-   pointer-events); hero remains interactive since it's always shown. */
-[data-poi-tier="hidden"] .poi-lm:not(.poi-lm--hero) .poi-lm-badge{pointer-events:none}
-[data-poi-tier="icon"] .poi-lm-name{opacity:0}
-[data-poi-tier="icon"] .poi-lm--priority .poi-lm-name{opacity:1}
-/* Hero landmark (the map's headline place): bigger, light badge so its dark logo
-   reads, gold ring, and always shown + labelled regardless of the zoom tier. */
-.poi-lm--hero{z-index:5}
-.poi-lm--hero .poi-lm-badge{width:46px;height:46px;border-radius:12px;
-  background:rgba(255,255,255,.94);
-  box-shadow:0 0 0 2px #d4af37,0 6px 18px rgba(0,0,0,.55)}
-.poi-lm--hero .poi-lm-logo{padding:5px}
-.poi-lm--hero .poi-lm-name{max-width:110px;font-size:11px;font-weight:700}
-[data-poi-tier="hidden"] .poi-lm--hero{opacity:1;pointer-events:auto}
-[data-poi-tier="hidden"] .poi-lm--hero .poi-lm-name,
-[data-poi-tier="icon"] .poi-lm--hero .poi-lm-name{opacity:1}
-.poi-lm--hero::after{width:46px;height:46px;margin-left:-23px;border-radius:12px}
-/* Hidden tier: no marker shown, so stop the ping too (nothing to pulse). */
-[data-poi-tier="hidden"] .poi-lm:not(.poi-lm--hero)::after{animation:none;opacity:0}
-/* Hover focus popup — medium glass card: image on top, name, optional description. */
-.poi-popup .mapboxgl-popup-content{padding:0;overflow:hidden;border-radius:14px;
-  background:rgba(12,16,22,.93);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
-  border:1px solid rgba(255,255,255,.14);box-shadow:0 12px 34px rgba(0,0,0,.5);width:280px}
-.poi-popup .mapboxgl-popup-tip{display:none}
-.poi-pop-img{width:100%;height:148px;object-fit:cover;display:block;background:rgba(255,255,255,.06)}
-.poi-pop-body{padding:10px 13px}
-.poi-pop-name{color:#fff;font:700 14px/1.25 'Work Sans',Arial,sans-serif;letter-spacing:.2px}
-.poi-pop-desc{margin-top:4px;color:rgba(255,255,255,.72);font:500 11px/1.4 'Work Sans',Arial,sans-serif;
-  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-@media (prefers-reduced-motion:reduce){.poi-lm,.poi-lm-name,.poi-lm-badge{transition:none}
-  .poi-lm::after{animation:none;opacity:0}}`;
+  text-shadow:0 1px 2px rgba(0,0,0,.92),0 0 6px rgba(0,0,0,.7);transition:opacity .2s ease}
+/* Zoom gating via a data attribute on the map container (no per-marker DOM writes).
+   hidden → nothing; chip → chip only; full → chip + label. */
+[data-lm-tier="hidden"] .lm{opacity:0}
+[data-lm-tier="hidden"] .lm-chip{pointer-events:none}
+[data-lm-tier="chip"] .lm-label{opacity:0}
+@media (prefers-reduced-motion:reduce){.lm,.lm-chip,.lm-label{transition:none}}`;
 
 function ensureProjectMarkerStyles() {
   if (typeof document === "undefined" || document.getElementById("proj-marker-style")) return;
@@ -281,10 +233,6 @@ export function MapboxView({
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<Map<string, mapboxgl.Marker>>(new globalThis.Map());
   const poiMarkersRef = useRef<Map<string, mapboxgl.Marker>>(new globalThis.Map());
-  // Shared hover popup for landmark markers + its debounce/close timers.
-  const poiHoverPopupRef = useRef<mapboxgl.Popup | null>(null);
-  const poiHoverOpenTimerRef = useRef<number | null>(null);
-  const poiHoverCloseTimerRef = useRef<number | null>(null);
   const trainMarkersRef = useRef<Map<string, mapboxgl.Marker>>(new globalThis.Map());
   const pulseMarkersRef = useRef<mapboxgl.Marker[]>([]);
   const metroFrameRef = useRef<Map<string, number>>(new globalThis.Map());
@@ -294,7 +242,8 @@ export function MapboxView({
   const stationModelRef = useRef<ReturnType<typeof import("./StationModelLayer").createStationModelLayer> | null>(null);
   const styleLoadedRef = useRef(false);
   const didFitWholeRef = useRef(false); // one-time: open framed on the whole map
-  const tightMinZoomRef = useRef<number | null>(null); // fit zoom for MAP_MAX_BOUNDS
+  const tightMinZoomRef = useRef<number | null>(null); // fit zoom for MAP_MAX_BOUNDS (pan-clamp floor)
+  const openZoomRef = useRef<number | null>(null); // fit zoom for DUBAI_BOUNDS (opening frame)
   const stationInteractionAddedRef = useRef(false);
   const heavyLayerFallbackTimeoutRef = useRef<number | null>(null);
   const deferredLayerTimeoutsRef = useRef<number[]>([]);
@@ -376,16 +325,27 @@ export function MapboxView({
       ) as { zoom?: number; center?: mapboxgl.LngLatLike } | undefined;
 
     const setBoundsMinZoom = () => {
-      const tight = fitZoomFor(MAP_MAX_BOUNDS);
-      const wide = fitZoomFor(ZOOM_OUT_BOUNDS);
+      const tight = fitZoomFor(MAP_MAX_BOUNDS); // pan-clamp engage floor (Ghantoot→UAQ box)
+      const wide = fitZoomFor(ZOOM_OUT_BOUNDS); // min-zoom floor (how far you can pull back)
+      const open = fitZoomFor(DUBAI_BOUNDS); // OPENING frame — Dubai only, not the whole region
       if (typeof wide?.zoom === "number") map.setMinZoom(wide.zoom);
-      if (typeof tight?.zoom === "number") {
-        tightMinZoomRef.current = tight.zoom;
-        // Open framed on the whole of Dubai (not the wider zoom-out rect), a
-        // touch tighter than the bare fit so the map reads large on arrival.
-        if (!didFitWholeRef.current) {
+      if (typeof tight?.zoom === "number") tightMinZoomRef.current = tight.zoom;
+      if (open && typeof open.zoom === "number") {
+        openZoomRef.current = open.zoom;
+        // Open framed on Dubai proper (DUBAI_BOUNDS), a touch tighter than the
+        // bare fit so it reads large on arrival — the user can then roam out to
+        // the far pan borders (MAP_MAX_BOUNDS) and pull back to ZOOM_OUT_BOUNDS.
+        // Gate on a REAL container size: cameraForBounds against a 0×0 container
+        // (during the load/mode-transition) returns a bogus low zoom, and the
+        // one-shot guard would lock that wrong frame in forever. Wait until the
+        // container is laid out; setBoundsMinZoom re-runs on resize, so the fit
+        // fires correctly once the map actually has dimensions.
+        const c = map.getContainer();
+        if (!didFitWholeRef.current && c.clientWidth > 0 && c.clientHeight > 0) {
           didFitWholeRef.current = true;
-          map.jumpTo({ center: tight.center ?? map.getCenter(), zoom: tight.zoom + 0.45 });
+          // +1.0: cameraForBounds reports ~1 zoom level looser than a true fill,
+          // so this makes DUBAI_BOUNDS actually fill the viewport = "just Dubai".
+          map.jumpTo({ center: open.center ?? map.getCenter(), zoom: open.zoom + 1.0 });
         }
       }
       syncPanBounds();
@@ -453,11 +413,11 @@ export function MapboxView({
         setBoundsMinZoom();
         if (isMobile) {
           // Tilt only on mobile too — hold the opening frame, no extra zoom-in.
-          // Uses the TIGHT fit, not getMinZoom(): the floor is now the wider
-          // zoom-out rect, which would open mobile further out than desktop.
+          // Uses the Dubai-only OPEN fit (openZoomRef), not getMinZoom() (the
+          // floor is the wide zoom-out rect) nor the tight region fit.
           map.easeTo({
             pitch: mode === "3d" ? 42 : 0,
-            zoom: (tightMinZoomRef.current ?? map.getMinZoom()) + 0.45,
+            zoom: (openZoomRef.current ?? tightMinZoomRef.current ?? map.getMinZoom()) + 0.6,
             duration: 600,
           });
         }
@@ -1726,118 +1686,23 @@ export function MapboxView({
     const existing = poiMarkersRef.current;
     const seen = new Set<string>();
 
-    // Hover focus: dim the other landmarks and, after a short debounce, show a
-    // medium glass popup (image + name) for the hovered one. Image falls back
-    // through the place's own photo/logo; no image → name only (never a broken
-    // box). Debounced so sweeping the cursor doesn't flash popups.
-    const openHoverPopup = (poi: PoiPoint, host: HTMLElement) => {
-      if (poiHoverCloseTimerRef.current != null) {
-        clearTimeout(poiHoverCloseTimerRef.current);
-        poiHoverCloseTimerRef.current = null;
-      }
-      map.getContainer().dataset.poiFocus = "1";
-      host.classList.add("poi-lm--focus");
-      if (poiHoverOpenTimerRef.current != null) clearTimeout(poiHoverOpenTimerRef.current);
-      poiHoverOpenTimerRef.current = window.setTimeout(() => {
-        // Popup wants a real photo (object-fit: cover). Prefer an uploaded image
-        // or the curated Wikipedia photo; skip brand logos, which look wrong
-        // stretched to a cover image — no photo just means name-only.
-        const imgUrl =
-          poi.images?.[0] ??
-          (poi.category === "tourism" ? LANDMARK_PHOTOS[poi.name] : undefined);
-        const content = document.createElement("div");
-        if (imgUrl) {
-          const img = document.createElement("img");
-          img.className = "poi-pop-img";
-          img.src = imgUrl;
-          img.alt = "";
-          img.loading = "lazy";
-          img.decoding = "async";
-          img.onerror = () => img.remove(); // no broken-image box
-          content.append(img);
-        }
-        const body = document.createElement("div");
-        body.className = "poi-pop-body";
-        const nm = document.createElement("div");
-        nm.className = "poi-pop-name";
-        nm.textContent = poi.name; // textContent — never HTML
-        body.append(nm);
-        content.append(body);
-        if (!poiHoverPopupRef.current) {
-          // No fixed anchor → Mapbox auto-places it to stay on screen (edge-flip).
-          poiHoverPopupRef.current = new mapboxgl.Popup({
-            closeButton: false,
-            closeOnClick: false,
-            offset: 18,
-            maxWidth: "280px",
-            className: "poi-popup",
-          });
-        }
-        poiHoverPopupRef.current.setLngLat([poi.lng, poi.lat]).setDOMContent(content).addTo(map);
-      }, 150);
-    };
-    const closeHoverPopup = (host: HTMLElement) => {
-      if (poiHoverOpenTimerRef.current != null) {
-        clearTimeout(poiHoverOpenTimerRef.current);
-        poiHoverOpenTimerRef.current = null;
-      }
-      host.classList.remove("poi-lm--focus");
-      delete map.getContainer().dataset.poiFocus;
-      if (poiHoverCloseTimerRef.current != null) clearTimeout(poiHoverCloseTimerRef.current);
-      poiHoverCloseTimerRef.current = window.setTimeout(() => {
-        poiHoverPopupRef.current?.remove();
-      }, 120);
-    };
-
     for (const poi of pois) {
       const cat = poi.category;
       const key = `${cat}:${poi.id}`;
       seen.add(key);
       if (existing.has(key)) continue;
-      // Landmark marker: the place's logo in a glass tile, name below. Icon
-      // source order: an uploaded image → a curated per-category logo → (tourism
-      // only) a Wikipedia photo → the category fallback glyph. A place with none
-      // still renders the glyph, never a broken image.
-      const el = document.createElement("div");
-      el.className = "poi-lm";
-      el.style.color = POI_TABLES[cat].color; // category colour via currentColor
-      // Marquee places (in the curated logo/photo maps) label one zoom tier
-      // earlier, so at mid zoom the notable names show without every school piling on.
-      if (LANDMARK_LOGOS[cat]?.[poi.name] || LANDMARK_PHOTOS[poi.name]) {
-        el.classList.add("poi-lm--priority");
-      }
-      // The hero landmark — bigger, always visible/labelled, light badge so its
-      // dark logo reads. Dubai's headline place.
-      if (HERO_POIS.has(poi.name)) el.classList.add("poi-lm--hero");
+      // Phantom-proof structure (see .lm CSS): the ROOT is pointer-events:none,
+      // ONLY the chip is interactive, and the label is absolutely positioned +
+      // never interactive — so empty space beside a chip can't trigger it.
+      const root = document.createElement("div");
+      root.className = "lm";
+      root.style.color = POI_TABLES[cat].color; // currentColor = category ring colour
 
-      const badge = document.createElement("div");
-      badge.className = "poi-lm-badge";
-      // Only the hero (Burj Khalifa) keeps its real brand logo; every other place
-      // shows the uniform black category glyph on the liquid glass.
-      const logoUrl = HERO_POIS.has(poi.name)
-        ? (poi.images?.[0] ??
-          LANDMARK_LOGOS[cat]?.[poi.name] ??
-          (cat === "tourism" ? LANDMARK_PHOTOS[poi.name] : undefined))
-        : undefined;
-      if (logoUrl) {
-        const img = document.createElement("img");
-        img.className = "poi-lm-logo";
-        img.src = logoUrl;
-        img.alt = "";
-        img.loading = "lazy";
-        img.decoding = "async";
-        img.onerror = () => img.replaceWith(fallbackIcon(cat)); // broken logo → glyph
-        badge.append(img);
-      } else {
-        badge.append(fallbackIcon(cat));
-      }
-
-      const nm = document.createElement("span");
-      nm.className = "poi-lm-name";
-      nm.textContent = poi.name; // textContent — never inject as HTML
-      el.append(badge, nm);
-      el.title = poi.name;
-      el.onclick = () => {
+      const chip = document.createElement("div");
+      chip.className = "lm-chip";
+      chip.innerHTML = iconFor(poi); // constant line-art SVG string — no user data
+      chip.title = poi.name; // native tooltip on hover
+      chip.onclick = () => {
         map.flyTo({
           center: [poi.lng, poi.lat],
           zoom: Math.max(map.getZoom(), 14.5),
@@ -1845,13 +1710,17 @@ export function MapboxView({
           essential: true,
         });
       };
-      // Hover/tap the badge → focus + popup. Attached to the badge (which carries
-      // pointer-events) rather than the wrapper. Touch: tap fires mouseenter.
-      badge.addEventListener("mouseenter", () => openHoverPopup(poi, el));
-      badge.addEventListener("mouseleave", () => closeHoverPopup(el));
-      // Bottom-center anchor so the badge base sits on the coordinate and the
-      // name hangs below without shifting the geographic anchor.
-      const m = new mapboxgl.Marker({ element: el, anchor: "bottom" }).setLngLat([poi.lng, poi.lat]).addTo(map);
+
+      const label = document.createElement("span");
+      label.className = "lm-label";
+      label.textContent = poi.name; // textContent — never inject as HTML
+      root.append(chip, label);
+
+      // Bottom-centre anchor: the chip base sits on the coordinate; the label
+      // hangs below (absolute) without shifting the geographic anchor.
+      const m = new mapboxgl.Marker({ element: root, anchor: "bottom" })
+        .setLngLat([poi.lng, poi.lat])
+        .addTo(map);
       existing.set(key, m);
     }
     for (const [id, marker] of existing.entries()) {
@@ -1871,21 +1740,20 @@ export function MapboxView({
     if (!map) return;
     const apply = () => {
       const z = map.getZoom();
-      // In browse mode (a POI category is toggled on) the user explicitly asked
-      // for these places, and fitBounds to all of them can land below the
-      // "hidden" threshold — which would leave them invisible until a zoom-in.
-      // So never fully hide while browsing: floor the tier at "icon".
+      // Browse mode (a category toggled on): never fully hide — the user asked
+      // for these places, and fitBounds can land below the hidden threshold.
+      // chip = chip only; full = chip + label.
       const tier = browsingPois
         ? z < 12.75
-          ? "icon"
+          ? "chip"
           : "full"
-        : z < 11.25
+        : z < 11
           ? "hidden"
           : z < 12.75
-            ? "icon"
+            ? "chip"
             : "full";
       const c = map.getContainer();
-      if (c.dataset.poiTier !== tier) c.dataset.poiTier = tier;
+      if (c.dataset.lmTier !== tier) c.dataset.lmTier = tier;
     };
     apply();
     map.on("zoom", apply);

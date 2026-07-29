@@ -17,13 +17,15 @@ export const DUBAI_BOUNDS = {
 // centre clamp in MapboxView (clampCenterToBounds) that only engages once the
 // user has zoomed past the wide overview.
 export const MAP_MAX_BOUNDS = {
-  // Expanded on all sides — a much larger free-pan area (Abu Dhabi border in the
-  // SW through Sharjah / Ajman / Umm Al Quwain in the NE). Still a bit inside
-  // ZOOM_OUT_BOUNDS so the custom pan clamp has room to work.
-  south: 24.72,
-  west: 54.78,
-  north: 25.55,
-  east: 55.75,
+  // Free-pan area: Ghantoot (W) through Ajman / Umm Al Quwain (NE). Held just
+  // inside ZOOM_OUT_BOUNDS on every side so the custom pan clamp barely engages
+  // (no sticky nudge-back near the edge); the native maxBounds gives the smooth
+  // final stop. NOTE: the OPENING view is framed on DUBAI_BOUNDS, not this box —
+  // so the map opens on Dubai only, then the user can roam out to these borders.
+  south: 24.48,
+  west: 54.57, // well past Ghantoot — Abu Dhabi border
+  north: 25.89, // past Umm Al Quwain
+  east: 55.99,
 };
 
 // The rect handed to Mapbox as the native `maxBounds`, and the one the min-zoom
@@ -37,14 +39,14 @@ export const MAP_MAX_BOUNDS = {
 // SEA_COVER bbox: fitting to that pulled the floor out to the whole UAE and ran
 // the viewport past the generated water geometry, which showed as pale seams.
 export const ZOOM_OUT_BOUNDS = {
-  // Widened toward the water mesh's SEA_COVER limits (west 54.51 / south 24.41 /
-  // east 56.03 / north 25.93) so the user can zoom OUT much further — the whole
-  // Dubai–Sharjah–Abu Dhabi-coast region — without ever revealing the mesh edge.
-  // Kept a small margin inside SEA_COVER on every side.
-  south: 24.55,
-  west: 54.53,
-  north: 25.8,
-  east: 55.98,
+  // Zoom-out extent + native maxBounds. Kept ~0.02° outside MAP_MAX_BOUNDS on
+  // every side (so the custom clamp isn't fighting the native one) and inside the
+  // water mesh's SEA_COVER limits (west 54.51 / south 24.41 / east 56.03 /
+  // north 25.93) so pulling back never reveals the mesh edge.
+  south: 24.46,
+  west: 54.55,
+  north: 25.91,
+  east: 56.01,
 };
 
 // Opening view: wide over Dubai, flat (pitch/bearing 0). After the map is idle
