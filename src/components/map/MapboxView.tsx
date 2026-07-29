@@ -145,54 +145,48 @@ const PROJECT_MARKER_CSS = `
 .proj-lm:hover .proj-nm{background:#fff}
 .proj-lm:has(.proj-pin.selected) .proj-nm{background:linear-gradient(158deg,#e9c766,#c19a3c);color:#1a1206}
 @media (prefers-reduced-motion:reduce){.proj-pin,.proj-nm{transition:none}}
-.poi-marker{display:grid;place-items:center;width:36px;height:36px;border-radius:9999px;
-  background:rgba(10,15,20,.88);
-  border:2px solid currentColor;
-  box-shadow:0 0 12px rgba(0,0,0,.5);
-  color:#fff;font:600 8px/1 'Work Sans',Arial,sans-serif;
-  cursor:pointer;position:relative;transform:translateZ(0);
-  transition:transform .2s ease,box-shadow .2s ease}
-.poi-marker:hover{transform:scale(1.15);box-shadow:0 0 16px currentColor}
-@media (prefers-reduced-motion:reduce){.poi-marker{transition:none}}
-.poi-label{display:inline-flex;align-items:center;gap:5px;max-width:160px;padding:3px 8px;border-radius:9999px;
-  background:rgba(10,15,20,.92);border:1px solid currentColor;
-  box-shadow:0 2px 12px rgba(0,0,0,.5);
-  cursor:pointer;transform:translateZ(0);transition:transform .2s ease,box-shadow .2s ease}
-.poi-label .poi-dot{width:5px;height:5px;border-radius:9999px;background:currentColor;box-shadow:0 0 7px currentColor;flex:0 0 auto}
-.poi-label .poi-ico{font-size:12px;line-height:1;flex:0 0 auto}
-.poi-label .poi-thumb{width:16px;height:16px;border-radius:9999px;object-fit:cover;flex:0 0 auto;border:1px solid currentColor;box-shadow:0 0 6px currentColor;background:rgba(255,255,255,.1)}
-.poi-label .poi-btn{display:grid;place-items:center;width:18px;height:18px;border-radius:9999px;flex:0 0 auto;
-  color:#fff;font:800 11px/1 'Work Sans',Arial,sans-serif;
-  border:1px solid rgba(255,255,255,.85);box-shadow:0 1px 5px rgba(0,0,0,.55),inset 0 1px 1px rgba(255,255,255,.45);
-  text-shadow:0 1px 1px rgba(0,0,0,.35)}
-.poi-label:hover .poi-btn{box-shadow:0 0 10px currentColor,inset 0 1px 1px rgba(255,255,255,.45)}
-.poi-label .poi-nm{color:#fff;font:600 9px/1.15 'Work Sans',Arial,sans-serif;letter-spacing:.2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.poi-label:hover{transform:scale(1.06);box-shadow:0 0 18px currentColor}
-@media (prefers-reduced-motion:reduce){.poi-label{transition:none}}
+/* Landmark chips (tourism / education / hospitals).
 
-/* Landmark chips (tourism / education / hospitals). Phantom-hit-area is made
-   structurally impossible: the ROOT is pointer-events:none, ONLY the chip is
-   interactive, and the label is absolutely positioned OUTSIDE the root's box and
-   never receives events. currentColor (set per-marker) carries the category ring
-   colour; the glyph is forced dark for contrast. */
-.lm{position:relative;pointer-events:none;transform:translateZ(0);transition:opacity .2s ease}
-.lm-chip{display:grid;place-items:center;width:38px;height:38px;border-radius:12px;
-  background:rgba(255,255,255,.9);
-  backdrop-filter:blur(9px) saturate(1.2);-webkit-backdrop-filter:blur(9px) saturate(1.2);
-  border:1px solid rgba(255,255,255,.85);
-  /* category ring (currentColor) + faint dark edge so the tile separates from
-     bright desert, + real drop shadow so it lifts on any ground. */
-  box-shadow:0 0 0 2px currentColor,0 0 0 3px rgba(0,0,0,.16),0 3px 11px rgba(0,0,0,.5);
-  cursor:pointer;pointer-events:auto;transition:transform .18s ease,box-shadow .18s ease}
-.lm-chip svg{width:20px;height:20px;stroke-width:1.9px;color:#0e1116}
-.lm-chip:hover{transform:scale(1.14);box-shadow:0 0 0 2px currentColor,0 8px 20px rgba(0,0,0,.55)}
+   PHANTOM-HIT-AREA IS STRUCTURALLY IMPOSSIBLE, by construction:
+   1. The marker ROOT (.lm) is pointer-events:none. Mapbox uses this element
+      directly as the marker node, so nothing in the subtree is interactive
+      unless it OPTS IN.
+   2. ONLY .lm-chip opts back in (pointer-events:auto). It is the sole hit
+      target and its box === the visible glass square (40x40). Every ring,
+      accent and shadow is drawn with box-shadow / an inset ::after — none of
+      which add to the hit box — so the interactive area can never be wider
+      than the pixels you see.
+   3. The label is absolutely positioned OUTSIDE the root's box (top:100%) and
+      is pointer-events:none, so it never inflates the root or catches events.
+   4. Pseudo-elements are pointer-events:none explicitly.
+   currentColor (set per-marker) is the category accent; the glyph is forced
+   dark for contrast on both bright satellite and dark 3D ground. */
+.lm{position:relative;pointer-events:none;transform:translateZ(0);transition:opacity .2s ease;
+  filter:drop-shadow(0 5px 11px rgba(0,0,0,.5))}
+.lm-chip{position:relative;display:grid;place-items:center;width:40px;height:40px;border-radius:13px;
+  background:linear-gradient(158deg,rgba(255,255,255,.9),rgba(238,243,248,.78));
+  backdrop-filter:blur(11px) saturate(1.35);-webkit-backdrop-filter:blur(11px) saturate(1.35);
+  border:1px solid rgba(255,255,255,.92);
+  /* glossy top highlight + a hairline dark edge so the glass reads on bright
+     desert; the LIFT comes from .lm's drop-shadow, not from a wide spread. */
+  box-shadow:inset 0 1px 1.5px rgba(255,255,255,.95),inset 0 -6px 10px rgba(120,130,145,.16),0 0 0 .5px rgba(0,0,0,.14);
+  cursor:pointer;pointer-events:auto;transition:transform .18s cubic-bezier(.2,.9,.3,1),box-shadow .18s ease}
+/* Category accent: a 2px ring drawn as an inset ::after so it is purely
+   decorative and NEVER part of the hit box. */
+.lm-chip::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  border:2px solid currentColor;opacity:.9;
+  box-shadow:0 0 0 .5px color-mix(in srgb,currentColor 45%,transparent)}
+.lm-chip svg{width:21px;height:21px;stroke-width:1.85px;color:#141a20;
+  filter:drop-shadow(0 1px 0 rgba(255,255,255,.55))}
+.lm-chip:hover{transform:translateY(-2px) scale(1.1)}
+.lm-chip:hover::after{opacity:1;box-shadow:0 0 0 4px color-mix(in srgb,currentColor 26%,transparent)}
 /* Label: absolutely positioned below the chip so it never inflates the root box
    or the interactive area. Never interactive. */
-.lm-label{position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:4px;
-  max-width:96px;text-align:center;pointer-events:none;
-  color:#fff;font:600 10px/1.2 'Work Sans',Arial,sans-serif;letter-spacing:.2px;
+.lm-label{position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:5px;
+  max-width:100px;text-align:center;pointer-events:none;
+  color:#fff;font:600 10.5px/1.2 'Work Sans',Arial,sans-serif;letter-spacing:.2px;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
-  text-shadow:0 1px 2px rgba(0,0,0,.92),0 0 6px rgba(0,0,0,.7);transition:opacity .2s ease}
+  text-shadow:0 1px 2px rgba(0,0,0,.95),0 0 7px rgba(0,0,0,.75);transition:opacity .2s ease}
 /* Zoom gating via a data attribute on the map container (no per-marker DOM writes).
    hidden → nothing; chip → chip only; full → chip + label. */
 [data-lm-tier="hidden"] .lm{opacity:0}
@@ -1727,6 +1721,15 @@ export function MapboxView({
       if (!seen.has(id)) {
         marker.remove();
         existing.delete(id);
+      }
+    }
+    // Stale-node guard (NON-NEGOTIABLE #1): a phantom hover is often a dead
+    // marker node left in the DOM. Assert the DOM holds no more `.lm` nodes than
+    // live landmarks, in dev only.
+    if (import.meta.env.DEV) {
+      const domCount = document.querySelectorAll(".lm").length;
+      if (domCount > seen.size) {
+        console.error(`[landmarks] ${domCount} .lm nodes in DOM but only ${seen.size} landmarks — stale markers leaked`);
       }
     }
   }, [pois]);
