@@ -266,7 +266,10 @@ function shoreDistance(grid: SegmentGrid, x: number, y: number): number {
 // instead of smearing across big earcut slivers. Thresholds shrink per pass so
 // refinement stays confined to the coastal band; already-tiny triangles are
 // left alone.
-const SHORE_REFINE_THRESHOLDS_M = [220, 110, 55] as const;
+// 2 passes (was 3): each pass shore-distance-queries every triangle it visits and
+// splits the near-shore ones ×4, so a pass is a real chunk of the build. Two keeps
+// the waterline hugging the coast while trimming the load-time cost.
+const SHORE_REFINE_THRESHOLDS_M = [150, 60] as const;
 const SHORE_REFINE_MIN_EDGE_M = 12;
 
 function subdivideNearShore(
@@ -1009,9 +1012,13 @@ function buildWaterGeometry(
     shape.holes.push(path);
   }
 
-  // Bigger, exposed areas need more subdivision for clean crests; sheltered
-  // basins stay light. openSea areas are large -> 3 levels, others -> 2.
-  const levels = area.openSea ? 3 : 2;
+  // Subdivision level. Every level quadruples the triangle count, and each
+  // resulting vertex then pays 2 shore-distance grid queries + near-shore
+  // refinement — so the open-sea mesh (a large polygon) dominated the
+  // main-thread-blocking build at 3 levels (×64). Dropped to 2 (×16): the wave
+  // DISPLACEMENT is slightly coarser but lighting/foam are per-fragment in the
+  // shader (density-independent) and top-down satellite barely shows the relief.
+  const levels = 2;
   const mask: LocalWaterMask = {
     outer: area.polygon.map(([lng, lat]) => lngLatToLocal(lng, lat, ref, 0)),
     holes: (area.holes ?? []).map((hole) =>
