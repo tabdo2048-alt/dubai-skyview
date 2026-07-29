@@ -90,7 +90,11 @@ const SHORE_CFG_3D: ShoreConfig = {
 // narrow basins still self-limit via their maxReachMeters caps.
 const SHORE_CFG_SATELLITE: ShoreConfig = {
   halfWidthM: 19,
-  ribbonOffsets: [96, 80, 66, 54, 44, 34, 24, 15, 7],
+  // Reduced from 9 bands to 5: each band emits quads whose 4 corners are each
+  // point-in-polygon tested against the water mask at build time, so band count
+  // dominates the (main-thread-blocking) satellite shore build. 5 keeps the bold
+  // surf look while roughly halving that build cost.
+  ribbonOffsets: [92, 68, 46, 26, 8],
   opacity: 0.9,
   cycleSeconds: 5.2,
 };
