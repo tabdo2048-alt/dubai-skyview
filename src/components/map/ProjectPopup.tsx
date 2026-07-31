@@ -85,7 +85,7 @@ export function ProjectPopup({ project, onClose }: { project: ProjectWithRelatio
                   </Link>
                 </Button>
                 <Button asChild size="sm" variant="outline" className="glass gold-hairline text-cream">
-                  <a href={`https://wa.me/971500000000?text=${encodeURIComponent(`Interested in ${project.name}`)}`} target="_blank" rel="noreferrer">
+                  <a href={`https://wa.me/971586620600?text=${encodeURIComponent(`Interested in ${project.name}`)}`} target="_blank" rel="noreferrer">
                     <MessageCircle className="mr-1 h-3.5 w-3.5" /> WhatsApp
                   </a>
                 </Button>

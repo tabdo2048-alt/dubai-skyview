@@ -148,7 +148,7 @@ function ProjectDetail() {
             <div className="flex flex-wrap gap-2">
               <Button asChild className="bg-gold text-gold-foreground hover:bg-gold/90">
                 <a
-                  href={`https://wa.me/971500000000?text=${encodeURIComponent(`Interested in ${p.name}`)}`}
+                  href={`https://wa.me/971586620600?text=${encodeURIComponent(`Interested in ${p.name}`)}`}
                   target="_blank"
                   rel="noreferrer"
                   onClick={() => track("lead_whatsapp", { slug: p.slug, name: p.name })}
