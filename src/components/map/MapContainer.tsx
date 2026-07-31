@@ -78,10 +78,14 @@ export function MapContainer() {
     zoneCategories,
     toggleZoneCategory,
   } = useFiltersStore();
-  const { data: pois = [] } = usePois(activeCategories);
+  const { data: poisData = [] } = usePois(activeCategories);
   // While browsing places, the map goes clean: projects, metro/train/roads and
   // the (dark-dimming) zone spotlight all hide, leaving just the POI markers.
   const browsingPois = activeCategories.size > 0;
+  // usePois is disabled + keepPreviousData when no category is active, so turning
+  // OFF the last category leaves its stale rows in `poisData`. Force empty here so
+  // the map actually clears the last category's markers.
+  const pois = browsingPois ? poisData : [];
   const EMPTY_ZONES = useMemo(() => new Set<ZoneCategory>(), []);
   usePoiRealtime();
   const { data: zones = [] } = useZones();

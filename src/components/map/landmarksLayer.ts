@@ -16,6 +16,7 @@ import { GLYPH_PATHS, iconKeyFor } from "./poiIcons";
 export const LANDMARKS_SOURCE = "landmarks";
 export const LANDMARKS_LAYER = "landmarks-symbol"; // icon + label
 export const LANDMARKS_DOT = "landmarks-dot"; // always-visible category dot (icon-independent base)
+export const LANDMARKS_GLOW = "landmarks-glow"; // soft colour halo under the dot
 
 // Per-category dot colour (matches POI_TABLES / CategoryPanel).
 const DOT_COLOR: mapboxgl.ExpressionSpecification = [
@@ -112,9 +113,26 @@ function ensureLayer(map: mapboxgl.Map): void {
   if (!map.getSource(LANDMARKS_SOURCE)) {
     map.addSource(LANDMARKS_SOURCE, { type: "geojson", data: EMPTY_FC });
   }
+  // Soft colour halo under the dot — gives the point a glowing "beacon" look
+  // instead of a flat circle. Pure GL, no dependencies.
+  if (!map.getLayer(LANDMARKS_GLOW)) {
+    map.addLayer({
+      id: LANDMARKS_GLOW,
+      type: "circle",
+      source: LANDMARKS_SOURCE,
+      minzoom: 0,
+      paint: {
+        "circle-color": DOT_COLOR,
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 7, 11, 12, 15, 16],
+        "circle-blur": 0.9,
+        "circle-opacity": 0.32,
+        "circle-pitch-alignment": "map",
+      },
+    });
+  }
   // Base dot — pure GL, NO image/font dependency, so a place is ALWAYS visible at
   // every zoom even if a glyph image hasn't registered. The glass icon draws on
-  // top of it.
+  // top of it. Category-coloured core with a bright white ring.
   if (!map.getLayer(LANDMARKS_DOT)) {
     map.addLayer({
       id: LANDMARKS_DOT,
@@ -123,10 +141,10 @@ function ensureLayer(map: mapboxgl.Map): void {
       minzoom: 0,
       paint: {
         "circle-color": DOT_COLOR,
-        "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 3, 11, 5, 15, 7],
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 3.5, 11, 5.5, 15, 7.5],
         "circle-stroke-color": "#ffffff",
-        "circle-stroke-width": 1.5,
-        "circle-opacity": 0.95,
+        "circle-stroke-width": 2,
+        "circle-opacity": 1,
         "circle-pitch-alignment": "map",
       },
     });
@@ -144,11 +162,11 @@ function ensureLayer(map: mapboxgl.Map): void {
         "icon-anchor": "center",
         "icon-allow-overlap": true, // every place keeps its icon
         "icon-optional": true,
-        "icon-size": ["interpolate", ["linear"], ["zoom"], 8, 0.5, 11, 0.62, 14, 0.85, 17, 1],
+        "icon-size": ["interpolate", ["linear"], ["zoom"], 8, 0.68, 11, 0.85, 14, 1.1, 17, 1.3],
         // labels appear a step later than the chips, and drop first when crowded
         "text-field": ["step", ["zoom"], "", 12.5, ["get", "name"]],
         "text-anchor": "top",
-        "text-offset": [0, 1.3],
+        "text-offset": [0, 1.6],
         "text-size": ["interpolate", ["linear"], ["zoom"], 12.5, 10.5, 16, 12.5],
         "text-optional": true,
         "text-allow-overlap": false,
@@ -183,7 +201,7 @@ export async function updateLandmarks(map: mapboxgl.Map, pois: PoiPoint[]): Prom
   const src = map.getSource(LANDMARKS_SOURCE) as mapboxgl.GeoJSONSource | undefined;
   src?.setData(toFeatureCollection(pois));
   const vis = pois.length ? "visible" : "none";
-  for (const id of [LANDMARKS_DOT, LANDMARKS_LAYER]) {
+  for (const id of [LANDMARKS_GLOW, LANDMARKS_DOT, LANDMARKS_LAYER]) {
     if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", vis);
   }
 }
