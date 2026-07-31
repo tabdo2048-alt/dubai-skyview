@@ -1179,6 +1179,13 @@ export function createWaterLayer(
   const FRAME_MS = 1000 / 30;
   let repaintScheduled = false;
   let lastRenderMs = 0;
+  // Stop the self-driven wave loop once the map has been idle for a moment, so
+  // the large water mesh isn't re-rendered at 30fps forever when nobody is
+  // interacting (a constant GPU/CPU drain that made even the idle page janky).
+  // Any camera move (onMove) restarts it; Mapbox-driven repaints still draw, so
+  // the water never blinks out.
+  let lastInteractionMs = performance.now();
+  const WAVE_IDLE_MS = 1500;
   const scheduleRepaint = () => {
     if (repaintScheduled || disposed) return;
     repaintScheduled = true;
@@ -1236,7 +1243,10 @@ export function createWaterLayer(
       // GPU the layer's next self-scheduled frame can lag, leaving the water
       // momentarily unpainted (the "disappears for part of a second" on zoom).
       // Pulsing a repaint on every move event + at moveend closes that gap.
-      onMove = () => scheduleRepaint();
+      onMove = () => {
+        lastInteractionMs = performance.now();
+        scheduleRepaint();
+      };
       map.on("move", onMove);
       map.on("zoom", onMove);
       map.on("moveend", onMove);
@@ -1480,7 +1490,9 @@ export function createWaterLayer(
         console.log("[Water] first frame rendered");
         firstFrameLogged = true;
       }
-      scheduleRepaint();
+      // Keep the wave loop alive only while interacting (and briefly after); when
+      // the map is idle, stop re-arming so the big mesh isn't redrawn forever.
+      if (performance.now() - lastInteractionMs < WAVE_IDLE_MS) scheduleRepaint();
     },
 
     onRemove() {

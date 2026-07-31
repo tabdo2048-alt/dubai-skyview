@@ -307,10 +307,10 @@ export function MapboxView({
     // viewport, so containing it is geometrically impossible — there the wide
     // native maxBounds is the only constraint, which is exactly the overview the
     // user asked to be able to reach.
-    // Re-entrancy guard: setCenter below fires another "move", which would call
-    // syncPanBounds again → setCenter → infinite recursion (stack overflow that
-    // kills the render loop and every custom layer). The flag makes the nudge
-    // fire once per user move.
+    // Re-entrancy guard: the easeTo pull-back below fires another "moveend", which
+    // would call syncPanBounds again. The flag makes the nudge fire once per user
+    // gesture; the follow-up moveend also finds the view already in-bounds, so it
+    // is a no-op either way (belt and suspenders against recursion).
     let clamping = false;
     const clampCenterToBounds = (b: typeof MAP_MAX_BOUNDS) => {
       const vb = map.getBounds();
@@ -334,7 +334,9 @@ export function MapboxView({
       }
       if (dLng || dLat) {
         const c = map.getCenter();
-        map.setCenter([c.lng + dLng, c.lat + dLat]);
+        // Gentle pull-back once the gesture ends (see the moveend registration
+        // below) rather than a per-frame setCenter, so panning stays smooth.
+        map.easeTo({ center: [c.lng + dLng, c.lat + dLat], duration: 220, essential: true });
       }
     };
 
@@ -354,7 +356,11 @@ export function MapboxView({
     }
 
     map.on("resize", setBoundsMinZoom);
-    map.on("move", syncPanBounds);
+    // Clamp only when the gesture SETTLES (moveend), not every move frame — the
+    // per-frame setCenter was rubber-banding the camera mid-drag and reading as
+    // stutter. The easeTo pull-back fires its own moveend, but by then the view
+    // is back inside the box so clampCenterToBounds is a no-op (no recursion).
+    map.on("moveend", syncPanBounds);
 
     map.on("style.load", () => {
       // Trigger a resize to ensure the map renders properly after style loads
