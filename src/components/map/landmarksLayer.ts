@@ -14,7 +14,21 @@ import { POI_TABLES } from "@/hooks/use-pois";
 import { GLYPH_PATHS, iconKeyFor } from "./poiIcons";
 
 export const LANDMARKS_SOURCE = "landmarks";
-export const LANDMARKS_LAYER = "landmarks-symbol";
+export const LANDMARKS_LAYER = "landmarks-symbol"; // icon + label
+export const LANDMARKS_DOT = "landmarks-dot"; // always-visible category dot (icon-independent base)
+
+// Per-category dot colour (matches POI_TABLES / CategoryPanel).
+const DOT_COLOR: mapboxgl.ExpressionSpecification = [
+  "match",
+  ["get", "category"],
+  "tourism",
+  "#f59e0b",
+  "schools",
+  "#3b82f6",
+  "hospitals",
+  "#ef4444",
+  "#f59e0b",
+];
 
 const CHIP = 44; // logical chip px (viewBox units)
 const PR = 2; // rasterise at 2x for crisp icons on retina
@@ -98,33 +112,56 @@ function ensureLayer(map: mapboxgl.Map): void {
   if (!map.getSource(LANDMARKS_SOURCE)) {
     map.addSource(LANDMARKS_SOURCE, { type: "geojson", data: EMPTY_FC });
   }
-  if (map.getLayer(LANDMARKS_LAYER)) return;
-  map.addLayer({
-    id: LANDMARKS_LAYER,
-    type: "symbol",
-    source: LANDMARKS_SOURCE,
-    minzoom: 10.5,
-    layout: {
-      "icon-image": ["get", "sprite"],
-      "icon-anchor": "bottom", // chip base sits on the coordinate
-      "icon-allow-overlap": true, // every place keeps its icon
-      "icon-size": ["interpolate", ["linear"], ["zoom"], 11, 0.62, 14, 0.85, 17, 1],
-      // labels appear one zoom step later than the chips, and drop first when crowded
-      "text-field": ["step", ["zoom"], "", 12.5, ["get", "name"]],
-      "text-anchor": "top",
-      "text-offset": [0, 0.5],
-      "text-size": ["interpolate", ["linear"], ["zoom"], 12.5, 10.5, 16, 12.5],
-      "text-optional": true,
-      "text-allow-overlap": false,
-      "text-max-width": 8,
-    },
-    paint: {
-      "text-color": "#ffffff",
-      "text-halo-color": "rgba(0,0,0,0.9)",
-      "text-halo-width": 1.4,
-      "text-halo-blur": 0.4,
-    },
-  });
+  // Base dot — pure GL, NO image/font dependency, so a place is ALWAYS visible at
+  // every zoom even if a glyph image hasn't registered. The glass icon draws on
+  // top of it.
+  if (!map.getLayer(LANDMARKS_DOT)) {
+    map.addLayer({
+      id: LANDMARKS_DOT,
+      type: "circle",
+      source: LANDMARKS_SOURCE,
+      minzoom: 0,
+      paint: {
+        "circle-color": DOT_COLOR,
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 3, 11, 5, 15, 7],
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 1.5,
+        "circle-opacity": 0.95,
+        "circle-pitch-alignment": "map",
+      },
+    });
+  }
+  // Icon + label on top. icon-anchor CENTER so the glass chip sits directly over
+  // the dot/coordinate (dot shows through as the anchor / icon fallback).
+  if (!map.getLayer(LANDMARKS_LAYER)) {
+    map.addLayer({
+      id: LANDMARKS_LAYER,
+      type: "symbol",
+      source: LANDMARKS_SOURCE,
+      minzoom: 0, // appear at ALL zooms
+      layout: {
+        "icon-image": ["get", "sprite"],
+        "icon-anchor": "center",
+        "icon-allow-overlap": true, // every place keeps its icon
+        "icon-optional": true,
+        "icon-size": ["interpolate", ["linear"], ["zoom"], 8, 0.5, 11, 0.62, 14, 0.85, 17, 1],
+        // labels appear a step later than the chips, and drop first when crowded
+        "text-field": ["step", ["zoom"], "", 12.5, ["get", "name"]],
+        "text-anchor": "top",
+        "text-offset": [0, 1.3],
+        "text-size": ["interpolate", ["linear"], ["zoom"], 12.5, 10.5, 16, 12.5],
+        "text-optional": true,
+        "text-allow-overlap": false,
+        "text-max-width": 8,
+      },
+      paint: {
+        "text-color": "#ffffff",
+        "text-halo-color": "rgba(0,0,0,0.9)",
+        "text-halo-width": 1.4,
+        "text-halo-blur": 0.4,
+      },
+    });
+  }
 }
 
 /**
@@ -135,28 +172,37 @@ function ensureLayer(map: mapboxgl.Map): void {
  * (see usePois), so the data itself is the category filter.
  */
 export async function updateLandmarks(map: mapboxgl.Map, pois: PoiPoint[]): Promise<void> {
-  if (!map.isStyleLoaded()) return; // addSource/addLayer require a loaded style
+  if (!map.isStyleLoaded()) {
+    // Style not ready yet (addSource/addLayer would throw) — retry once it settles
+    // so an early call from the effect isn't silently dropped.
+    map.once("idle", () => void updateLandmarks(map, pois));
+    return;
+  }
   await ensureIcons(map, pois);
   ensureLayer(map);
   const src = map.getSource(LANDMARKS_SOURCE) as mapboxgl.GeoJSONSource | undefined;
   src?.setData(toFeatureCollection(pois));
-  if (map.getLayer(LANDMARKS_LAYER)) {
-    map.setLayoutProperty(LANDMARKS_LAYER, "visibility", pois.length ? "visible" : "none");
+  const vis = pois.length ? "visible" : "none";
+  for (const id of [LANDMARKS_DOT, LANDMARKS_LAYER]) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", vis);
   }
 }
 
-/** Wire click (fly to the clicked place) + hover cursor on the landmark layer. */
+/** Wire click (fly to the clicked place) + hover cursor on both landmark layers. */
 export function addLandmarkInteractions(map: mapboxgl.Map): void {
-  map.on("click", LANDMARKS_LAYER, (e) => {
+  const flyToFeature = (e: mapboxgl.MapLayerMouseEvent) => {
     const f = e.features?.[0];
     if (!f || f.geometry.type !== "Point") return;
     const center = f.geometry.coordinates as [number, number];
     map.flyTo({ center, zoom: Math.max(map.getZoom(), 14.5), duration: 1000, essential: true });
-  });
-  map.on("mouseenter", LANDMARKS_LAYER, () => {
-    map.getCanvas().style.cursor = "pointer";
-  });
-  map.on("mouseleave", LANDMARKS_LAYER, () => {
-    map.getCanvas().style.cursor = "";
-  });
+  };
+  for (const id of [LANDMARKS_DOT, LANDMARKS_LAYER]) {
+    map.on("click", id, flyToFeature);
+    map.on("mouseenter", id, () => {
+      map.getCanvas().style.cursor = "pointer";
+    });
+    map.on("mouseleave", id, () => {
+      map.getCanvas().style.cursor = "";
+    });
+  }
 }
