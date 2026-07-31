@@ -32,7 +32,7 @@ import { useFiltersStore } from "@/store/filters";
 import { useProjects, filterProjects } from "@/hooks/use-projects";
 import { usePois, usePoiRealtime } from "@/hooks/use-pois";
 import { useZones, useZonesRealtime } from "@/hooks/use-zones";
-import { ZONE_ORDER, ZONE_CATEGORIES, type ZoneCategory } from "@/lib/zones";
+import { ZONE_ORDER, ZONE_CATEGORIES } from "@/lib/zones";
 import { DUBAI_CENTER, DEFAULT_ZOOM } from "@/lib/dubai";
 import { CATEGORY_COLORS } from "@/lib/metro";
 import { Button } from "@/components/ui/button";
@@ -86,7 +86,6 @@ export function MapContainer() {
   // OFF the last category leaves its stale rows in `poisData`. Force empty here so
   // the map actually clears the last category's markers.
   const pois = browsingPois ? poisData : [];
-  const EMPTY_ZONES = useMemo(() => new Set<ZoneCategory>(), []);
   usePoiRealtime();
   const { data: zones = [] } = useZones();
   useZonesRealtime();
@@ -112,11 +111,8 @@ export function MapContainer() {
   // Projects start hidden; only those the user has revealed (eye toggle) draw as
   // markers. Category mode hides all project markers regardless.
   const projectsToShow = useMemo(
-    () =>
-      browsingPois
-        ? []
-        : filtered.filter((p) => visibleProjectIds.has(p.id)),
-    [filtered, browsingPois, visibleProjectIds]
+    () => filtered.filter((p) => visibleProjectIds.has(p.id)),
+    [filtered, visibleProjectIds]
   );
   const selected =
     projectsToShow.find((p) => p.id === selectedProjectId) ??
@@ -165,14 +161,14 @@ export function MapContainer() {
                 pois={pois}
                 browsingPois={browsingPois}
                 zones={zones}
-                zoneCategories={browsingPois ? EMPTY_ZONES : zoneCategories}
+                zoneCategories={zoneCategories}
                 camera={camera}
                 onCameraChange={setCamera}
                 onReady={() => mapMode === "satellite" && setMapReady(true)}
                 active={mapMode === "satellite"}
-                metroMode={browsingPois ? false : metroMode}
-                trainMode={browsingPois ? false : trainMode}
-                roadsMode={browsingPois ? false : roadsMode}
+                metroMode={metroMode}
+                trainMode={trainMode}
+                roadsMode={roadsMode}
                 lightPreset={lightPreset}
                 mode="satellite"
               />
@@ -194,15 +190,15 @@ export function MapContainer() {
                 pois={pois}
                 browsingPois={browsingPois}
                 zones={zones}
-                zoneCategories={browsingPois ? EMPTY_ZONES : zoneCategories}
+                zoneCategories={zoneCategories}
                 camera={camera}
                 onCameraChange={setCamera}
                 onReady={() => mapMode === "3d" && setMapReady(true)}
                 onMapReady={waterEditorEnabled ? setEditorMap : undefined}
                 active={mapMode === "3d"}
-                metroMode={browsingPois ? false : metroMode}
-                trainMode={browsingPois ? false : trainMode}
-                roadsMode={browsingPois ? false : roadsMode}
+                metroMode={metroMode}
+                trainMode={trainMode}
+                roadsMode={roadsMode}
                 lightPreset={lightPreset}
                 mode="3d"
               />
