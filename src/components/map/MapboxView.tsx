@@ -17,8 +17,8 @@ import type { createStationModelLayer as CreateStationModelLayer } from "./Stati
 import { addRoadsLayers, setRoadsVisible } from "./roadsLayer";
 import type { ProjectWithRelations } from "@/lib/types";
 import { useFiltersStore } from "@/store/filters";
-import { POI_TABLES, type PoiPoint } from "@/hooks/use-pois";
-import { iconFor } from "./poiIcons";
+import { type PoiPoint } from "@/hooks/use-pois";
+import { updateLandmarks, addLandmarkInteractions } from "./landmarksLayer";
 import {
   ZONE_ORDER,
   ZONE_PULSE,
@@ -144,59 +144,7 @@ const PROJECT_MARKER_CSS = `
   box-shadow:0 2px 8px rgba(0,0,0,.35);transition:background .28s ease,color .28s ease}
 .proj-lm:hover .proj-nm{background:#fff}
 .proj-lm:has(.proj-pin.selected) .proj-nm{background:linear-gradient(158deg,#e9c766,#c19a3c);color:#1a1206}
-@media (prefers-reduced-motion:reduce){.proj-pin,.proj-nm{transition:none}}
-/* Landmark chips (tourism / education / hospitals).
-
-   PHANTOM-HIT-AREA IS STRUCTURALLY IMPOSSIBLE, by construction:
-   1. The marker ROOT (.lm) is pointer-events:none. Mapbox uses this element
-      directly as the marker node, so nothing in the subtree is interactive
-      unless it OPTS IN.
-   2. ONLY .lm-chip opts back in (pointer-events:auto). It is the sole hit
-      target and its box === the visible glass square (40x40). Every ring,
-      accent and shadow is drawn with box-shadow / an inset ::after — none of
-      which add to the hit box — so the interactive area can never be wider
-      than the pixels you see.
-   3. The label is absolutely positioned OUTSIDE the root's box (top:100%) and
-      is pointer-events:none, so it never inflates the root or catches events.
-   4. Pseudo-elements are pointer-events:none explicitly.
-   currentColor (set per-marker) is the category accent; the glyph is forced
-   dark for contrast on both bright satellite and dark 3D ground. */
-.lm{position:relative;pointer-events:none;transform:translateZ(0);transition:opacity .2s ease;
-  filter:drop-shadow(0 5px 11px rgba(0,0,0,.5))}
-/* Squared liquid-glass tile: rounded-square (reads as a square icon), frosted
-   translucent fill, crisp specular top edge, soft inner shade at the base. */
-.lm-chip{position:relative;display:grid;place-items:center;width:40px;height:40px;border-radius:10px;
-  background:linear-gradient(160deg,rgba(255,255,255,.82),rgba(233,239,246,.62));
-  backdrop-filter:blur(12px) saturate(1.6);-webkit-backdrop-filter:blur(12px) saturate(1.6);
-  border:1px solid rgba(255,255,255,.75);
-  /* specular highlight (top) + base shade + hairline dark edge so the glass
-     separates on bright desert; the LIFT is .lm's drop-shadow, not a spread. */
-  box-shadow:inset 0 1.5px 1px rgba(255,255,255,.95),inset 0 -7px 12px rgba(110,122,140,.2),0 0 0 .5px rgba(0,0,0,.16);
-  cursor:pointer;pointer-events:auto;transition:transform .18s cubic-bezier(.2,.9,.3,1),box-shadow .18s ease}
-/* Diagonal glass sheen — pure decoration, non-interactive. */
-.lm-chip::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
-  background:linear-gradient(150deg,rgba(255,255,255,.55) 0%,rgba(255,255,255,0) 42%);}
-/* Category accent: a thin ring drawn as an inset ::after — decorative, NEVER
-   part of the hit box. */
-.lm-chip::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
-  border:1.5px solid currentColor;opacity:.85}
-.lm-chip svg{position:relative;width:21px;height:21px;stroke-width:1.9px;color:#131920;
-  filter:drop-shadow(0 1px 0 rgba(255,255,255,.6))}
-.lm-chip:hover{transform:translateY(-2px) scale(1.1)}
-.lm-chip:hover::after{opacity:1;box-shadow:0 0 0 3px color-mix(in srgb,currentColor 24%,transparent)}
-/* Label: absolutely positioned below the chip so it never inflates the root box
-   or the interactive area. Never interactive. */
-.lm-label{position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:5px;
-  max-width:100px;text-align:center;pointer-events:none;
-  color:#fff;font:600 10.5px/1.2 'Work Sans',Arial,sans-serif;letter-spacing:.2px;
-  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
-  text-shadow:0 1px 2px rgba(0,0,0,.95),0 0 7px rgba(0,0,0,.75);transition:opacity .2s ease}
-/* Zoom gating via a data attribute on the map container (no per-marker DOM writes).
-   hidden → nothing; chip → chip only; full → chip + label. */
-[data-lm-tier="hidden"] .lm{opacity:0}
-[data-lm-tier="hidden"] .lm-chip{pointer-events:none}
-[data-lm-tier="chip"] .lm-label{opacity:0}
-@media (prefers-reduced-motion:reduce){.lm,.lm-chip,.lm-label{transition:none}}`;
+@media (prefers-reduced-motion:reduce){.proj-pin,.proj-nm{transition:none}}`;
 
 function ensureProjectMarkerStyles() {
   if (typeof document === "undefined" || document.getElementById("proj-marker-style")) return;
@@ -230,7 +178,6 @@ export function MapboxView({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<Map<string, mapboxgl.Marker>>(new globalThis.Map());
-  const poiMarkersRef = useRef<Map<string, mapboxgl.Marker>>(new globalThis.Map());
   const trainMarkersRef = useRef<Map<string, mapboxgl.Marker>>(new globalThis.Map());
   const pulseMarkersRef = useRef<mapboxgl.Marker[]>([]);
   const metroFrameRef = useRef<Map<string, number>>(new globalThis.Map());
@@ -267,6 +214,11 @@ export function MapboxView({
   // layers are scheduled after that so the map appears quickly.
   const [mapReady, setMapReady] = useState(false);
   const { selectedProjectId, setSelectedProjectId } = useFiltersStore();
+  // Latest landmark POIs, so the style.load/deferred-layer install (which runs
+  // outside React) always reads the current data. Click/hover wired once.
+  const poisRef = useRef(pois);
+  poisRef.current = pois;
+  const landmarkInteractionsRef = useRef(false);
 
   useEffect(() => {
     if (!containerRef.current || !accessToken) return;
@@ -744,6 +696,19 @@ export function MapboxView({
       } catch (err) {
         console.error("Failed to add deferred metro/train/roads layers", err);
       }
+    });
+
+    // Landmark places (tourism / schools / hospitals) symbol layer. Runs here so
+    // it (re)registers its icon images + source + layer on every style.load
+    // (deferredLayersScheduledRef resets on style.load), and reads the latest
+    // POIs via poisRef. Click/hover are wired once (they survive style reloads).
+    schedule(120, () => {
+      void updateLandmarks(map, poisRef.current).then(() => {
+        if (!landmarkInteractionsRef.current) {
+          addLandmarkInteractions(map);
+          landmarkInteractionsRef.current = true;
+        }
+      });
     });
 
     // OPTIMIZED: Play animations in parallel with water loading
@@ -1673,101 +1638,18 @@ export function MapboxView({
     }
   }, [selectedProjectId]);
 
-  // POI markers (tourism / schools / hospitals). `pois` holds every point in the
-  // active categories, each tagged with its own `category`, so markers stay
-  // colour-coded when several categories are shown together. Keyed by
-  // category:id so ids from different tables never clash in the cache.
+  // Landmark places (tourism / schools / hospitals) — ONE Mapbox symbol layer.
+  // `pois` already holds only the active categories, so refreshing the layer's
+  // data IS the toggle: empty pois → layer hidden, no orphaned nodes. Icon+label
+  // are one feature (see landmarksLayer), so they can never detach and clicks
+  // resolve to the feature's own coordinates. Zoom gating is expression-driven in
+  // the layer (icons ~z11, labels ~z12.5). The initial install also runs from the
+  // deferred-layer scheduler on style.load; this effect keeps it in sync.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
-    ensureProjectMarkerStyles();
-    const existing = poiMarkersRef.current;
-    const seen = new Set<string>();
-
-    for (const poi of pois) {
-      const cat = poi.category;
-      const key = `${cat}:${poi.id}`;
-      seen.add(key);
-      if (existing.has(key)) continue;
-      // Phantom-proof structure (see .lm CSS): the ROOT is pointer-events:none,
-      // ONLY the chip is interactive, and the label is absolutely positioned +
-      // never interactive — so empty space beside a chip can't trigger it.
-      const root = document.createElement("div");
-      root.className = "lm";
-      root.style.color = POI_TABLES[cat].color; // currentColor = category ring colour
-
-      const chip = document.createElement("div");
-      chip.className = "lm-chip";
-      chip.innerHTML = iconFor(poi); // constant line-art SVG string — no user data
-      chip.title = poi.name; // native tooltip on hover
-      chip.onclick = () => {
-        map.flyTo({
-          center: [poi.lng, poi.lat],
-          zoom: Math.max(map.getZoom(), 14.5),
-          duration: 1000,
-          essential: true,
-        });
-      };
-
-      const label = document.createElement("span");
-      label.className = "lm-label";
-      label.textContent = poi.name; // textContent — never inject as HTML
-      root.append(chip, label);
-
-      // Bottom-centre anchor: the chip base sits on the coordinate; the label
-      // hangs below (absolute) without shifting the geographic anchor.
-      const m = new mapboxgl.Marker({ element: root, anchor: "bottom" })
-        .setLngLat([poi.lng, poi.lat])
-        .addTo(map);
-      existing.set(key, m);
-    }
-    for (const [id, marker] of existing.entries()) {
-      if (!seen.has(id)) {
-        marker.remove();
-        existing.delete(id);
-      }
-    }
-    // Stale-node guard (NON-NEGOTIABLE #1): a phantom hover is often a dead
-    // marker node left in the DOM. Assert the DOM holds no more `.lm` nodes than
-    // live landmarks, in dev only.
-    if (import.meta.env.DEV) {
-      const domCount = document.querySelectorAll(".lm").length;
-      if (domCount > seen.size) {
-        console.error(`[landmarks] ${domCount} .lm nodes in DOM but only ${seen.size} landmarks — stale markers leaked`);
-      }
-    }
-  }, [pois]);
-
-  // Zoom-gate the landmark markers via a single data attribute on the map
-  // container, so all markers show/hide through CSS instead of per-marker DOM
-  // writes: hidden when zoomed way out, badge-only at city zoom, name added
-  // once close. The tier changes at most twice per zoom gesture.
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const apply = () => {
-      const z = map.getZoom();
-      // Browse mode (a category toggled on): never fully hide — the user asked
-      // for these places, and fitBounds can land below the hidden threshold.
-      // chip = chip only; full = chip + label.
-      const tier = browsingPois
-        ? z < 12.75
-          ? "chip"
-          : "full"
-        : z < 11
-          ? "hidden"
-          : z < 12.75
-            ? "chip"
-            : "full";
-      const c = map.getContainer();
-      if (c.dataset.lmTier !== tier) c.dataset.lmTier = tier;
-    };
-    apply();
-    map.on("zoom", apply);
-    return () => {
-      map.off("zoom", apply);
-    };
-  }, [mapReady, browsingPois]);
+    if (!map || !mapReady) return;
+    void updateLandmarks(map, pois);
+  }, [pois, mapReady]);
 
   // Zone spotlight (RY / STR / HH). Layers are added once; toggling a category
   // drives an inverted dim-mask (darkens everything but the zones) + a color
