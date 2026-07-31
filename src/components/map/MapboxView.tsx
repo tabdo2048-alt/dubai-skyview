@@ -163,23 +163,27 @@ const PROJECT_MARKER_CSS = `
    dark for contrast on both bright satellite and dark 3D ground. */
 .lm{position:relative;pointer-events:none;transform:translateZ(0);transition:opacity .2s ease;
   filter:drop-shadow(0 5px 11px rgba(0,0,0,.5))}
-.lm-chip{position:relative;display:grid;place-items:center;width:40px;height:40px;border-radius:13px;
-  background:linear-gradient(158deg,rgba(255,255,255,.9),rgba(238,243,248,.78));
-  backdrop-filter:blur(11px) saturate(1.35);-webkit-backdrop-filter:blur(11px) saturate(1.35);
-  border:1px solid rgba(255,255,255,.92);
-  /* glossy top highlight + a hairline dark edge so the glass reads on bright
-     desert; the LIFT comes from .lm's drop-shadow, not from a wide spread. */
-  box-shadow:inset 0 1px 1.5px rgba(255,255,255,.95),inset 0 -6px 10px rgba(120,130,145,.16),0 0 0 .5px rgba(0,0,0,.14);
+/* Squared liquid-glass tile: rounded-square (reads as a square icon), frosted
+   translucent fill, crisp specular top edge, soft inner shade at the base. */
+.lm-chip{position:relative;display:grid;place-items:center;width:40px;height:40px;border-radius:10px;
+  background:linear-gradient(160deg,rgba(255,255,255,.82),rgba(233,239,246,.62));
+  backdrop-filter:blur(12px) saturate(1.6);-webkit-backdrop-filter:blur(12px) saturate(1.6);
+  border:1px solid rgba(255,255,255,.75);
+  /* specular highlight (top) + base shade + hairline dark edge so the glass
+     separates on bright desert; the LIFT is .lm's drop-shadow, not a spread. */
+  box-shadow:inset 0 1.5px 1px rgba(255,255,255,.95),inset 0 -7px 12px rgba(110,122,140,.2),0 0 0 .5px rgba(0,0,0,.16);
   cursor:pointer;pointer-events:auto;transition:transform .18s cubic-bezier(.2,.9,.3,1),box-shadow .18s ease}
-/* Category accent: a 2px ring drawn as an inset ::after so it is purely
-   decorative and NEVER part of the hit box. */
+/* Diagonal glass sheen — pure decoration, non-interactive. */
+.lm-chip::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(150deg,rgba(255,255,255,.55) 0%,rgba(255,255,255,0) 42%);}
+/* Category accent: a thin ring drawn as an inset ::after — decorative, NEVER
+   part of the hit box. */
 .lm-chip::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
-  border:2px solid currentColor;opacity:.9;
-  box-shadow:0 0 0 .5px color-mix(in srgb,currentColor 45%,transparent)}
-.lm-chip svg{width:21px;height:21px;stroke-width:1.85px;color:#141a20;
-  filter:drop-shadow(0 1px 0 rgba(255,255,255,.55))}
+  border:1.5px solid currentColor;opacity:.85}
+.lm-chip svg{position:relative;width:21px;height:21px;stroke-width:1.9px;color:#131920;
+  filter:drop-shadow(0 1px 0 rgba(255,255,255,.6))}
 .lm-chip:hover{transform:translateY(-2px) scale(1.1)}
-.lm-chip:hover::after{opacity:1;box-shadow:0 0 0 4px color-mix(in srgb,currentColor 26%,transparent)}
+.lm-chip:hover::after{opacity:1;box-shadow:0 0 0 3px color-mix(in srgb,currentColor 24%,transparent)}
 /* Label: absolutely positioned below the chip so it never inflates the root box
    or the interactive area. Never interactive. */
 .lm-label{position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:5px;
