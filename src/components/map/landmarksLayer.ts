@@ -17,6 +17,13 @@ export const LANDMARKS_SOURCE = "landmarks";
 export const LANDMARKS_LAYER = "landmarks-symbol"; // icon + label
 export const LANDMARKS_DOT = "landmarks-dot"; // always-visible category dot (icon-independent base)
 export const LANDMARKS_GLOW = "landmarks-glow"; // soft colour halo under the dot
+export const LANDMARKS_CLUSTER = "landmarks-cluster"; // grouped-count bubble at low zoom
+export const LANDMARKS_CLUSTER_COUNT = "landmarks-cluster-count"; // count label on the bubble
+
+// Only render the per-point layers for UNclustered features; the cluster layers
+// render only the aggregated bubbles. Mutually exclusive, so they never overlap.
+const UNCLUSTERED: mapboxgl.FilterSpecification = ["!", ["has", "point_count"]];
+const CLUSTERED: mapboxgl.FilterSpecification = ["has", "point_count"];
 
 // Per-category dot colour (matches POI_TABLES / CategoryPanel).
 const DOT_COLOR: mapboxgl.ExpressionSpecification = [
@@ -112,7 +119,15 @@ function toFeatureCollection(pois: PoiPoint[]): GeoJSON.FeatureCollection {
 
 function ensureLayer(map: mapboxgl.Map): void {
   if (!map.getSource(LANDMARKS_SOURCE)) {
-    map.addSource(LANDMARKS_SOURCE, { type: "geojson", data: EMPTY_FC });
+    // Cluster the dense places (schools especially) at low zoom into count
+    // bubbles; clusters break apart by z12, just before the icons/labels appear.
+    map.addSource(LANDMARKS_SOURCE, {
+      type: "geojson",
+      data: EMPTY_FC,
+      cluster: true,
+      clusterMaxZoom: 12,
+      clusterRadius: 46,
+    });
   }
   // Soft colour halo under the dot — gives the point a glowing "beacon" look
   // instead of a flat circle. Pure GL, no dependencies.
@@ -122,6 +137,7 @@ function ensureLayer(map: mapboxgl.Map): void {
       type: "circle",
       source: LANDMARKS_SOURCE,
       minzoom: 0,
+      filter: UNCLUSTERED,
       paint: {
         "circle-color": DOT_COLOR,
         "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 7, 11, 12, 15, 16],
@@ -140,6 +156,7 @@ function ensureLayer(map: mapboxgl.Map): void {
       type: "circle",
       source: LANDMARKS_SOURCE,
       minzoom: 0,
+      filter: UNCLUSTERED,
       paint: {
         "circle-color": DOT_COLOR,
         "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 3.5, 11, 5.5, 15, 7.5],
@@ -158,6 +175,7 @@ function ensureLayer(map: mapboxgl.Map): void {
       type: "symbol",
       source: LANDMARKS_SOURCE,
       minzoom: 0, // appear at ALL zooms
+      filter: UNCLUSTERED,
       layout: {
         "icon-image": ["get", "sprite"],
         "icon-anchor": "center",
@@ -186,6 +204,38 @@ function ensureLayer(map: mapboxgl.Map): void {
       },
     });
   }
+  // Cluster bubble — a gold count circle, grown by how many places it holds.
+  if (!map.getLayer(LANDMARKS_CLUSTER)) {
+    map.addLayer({
+      id: LANDMARKS_CLUSTER,
+      type: "circle",
+      source: LANDMARKS_SOURCE,
+      filter: CLUSTERED,
+      paint: {
+        "circle-color": "#c9a84c",
+        "circle-opacity": 0.92,
+        "circle-radius": ["step", ["get", "point_count"], 14, 10, 18, 30, 22, 80, 28],
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 2,
+        "circle-stroke-opacity": 0.9,
+      },
+    });
+  }
+  if (!map.getLayer(LANDMARKS_CLUSTER_COUNT)) {
+    map.addLayer({
+      id: LANDMARKS_CLUSTER_COUNT,
+      type: "symbol",
+      source: LANDMARKS_SOURCE,
+      filter: CLUSTERED,
+      layout: {
+        "text-field": ["get", "point_count_abbreviated"],
+        "text-size": ["step", ["get", "point_count"], 12, 30, 13, 80, 15],
+        "text-allow-overlap": true,
+        "text-ignore-placement": true,
+      },
+      paint: { "text-color": "#1a1206" },
+    });
+  }
 }
 
 /**
@@ -207,7 +257,7 @@ export async function updateLandmarks(map: mapboxgl.Map, pois: PoiPoint[]): Prom
   const src = map.getSource(LANDMARKS_SOURCE) as mapboxgl.GeoJSONSource | undefined;
   src?.setData(toFeatureCollection(pois));
   const vis = pois.length ? "visible" : "none";
-  for (const id of [LANDMARKS_GLOW, LANDMARKS_DOT, LANDMARKS_LAYER]) {
+  for (const id of [LANDMARKS_GLOW, LANDMARKS_DOT, LANDMARKS_LAYER, LANDMARKS_CLUSTER, LANDMARKS_CLUSTER_COUNT]) {
     if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", vis);
   }
 }
@@ -233,7 +283,8 @@ function ensureLandmarkPopupStyles(): void {
 .lm-pop-body{padding:9px 11px 11px}
 .lm-pop-name{font-weight:700;font-size:13px;color:#12181f;line-height:1.25}
 .lm-pop-tag{margin-top:5px;font-size:10px;font-weight:700;letter-spacing:.4px;text-transform:uppercase}
-.lm-pop-actions{display:flex;gap:6px;margin-top:9px}
+.lm-pop-desc{margin-top:7px;font-size:11px;line-height:1.4;color:#3a4653}
+.lm-pop-actions{display:flex;gap:6px;margin-top:10px}
 .lm-pop-btn{flex:1;text-align:center;padding:6px 8px;border-radius:8px;font-size:11px;font-weight:700;
   text-decoration:none;background:#12181f;color:#fff;border:1px solid rgba(255,255,255,.14)}
 .lm-pop-btn:hover{background:#1c2733}`;
@@ -252,7 +303,23 @@ function actionButton(label: string, href: string, extraClass = ""): HTMLAnchorE
   return a;
 }
 
-function buildPopupContent(props: Record<string, unknown>, coords: [number, number]): HTMLElement {
+// Great-circle distance in km between two [lng,lat] points.
+function kmBetween(a: [number, number], b: [number, number]): number {
+  const R = 6371;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(b[1] - a[1]);
+  const dLng = toRad(b[0] - a[0]);
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(a[1])) * Math.cos(toRad(b[1])) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+
+function buildPopupContent(
+  props: Record<string, unknown>,
+  coords: [number, number],
+  mapCenter: [number, number],
+): HTMLElement {
   const cat = String(props.category) as PoiCategory;
   const color = POI_TABLES[cat]?.color ?? "#f59e0b";
   const placeName = String(props.name ?? "");
@@ -265,6 +332,7 @@ function buildPopupContent(props: Record<string, unknown>, coords: [number, numb
     img.className = "lm-pop-img";
     img.loading = "lazy";
     img.src = image;
+    img.onerror = () => img.remove(); // drop broken/placeholder images cleanly
     root.appendChild(img);
   }
   const body = document.createElement("div");
@@ -272,43 +340,75 @@ function buildPopupContent(props: Record<string, unknown>, coords: [number, numb
   const name = document.createElement("div");
   name.className = "lm-pop-name";
   name.textContent = placeName;
+  // Meta line: category + distance from the current view centre.
+  const km = kmBetween(mapCenter, [lng, lat]);
+  const distStr = km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`;
   const tag = document.createElement("div");
   tag.className = "lm-pop-tag";
-  tag.textContent = CAT_LABEL[cat] ?? cat;
+  tag.textContent = `${CAT_LABEL[cat] ?? cat} · ${distStr} away`;
   tag.style.color = color;
+  body.append(name, tag);
+  // Optional description (shown only if the row carries one — forward-compatible).
+  const desc = typeof props.description === "string" ? props.description.trim() : "";
+  if (desc) {
+    const d = document.createElement("div");
+    d.className = "lm-pop-desc";
+    d.textContent = desc;
+    body.appendChild(d);
+  }
   // Directions (Google Maps) — opens in a new tab.
   const actions = document.createElement("div");
   actions.className = "lm-pop-actions";
   actions.append(
     actionButton("Directions", `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`),
   );
-  body.append(name, tag, actions);
+  body.appendChild(actions);
   root.appendChild(body);
   return root;
 }
 
-/** Wire click (info popup + fly to the place) + hover cursor on both landmark layers. */
+/** Wire click (info popup + fly to the place, or expand a cluster) + hover cursor. */
 export function addLandmarkInteractions(map: mapboxgl.Map): void {
   ensureLandmarkPopupStyles();
   let popup: mapboxgl.Popup | null = null;
-  const onClick = (e: mapboxgl.MapLayerMouseEvent) => {
+
+  // A place: open its popup + fly in.
+  const onPlaceClick = (e: mapboxgl.MapLayerMouseEvent) => {
     const f = e.features?.[0];
     if (!f || f.geometry.type !== "Point") return;
     const center = f.geometry.coordinates as [number, number];
+    const c = map.getCenter();
     popup?.remove(); // one popup at a time
     popup = new mapboxgl.Popup({ offset: 16, closeButton: true, maxWidth: "240px", className: "lm-popup" })
       .setLngLat(center)
-      .setDOMContent(buildPopupContent(f.properties ?? {}, center))
+      .setDOMContent(buildPopupContent(f.properties ?? {}, center, [c.lng, c.lat]))
       .addTo(map);
     map.flyTo({ center, zoom: Math.max(map.getZoom(), 14.5), duration: 1000, essential: true });
   };
+
+  // A cluster: zoom to the level where it breaks apart, centred on it.
+  const onClusterClick = (e: mapboxgl.MapLayerMouseEvent) => {
+    const f = e.features?.[0];
+    if (!f || f.geometry.type !== "Point") return;
+    const clusterId = f.properties?.cluster_id;
+    const src = map.getSource(LANDMARKS_SOURCE) as mapboxgl.GeoJSONSource | undefined;
+    if (clusterId == null || !src) return;
+    const center = f.geometry.coordinates as [number, number];
+    src.getClusterExpansionZoom(clusterId as number, (err, zoom) => {
+      if (err || zoom == null) return;
+      map.easeTo({ center, zoom: zoom + 0.2, duration: 700, essential: true });
+    });
+  };
+
+  const setCursor = (v: string) => () => {
+    map.getCanvas().style.cursor = v;
+  };
   for (const id of [LANDMARKS_DOT, LANDMARKS_LAYER]) {
-    map.on("click", id, onClick);
-    map.on("mouseenter", id, () => {
-      map.getCanvas().style.cursor = "pointer";
-    });
-    map.on("mouseleave", id, () => {
-      map.getCanvas().style.cursor = "";
-    });
+    map.on("click", id, onPlaceClick);
+    map.on("mouseenter", id, setCursor("pointer"));
+    map.on("mouseleave", id, setCursor(""));
   }
+  map.on("click", LANDMARKS_CLUSTER, onClusterClick);
+  map.on("mouseenter", LANDMARKS_CLUSTER, setCursor("pointer"));
+  map.on("mouseleave", LANDMARKS_CLUSTER, setCursor(""));
 }
