@@ -283,7 +283,9 @@ export function MapboxView({
       const tight = fitZoomFor(MAP_MAX_BOUNDS); // pan-clamp engage floor (Ghantoot→UAQ box)
       const wide = fitZoomFor(ZOOM_OUT_BOUNDS); // min-zoom floor (how far you can pull back)
       const open = fitZoomFor(DUBAI_BOUNDS); // OPENING frame — Dubai only, not the whole region
-      if (typeof wide?.zoom === "number") map.setMinZoom(wide.zoom);
+      // +1: hold the zoom-out floor one level tighter than the full ZOOM_OUT_BOUNDS
+      // fit, so the user can't pull back quite as far.
+      if (typeof wide?.zoom === "number") map.setMinZoom(wide.zoom + 1);
       if (typeof tight?.zoom === "number") tightMinZoomRef.current = tight.zoom;
       if (open && typeof open.zoom === "number") {
         openZoomRef.current = open.zoom;
