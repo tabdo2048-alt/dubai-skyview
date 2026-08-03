@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
-import { DUBAI_BOUNDS, MAP_MAX_BOUNDS, ZOOM_OUT_BOUNDS, DEFAULT_PITCH, DEFAULT_BEARING } from "@/lib/dubai";
+import { DUBAI_BOUNDS, MAP_MAX_BOUNDS, ZOOM_OUT_BOUNDS, DEFAULT_PITCH, DEFAULT_BEARING, DUBAI_CENTER, DEFAULT_ZOOM } from "@/lib/dubai";
 import {
   METRO_LINES,
   TRAIN_LINES,
@@ -72,6 +72,8 @@ type Props = {
   pois?: PoiPoint[];
   /** True while any POI category is on — the map is in clean "browse places" mode. */
   browsingPois?: boolean;
+  /** Bump to recenter this map on the Dubai overview (from the Recenter button). */
+  recenterNonce?: number;
   /** All zones (any category); the map only draws the categories in `zoneCategories`. */
   zones?: ZoneRow[];
   /** Which RY/STR/HH highlight buttons are currently on. */
@@ -161,7 +163,7 @@ export function MapboxView({
   accessToken,
   projects,
   pois = [],
-  browsingPois,
+  recenterNonce = 0,
   zones = [],
   zoneCategories,
   camera,
@@ -204,8 +206,11 @@ export function MapboxView({
   const metroModeRef = useRef(metroMode);
   const trainModeRef = useRef(trainMode);
   const roadsModeRef = useRef(roadsMode);
-  // Per-network station-reveal thresholds (0 = none revealed, 1 = all).
-  const revealThreshRef = useRef<{ metro: number; train: number }>({ metro: 0, train: 0 });
+  // Per-network station-reveal thresholds (-1 = OFF / none revealed, 1 = all).
+  // Must be < 0, not 0: stations at progress 0 (or missing from STATION_PROGRESS,
+  // e.g. the tram's Al Sufouh) would otherwise satisfy `progress <= 0` and stay
+  // visible when the network is off.
+  const revealThreshRef = useRef<{ metro: number; train: number }>({ metro: -1, train: -1 });
   // Track whether this map instance is the active one and whether the tab is visible.
   // Threaded into custom layers so they can gate their render loops.
   const isActiveRef = useRef(active);
@@ -1234,7 +1239,7 @@ export function MapboxView({
         map.setLayoutProperty(`${srcId}-guide`, "visibility", "none");
       }
     }
-    revealThreshRef.current[network] = 0;
+    revealThreshRef.current[network] = -1; // fully hide (incl. progress-0 stations)
     applyStationFilters(map);
   }
 
@@ -1707,22 +1712,21 @@ export function MapboxView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zones, activeZoneKey, mapReady]);
 
-  // Cinematic fit-to-bounds when a POI category is switched on — frames all of
-  // that category's points. Only the active map instance moves its camera.
+  // Recenter on the Dubai overview when the Recenter button bumps recenterNonce.
+  // Only the active map instance moves. nonce 0 is the initial value → ignored.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !active || !browsingPois || pois.length === 0) return;
-    const bounds = new mapboxgl.LngLatBounds();
-    for (const p of pois) bounds.extend([p.lng, p.lat]);
-    map.fitBounds(bounds, {
-      padding: 90,
-      maxZoom: 13.5,
-      pitch: mode === "3d" ? 40 : 0,
-      duration: 1300,
+    if (!map || !active || recenterNonce === 0) return;
+    map.easeTo({
+      center: [DUBAI_CENTER.lng, DUBAI_CENTER.lat],
+      zoom: DEFAULT_ZOOM,
+      pitch: mode === "3d" ? DEFAULT_PITCH : 0,
+      bearing: DEFAULT_BEARING,
+      duration: 1100,
       essential: true,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [browsingPois, pois, active]);
+  }, [recenterNonce]);
 
   // Zoom-in fly to the selected project (sidebar or marker click). Only the
   // active map instance animates.

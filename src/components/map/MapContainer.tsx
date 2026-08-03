@@ -5,19 +5,19 @@ import {
   Satellite,
   Loader2,
   TrainFront,
-  TramFront,
   Route,
   Sunrise,
   Sun,
   Sunset,
   Moon,
   ChevronDown,
-  Waves,
+  LocateFixed,
 } from "lucide-react";
 import type mapboxgl from "mapbox-gl";
 import { MapboxView, type LightPreset } from "./MapboxView";
 import { CloudLayer } from "./CloudLayer";
 import { CategoryPanel } from "./CategoryPanel";
+import { LayersMenu } from "./LayersMenu";
 import { ProjectPopup } from "./ProjectPopup";
 // Dev-only editor. Lazy so its static WaterLayer import (Three.js + the ~1.6 MB
 // coastline) never enters the production bundle and doesn't defeat the dynamic
@@ -32,10 +32,8 @@ import { useFiltersStore } from "@/store/filters";
 import { useProjects, filterProjects } from "@/hooks/use-projects";
 import { usePois, usePoiRealtime } from "@/hooks/use-pois";
 import { useZones, useZonesRealtime } from "@/hooks/use-zones";
-import { ZONE_ORDER, ZONE_CATEGORIES } from "@/lib/zones";
 import { DUBAI_CENTER, DEFAULT_ZOOM } from "@/lib/dubai";
 import { CATEGORY_COLORS } from "@/lib/metro";
-import { Button } from "@/components/ui/button";
 
 const LIGHT_PRESETS: { value: LightPreset; label: string; Icon: typeof Sun }[] = [
   { value: "dawn", label: "Dawn", Icon: Sunrise },
@@ -64,11 +62,8 @@ export function MapContainer() {
     mapMode,
     setMapMode,
     metroMode,
-    setMetroMode,
     trainMode,
-    setTrainMode,
     roadsMode,
-    setRoadsMode,
     lightPreset,
     setLightPreset,
     selectedProjectId,
@@ -76,7 +71,6 @@ export function MapContainer() {
     activeCategories,
     visibleProjectIds,
     zoneCategories,
-    toggleZoneCategory,
   } = useFiltersStore();
   const { data: poisData = [] } = usePois(activeCategories);
   // While browsing places, the map goes clean: projects, metro/train/roads and
@@ -106,6 +100,8 @@ export function MapContainer() {
   // only) can flip it on/off for the rest of the session without a console command.
   const [waterEditorEnabled, setWaterEditorEnabled] = useState(() => shouldShowWaterDebugEditor());
   const [editorMap, setEditorMap] = useState<mapboxgl.Map | null>(null);
+  // Bumped by the Recenter button to ease the active map back to the Dubai overview.
+  const [recenterNonce, setRecenterNonce] = useState(0);
 
   const filtered = useMemo(() => filterProjects(projects, filters), [projects, filters]);
   // Projects start hidden; only those the user has revealed (eye toggle) draw as
@@ -159,6 +155,7 @@ export function MapContainer() {
                 accessToken={cfg.mapboxAccessToken}
                 projects={projectsToShow}
                 pois={pois}
+                recenterNonce={recenterNonce}
                 browsingPois={browsingPois}
                 zones={zones}
                 zoneCategories={zoneCategories}
@@ -188,6 +185,7 @@ export function MapContainer() {
                 accessToken={cfg.mapboxAccessToken}
                 projects={projectsToShow}
                 pois={pois}
+                recenterNonce={recenterNonce}
                 browsingPois={browsingPois}
                 zones={zones}
                 zoneCategories={zoneCategories}
@@ -238,74 +236,37 @@ export function MapContainer() {
         )}
       </AnimatePresence>
 
-      {/* Mode toggle */}
-      <div className="pointer-events-auto absolute right-4 top-4 z-20 flex flex-wrap justify-end gap-1.5">
-        <Button
-          size="sm"
-          onClick={() => switchMode("satellite")}
-          className={`glass gold-hairline h-8 rounded-full px-2.5 text-xs ${mapMode === "satellite" ? "bg-gold text-gold-foreground" : "text-cream"}`}
-        >
-          <Satellite className="mr-1 h-3.5 w-3.5" /> Satellite
-        </Button>
-        <Button
-          size="sm"
-          onClick={() => switchMode("3d")}
-          className={`glass gold-hairline h-8 rounded-full px-2.5 text-xs ${mapMode === "3d" ? "bg-gold text-gold-foreground" : "text-cream"}`}
-        >
-          <Globe2 className="mr-1 h-3.5 w-3.5" /> 3D View
-        </Button>
-        <Button
-          size="sm"
-          onClick={() => setMetroMode(!metroMode)}
-          className={`glass gold-hairline h-8 rounded-full px-2.5 text-xs ${metroMode ? "bg-gold text-gold-foreground" : "text-cream"}`}
-        >
-          <TrainFront className="mr-1 h-3.5 w-3.5" /> Metro
-        </Button>
-        <Button
-          size="sm"
-          onClick={() => setTrainMode(!trainMode)}
-          className={`glass gold-hairline h-8 rounded-full px-2.5 text-xs ${trainMode ? "bg-gold text-gold-foreground" : "text-cream"}`}
-        >
-          <TramFront className="mr-1 h-3.5 w-3.5" /> Train
-        </Button>
-        <Button
-          size="sm"
-          onClick={() => setRoadsMode(!roadsMode)}
-          className={`glass gold-hairline h-8 rounded-full px-2.5 text-xs ${roadsMode ? "bg-gold text-gold-foreground" : "text-cream"}`}
-        >
-          <Route className="mr-1 h-3.5 w-3.5" /> Roads
-        </Button>
-        {/* Zone highlight toggles — RY / STR / HH investment areas. Independent;
-            each lights its saved zones with its own colored border. */}
-        {ZONE_ORDER.map((cat) => {
-          const on = zoneCategories.has(cat);
-          const { color, label, code } = ZONE_CATEGORIES[cat];
-          return (
-            <Button
-              key={cat}
-              size="sm"
-              onClick={() => toggleZoneCategory(cat)}
-              title={label}
-              className={`glass gold-hairline h-8 rounded-full px-2.5 text-xs ${on ? "bg-gold text-gold-foreground" : "text-cream"}`}
-            >
-              <span
-                className="mr-1 inline-block h-2.5 w-2.5 rounded-full"
-                style={{ background: color, boxShadow: `0 0 6px ${color}` }}
-              />
-              {code}
-            </Button>
-          );
-        })}
-        {/* Dev-only: toggles the Water Debug Editor panel without a console command. */}
-        {import.meta.env.DEV && (
-          <Button
-            size="sm"
-            onClick={() => setWaterEditorEnabled((on) => !on)}
-            className={`glass gold-hairline h-8 rounded-full px-2.5 text-xs ${waterEditorEnabled ? "bg-gold text-gold-foreground" : "text-cream"}`}
+      {/* View switch (Satellite / 3D) + consolidated Layers menu */}
+      <div className="pointer-events-auto absolute right-4 top-4 z-20 flex items-center gap-1.5">
+        <div className="glass gold-hairline flex items-center gap-0.5 rounded-full p-0.5">
+          <button
+            type="button"
+            onClick={() => switchMode("satellite")}
+            className={`flex h-7 items-center gap-1 rounded-full px-2.5 text-xs transition-colors ${mapMode === "satellite" ? "bg-gold text-gold-foreground" : "text-cream hover:bg-white/10"}`}
           >
-            <Waves className="mr-1 h-3.5 w-3.5" /> Water Editor
-          </Button>
-        )}
+            <Satellite className="h-3.5 w-3.5" /> Satellite
+          </button>
+          <button
+            type="button"
+            onClick={() => switchMode("3d")}
+            className={`flex h-7 items-center gap-1 rounded-full px-2.5 text-xs transition-colors ${mapMode === "3d" ? "bg-gold text-gold-foreground" : "text-cream hover:bg-white/10"}`}
+          >
+            <Globe2 className="h-3.5 w-3.5" /> 3D
+          </button>
+        </div>
+        <LayersMenu
+          showWaterEditor={import.meta.env.DEV}
+          waterEditor={waterEditorEnabled}
+          onToggleWaterEditor={() => setWaterEditorEnabled((on) => !on)}
+        />
+        <button
+          type="button"
+          title="Recenter on Dubai"
+          onClick={() => setRecenterNonce((n) => n + 1)}
+          className="glass gold-hairline grid h-8 w-8 place-items-center rounded-full text-cream transition-colors hover:text-gold"
+        >
+          <LocateFixed className="h-4 w-4" />
+        </button>
       </div>
 
       {/* Light preset switcher — Mapbox Standard's built-in day/dawn/dusk/night */}

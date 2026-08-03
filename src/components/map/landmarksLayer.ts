@@ -236,16 +236,12 @@ function ensureLandmarkPopupStyles(): void {
 .lm-pop-actions{display:flex;gap:6px;margin-top:9px}
 .lm-pop-btn{flex:1;text-align:center;padding:6px 8px;border-radius:8px;font-size:11px;font-weight:700;
   text-decoration:none;background:#12181f;color:#fff;border:1px solid rgba(255,255,255,.14)}
-.lm-pop-btn:hover{background:#1c2733}
-.lm-pop-btn-wa{background:#25d366;color:#08351b;border-color:transparent}
-.lm-pop-btn-wa:hover{background:#1fbb59}`;
+.lm-pop-btn:hover{background:#1c2733}`;
   document.head.appendChild(s);
 }
 
 // Build popup content from feature props via the DOM (textContent / img.src) —
 // never innerHTML, since name/image come from the DB.
-const WHATSAPP_NUMBER = "971586620600";
-
 function actionButton(label: string, href: string, extraClass = ""): HTMLAnchorElement {
   const a = document.createElement("a");
   a.className = "lm-pop-btn" + (extraClass ? " " + extraClass : "");
@@ -280,16 +276,11 @@ function buildPopupContent(props: Record<string, unknown>, coords: [number, numb
   tag.className = "lm-pop-tag";
   tag.textContent = CAT_LABEL[cat] ?? cat;
   tag.style.color = color;
-  // Directions (Google Maps) + WhatsApp lead — open in a new tab.
+  // Directions (Google Maps) — opens in a new tab.
   const actions = document.createElement("div");
   actions.className = "lm-pop-actions";
   actions.append(
     actionButton("Directions", `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`),
-    actionButton(
-      "WhatsApp",
-      `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent("Interested in " + placeName)}`,
-      "lm-pop-btn-wa",
-    ),
   );
   body.append(name, tag, actions);
   root.appendChild(body);
