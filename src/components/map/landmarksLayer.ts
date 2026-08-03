@@ -104,6 +104,7 @@ function toFeatureCollection(pois: PoiPoint[]): GeoJSON.FeatureCollection {
         name: p.name,
         category: p.category,
         sprite: spriteId(iconKeyFor(p), p.category),
+        image: p.images?.[0] ?? "",
       },
     })),
   };
@@ -206,16 +207,76 @@ export async function updateLandmarks(map: mapboxgl.Map, pois: PoiPoint[]): Prom
   }
 }
 
-/** Wire click (fly to the clicked place) + hover cursor on both landmark layers. */
+const CAT_LABEL: Record<PoiCategory, string> = {
+  tourism: "Tourism",
+  schools: "Education",
+  hospitals: "Hospital",
+};
+
+// One-time popup styling: flush image + rounded card (scoped via the popup's
+// className so it never touches the project/station popups).
+function ensureLandmarkPopupStyles(): void {
+  if (typeof document === "undefined" || document.getElementById("lm-popup-style")) return;
+  const s = document.createElement("style");
+  s.id = "lm-popup-style";
+  s.textContent = `
+.lm-popup .mapboxgl-popup-content{padding:0;border-radius:12px;overflow:hidden;
+  box-shadow:0 8px 26px rgba(0,0,0,.4);font-family:'Work Sans',Arial,sans-serif}
+.lm-popup .mapboxgl-popup-close-button{color:#fff;font-size:17px;width:22px;height:22px;
+  top:4px;right:4px;text-shadow:0 1px 3px rgba(0,0,0,.7)}
+.lm-pop-img{width:100%;height:112px;object-fit:cover;display:block;background:#dfe6ee}
+.lm-pop-body{padding:9px 11px 11px}
+.lm-pop-name{font-weight:700;font-size:13px;color:#12181f;line-height:1.25}
+.lm-pop-tag{margin-top:5px;font-size:10px;font-weight:700;letter-spacing:.4px;text-transform:uppercase}`;
+  document.head.appendChild(s);
+}
+
+// Build popup content from feature props via the DOM (textContent / img.src) —
+// never innerHTML, since name/image come from the DB.
+function buildPopupContent(props: Record<string, unknown>): HTMLElement {
+  const cat = String(props.category) as PoiCategory;
+  const color = POI_TABLES[cat]?.color ?? "#f59e0b";
+  const root = document.createElement("div");
+  root.style.width = "224px";
+  const image = typeof props.image === "string" ? props.image : "";
+  if (image) {
+    const img = document.createElement("img");
+    img.className = "lm-pop-img";
+    img.loading = "lazy";
+    img.src = image;
+    root.appendChild(img);
+  }
+  const body = document.createElement("div");
+  body.className = "lm-pop-body";
+  const name = document.createElement("div");
+  name.className = "lm-pop-name";
+  name.textContent = String(props.name ?? "");
+  const tag = document.createElement("div");
+  tag.className = "lm-pop-tag";
+  tag.textContent = CAT_LABEL[cat] ?? cat;
+  tag.style.color = color;
+  body.append(name, tag);
+  root.appendChild(body);
+  return root;
+}
+
+/** Wire click (info popup + fly to the place) + hover cursor on both landmark layers. */
 export function addLandmarkInteractions(map: mapboxgl.Map): void {
-  const flyToFeature = (e: mapboxgl.MapLayerMouseEvent) => {
+  ensureLandmarkPopupStyles();
+  let popup: mapboxgl.Popup | null = null;
+  const onClick = (e: mapboxgl.MapLayerMouseEvent) => {
     const f = e.features?.[0];
     if (!f || f.geometry.type !== "Point") return;
     const center = f.geometry.coordinates as [number, number];
+    popup?.remove(); // one popup at a time
+    popup = new mapboxgl.Popup({ offset: 16, closeButton: true, maxWidth: "240px", className: "lm-popup" })
+      .setLngLat(center)
+      .setDOMContent(buildPopupContent(f.properties ?? {}))
+      .addTo(map);
     map.flyTo({ center, zoom: Math.max(map.getZoom(), 14.5), duration: 1000, essential: true });
   };
   for (const id of [LANDMARKS_DOT, LANDMARKS_LAYER]) {
-    map.on("click", id, flyToFeature);
+    map.on("click", id, onClick);
     map.on("mouseenter", id, () => {
       map.getCanvas().style.cursor = "pointer";
     });
