@@ -126,6 +126,7 @@ dubai-skyview/
 
 ## Documentation
 
+- [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) — **start here to add a feature**: architecture, layer patterns, step-by-step recipes, performance rules
 - [docs/architecture.md](docs/architecture.md) — file tree, database schema, data flow
 - [docs/map-performance.md](docs/map-performance.md) — how the map is loaded and kept fast
 - [docs/water-layer.md](docs/water-layer.md) — water layer styling and geometry
