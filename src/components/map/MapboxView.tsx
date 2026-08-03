@@ -1358,6 +1358,13 @@ export function MapboxView({
     ) as Record<string, { id: string; progress: number }[]>;
 
     const tick = (now: number) => {
+      // Skip the per-marker work when this map instance is inactive (the other
+      // mode's hidden map) or the tab is hidden — keep the rAF alive so it
+      // resumes automatically. The dt cap below prevents a jump on resume.
+      if (!isActiveRef.current || !isVisibleRef.current) {
+        trainRafRef.current = requestAnimationFrame(tick);
+        return;
+      }
       for (const line of ALL_RAIL_LINES) {
         const marker = trainMarkersRef.current.get(line.id);
         if (!marker) continue;

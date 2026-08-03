@@ -57,6 +57,23 @@ export function CategoryPanel() {
           );
         })}
       </div>
+
+      {/* Colour legend for the map dots — only the active categories. */}
+      {activeCategories.size > 0 && (
+        <div className="pointer-events-none mt-2 flex flex-col gap-1 rounded-lg bg-black/45 px-2.5 py-2 backdrop-blur-sm">
+          {CATEGORIES.filter(({ id }) => activeCategories.has(id)).map(({ id, label }) => (
+            <div key={id} className="flex items-center gap-2">
+              <span
+                className="h-2.5 w-2.5 rounded-full ring-1 ring-white/80"
+                style={{ background: POI_TABLES[id].color }}
+              />
+              <span className="text-[9px] font-semibold uppercase tracking-wider text-cream">
+                {label}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </motion.div>
   );
 }

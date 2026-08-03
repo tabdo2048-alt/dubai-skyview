@@ -599,9 +599,20 @@ function attachInteractions(map: mapboxgl.Map): void {
   if (interactionsWired.has(map)) return;
   interactionsWired.add(map);
 
-  map.on("mousemove", ROADS_HIT_ID, (e) => {
-    const f = e.features?.[0];
-    if (f?.id === undefined) return;
+  // Roads hover, rAF-throttled. A LAYER-SCOPED mousemove makes Mapbox run an
+  // implicit queryRenderedFeatures against the huge roads source on EVERY raw
+  // pointer event (jank while moving). Instead, listen globally and query at most
+  // once per animation frame — and only while the hit layer exists (Roads on).
+  let lastPoint: mapboxgl.Point | null = null;
+  let hoverRafPending = false;
+  const processHover = () => {
+    hoverRafPending = false;
+    if (!lastPoint || !map.getLayer(ROADS_HIT_ID)) return;
+    const f = map.queryRenderedFeatures(lastPoint, { layers: [ROADS_HIT_ID] })[0];
+    if (!f || f.id === undefined) {
+      clearHover(map);
+      return;
+    }
     const id = f.id as number;
     if (hoveredId.get(map) === id) return;
     const prev = hoveredId.get(map);
@@ -609,9 +620,16 @@ function attachInteractions(map: mapboxgl.Map): void {
     hoveredId.set(map, id);
     setHoverTarget(map, id, 1);
     map.getCanvas().style.cursor = "pointer";
+  };
+  map.on("mousemove", (e) => {
+    if (!map.getLayer(ROADS_HIT_ID)) return; // Roads off → nothing to hover
+    lastPoint = e.point;
+    if (!hoverRafPending) {
+      hoverRafPending = true;
+      requestAnimationFrame(processHover);
+    }
   });
-
-  map.on("mouseleave", ROADS_HIT_ID, () => clearHover(map));
+  map.on("mouseout", () => clearHover(map));
 
   map.on("click", ROADS_HIT_ID, (e) => {
     const f = e.features?.[0];
