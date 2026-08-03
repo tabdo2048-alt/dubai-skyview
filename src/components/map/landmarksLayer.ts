@@ -164,6 +164,10 @@ function ensureLayer(map: mapboxgl.Map): void {
         "icon-allow-overlap": true, // every place keeps its icon
         "icon-optional": true,
         "icon-size": ["interpolate", ["linear"], ["zoom"], 8, 0.68, 11, 0.85, 14, 1.1, 17, 1.3],
+        // Declutter priority: when labels collide, keep the hero places first
+        // (tourism), then hospitals, then the many schools. Lower key = placed
+        // first = survives the collision.
+        "symbol-sort-key": ["match", ["get", "category"], "tourism", 0, "hospitals", 1, "schools", 2, 3],
         // labels appear a step later than the chips, and drop first when crowded
         "text-field": ["step", ["zoom"], "", 12.5, ["get", "name"]],
         "text-anchor": "top",
@@ -171,6 +175,7 @@ function ensureLayer(map: mapboxgl.Map): void {
         "text-size": ["interpolate", ["linear"], ["zoom"], 12.5, 10.5, 16, 12.5],
         "text-optional": true,
         "text-allow-overlap": false,
+        "text-padding": 6, // more breathing room → fewer overlapping labels shown
         "text-max-width": 8,
       },
       paint: {
@@ -227,15 +232,35 @@ function ensureLandmarkPopupStyles(): void {
 .lm-pop-img{width:100%;height:112px;object-fit:cover;display:block;background:#dfe6ee}
 .lm-pop-body{padding:9px 11px 11px}
 .lm-pop-name{font-weight:700;font-size:13px;color:#12181f;line-height:1.25}
-.lm-pop-tag{margin-top:5px;font-size:10px;font-weight:700;letter-spacing:.4px;text-transform:uppercase}`;
+.lm-pop-tag{margin-top:5px;font-size:10px;font-weight:700;letter-spacing:.4px;text-transform:uppercase}
+.lm-pop-actions{display:flex;gap:6px;margin-top:9px}
+.lm-pop-btn{flex:1;text-align:center;padding:6px 8px;border-radius:8px;font-size:11px;font-weight:700;
+  text-decoration:none;background:#12181f;color:#fff;border:1px solid rgba(255,255,255,.14)}
+.lm-pop-btn:hover{background:#1c2733}
+.lm-pop-btn-wa{background:#25d366;color:#08351b;border-color:transparent}
+.lm-pop-btn-wa:hover{background:#1fbb59}`;
   document.head.appendChild(s);
 }
 
 // Build popup content from feature props via the DOM (textContent / img.src) —
 // never innerHTML, since name/image come from the DB.
-function buildPopupContent(props: Record<string, unknown>): HTMLElement {
+const WHATSAPP_NUMBER = "971586620600";
+
+function actionButton(label: string, href: string, extraClass = ""): HTMLAnchorElement {
+  const a = document.createElement("a");
+  a.className = "lm-pop-btn" + (extraClass ? " " + extraClass : "");
+  a.href = href;
+  a.target = "_blank";
+  a.rel = "noreferrer";
+  a.textContent = label;
+  return a;
+}
+
+function buildPopupContent(props: Record<string, unknown>, coords: [number, number]): HTMLElement {
   const cat = String(props.category) as PoiCategory;
   const color = POI_TABLES[cat]?.color ?? "#f59e0b";
+  const placeName = String(props.name ?? "");
+  const [lng, lat] = coords;
   const root = document.createElement("div");
   root.style.width = "224px";
   const image = typeof props.image === "string" ? props.image : "";
@@ -250,12 +275,23 @@ function buildPopupContent(props: Record<string, unknown>): HTMLElement {
   body.className = "lm-pop-body";
   const name = document.createElement("div");
   name.className = "lm-pop-name";
-  name.textContent = String(props.name ?? "");
+  name.textContent = placeName;
   const tag = document.createElement("div");
   tag.className = "lm-pop-tag";
   tag.textContent = CAT_LABEL[cat] ?? cat;
   tag.style.color = color;
-  body.append(name, tag);
+  // Directions (Google Maps) + WhatsApp lead — open in a new tab.
+  const actions = document.createElement("div");
+  actions.className = "lm-pop-actions";
+  actions.append(
+    actionButton("Directions", `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`),
+    actionButton(
+      "WhatsApp",
+      `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent("Interested in " + placeName)}`,
+      "lm-pop-btn-wa",
+    ),
+  );
+  body.append(name, tag, actions);
   root.appendChild(body);
   return root;
 }
@@ -271,7 +307,7 @@ export function addLandmarkInteractions(map: mapboxgl.Map): void {
     popup?.remove(); // one popup at a time
     popup = new mapboxgl.Popup({ offset: 16, closeButton: true, maxWidth: "240px", className: "lm-popup" })
       .setLngLat(center)
-      .setDOMContent(buildPopupContent(f.properties ?? {}))
+      .setDOMContent(buildPopupContent(f.properties ?? {}, center))
       .addTo(map);
     map.flyTo({ center, zoom: Math.max(map.getZoom(), 14.5), duration: 1000, essential: true });
   };
