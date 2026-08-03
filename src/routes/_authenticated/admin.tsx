@@ -20,6 +20,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { formatAed } from "@/lib/dubai";
+import { parseLatLngFromGoogleMapsUrl } from "@/lib/googleMapsLink";
 
 const PROJECT_MEDIA_BUCKET = "project-media";
 
@@ -286,6 +287,11 @@ function PoiManager() {
             </div>
           </div>
         )}
+        <div className="sm:col-span-2">
+          <Field label="Google Maps link (auto-fills location)">
+            <LocationFromLink onCoords={({ lat, lng }) => setForm({ ...form, lat, lng })} />
+          </Field>
+        </div>
         <Field label="Latitude"><Input type="number" step="0.0001" value={form.lat} onChange={(e) => setForm({ ...form, lat: Number(e.target.value) })} required /></Field>
         <Field label="Longitude"><Input type="number" step="0.0001" value={form.lng} onChange={(e) => setForm({ ...form, lng: Number(e.target.value) })} required /></Field>
         <div className="flex gap-2 sm:col-span-2">
@@ -741,6 +747,11 @@ function ProjectForm({ id, onClose }: { id: string | null; onClose: () => void }
             </div>
           </div>
         )}
+        <div className="sm:col-span-2">
+          <Field label="Google Maps link (auto-fills location)">
+            <LocationFromLink onCoords={({ lat, lng }) => setF({ ...f, lat, lng })} />
+          </Field>
+        </div>
         <Field label="Address"><Input value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} /></Field>
         <Field label="Latitude"><Input type="number" step="0.0001" value={f.lat} onChange={(e) => setF({ ...f, lat: Number(e.target.value) })} required /></Field>
         <Field label="Longitude"><Input type="number" step="0.0001" value={f.lng} onChange={(e) => setF({ ...f, lng: Number(e.target.value) })} required /></Field>
@@ -854,6 +865,41 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div>
       <Label className="text-xs uppercase tracking-widest text-muted-foreground">{label}</Label>
       <div className="mt-1">{children}</div>
+    </div>
+  );
+}
+
+// Paste a Google Maps link → pull lat/lng out of it and fill the location.
+function LocationFromLink({ onCoords }: { onCoords: (c: { lat: number; lng: number }) => void }) {
+  const [url, setUrl] = useState("");
+  const apply = () => {
+    const c = parseLatLngFromGoogleMapsUrl(url);
+    if (!c) {
+      toast.error(
+        "No coordinates in that link. Paste a full Google Maps URL that contains @lat,lng (short maps.app.goo.gl links can't be read).",
+      );
+      return;
+    }
+    onCoords(c);
+    toast.success(`Location set to ${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`);
+    setUrl("");
+  };
+  return (
+    <div className="flex gap-2">
+      <Input
+        value={url}
+        onChange={(e) => setUrl(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            apply();
+          }
+        }}
+        placeholder="Paste Google Maps link (…/@25.19,55.27,…)"
+      />
+      <Button type="button" onClick={apply} disabled={!url.trim()} className="shrink-0">
+        Set
+      </Button>
     </div>
   );
 }
