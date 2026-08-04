@@ -869,14 +869,32 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-// Paste a Google Maps link → pull lat/lng out of it and fill the location.
+// Paste a Google Maps link → pull lat/lng out of it and fill the location. Full
+// URLs are parsed client-side; short goo.gl links are resolved by the
+// `resolve-maps-link` edge function (which follows the redirect server-side).
 function LocationFromLink({ onCoords }: { onCoords: (c: { lat: number; lng: number }) => void }) {
   const [url, setUrl] = useState("");
-  const apply = () => {
-    const c = parseLatLngFromGoogleMapsUrl(url);
+  const [busy, setBusy] = useState(false);
+  const apply = async () => {
+    let c = parseLatLngFromGoogleMapsUrl(url);
+    if (!c && /goo\.gl|maps\.app\.goo\.gl/i.test(url)) {
+      setBusy(true);
+      try {
+        const { data, error } = await supabase.functions.invoke("resolve-maps-link", {
+          body: { url: url.trim() },
+        });
+        if (!error && data && typeof data.lat === "number" && typeof data.lng === "number") {
+          c = { lat: data.lat, lng: data.lng };
+        }
+      } catch {
+        /* fall through to the error toast below */
+      } finally {
+        setBusy(false);
+      }
+    }
     if (!c) {
       toast.error(
-        "No coordinates in that link. Paste a full Google Maps URL that contains @lat,lng (short maps.app.goo.gl links can't be read).",
+        "Couldn't read coordinates from that link. Paste a full Google Maps URL that contains @lat,lng (or deploy the resolve-maps-link function for short goo.gl links).",
       );
       return;
     }
@@ -892,13 +910,13 @@ function LocationFromLink({ onCoords }: { onCoords: (c: { lat: number; lng: numb
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault();
-            apply();
+            void apply();
           }
         }}
-        placeholder="Paste Google Maps link (…/@25.19,55.27,…)"
+        placeholder="Paste Google Maps link (…/@25.19,55.27,… or a goo.gl short link)"
       />
-      <Button type="button" onClick={apply} disabled={!url.trim()} className="shrink-0">
-        Set
+      <Button type="button" onClick={() => void apply()} disabled={!url.trim() || busy} className="shrink-0">
+        {busy ? "…" : "Set"}
       </Button>
     </div>
   );
