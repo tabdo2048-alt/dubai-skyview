@@ -19,6 +19,7 @@ import type { ProjectWithRelations } from "@/lib/types";
 import { useFiltersStore } from "@/store/filters";
 import { type PoiPoint } from "@/hooks/use-pois";
 import { updateLandmarks, addLandmarkInteractions } from "./landmarksLayer";
+import { ensurePlotLayers, setPlotData, showPlot, hidePlot } from "@/lib/projectPlots";
 import {
   ZONE_ORDER,
   ZONE_PULSE,
@@ -224,6 +225,12 @@ export function MapboxView({
   const poisRef = useRef(pois);
   poisRef.current = pois;
   const landmarkInteractionsRef = useRef(false);
+  // Latest projects + current selection, for the plot-boundary layer + marker hover
+  // (read from handlers that run outside React render).
+  const projectsRef = useRef(projects);
+  projectsRef.current = projects;
+  const selectedIdRef = useRef(selectedProjectId);
+  selectedIdRef.current = selectedProjectId;
 
   useEffect(() => {
     if (!containerRef.current || !accessToken) return;
@@ -706,6 +713,10 @@ export function MapboxView({
         // Colored street network (baked GeoJSON) — added hidden (async: it lazy
         // imports the road data), then drawn on if Roads is already toggled on.
         ensureRoadsLayers(map);
+        // Project plot boundaries (fill + line, hidden until a marker is hovered).
+        // Re-registered here on every style.load; data set from the latest projects.
+        ensurePlotLayers(map);
+        setPlotData(map, projectsRef.current);
       } catch (err) {
         console.error("Failed to add deferred metro/train/roads layers", err);
       }
@@ -1635,6 +1646,14 @@ export function MapboxView({
       el.append(pin, nm);
       el.title = p.name; // name also shown as native tooltip on hover
       el.onclick = () => setSelectedProjectId(p.id);
+      // Hover fades this project's plot boundary in; leaving fades it out unless
+      // the project is currently selected (its popup is open). No-op with no plot.
+      if (p.plot_geometry) {
+        el.onmouseenter = () => showPlot(map, p.id);
+        el.onmouseleave = () => {
+          if (selectedIdRef.current !== p.id) hidePlot(map);
+        };
+      }
       // Bottom-anchored so the pin base sits on the coordinate and the name pill
       // hangs beneath without shifting the geographic anchor.
       const m = new mapboxgl.Marker({ element: el, anchor: "bottom" }).setLngLat([p.lng, p.lat]).addTo(map);
@@ -1657,6 +1676,25 @@ export function MapboxView({
       pin?.classList.toggle("selected", id === selectedProjectId);
     }
   }, [selectedProjectId]);
+
+  // Keep the plot-boundary source in sync with the projects that have a plot.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    ensurePlotLayers(map);
+    setPlotData(map, projects);
+  }, [projects, mapReady]);
+
+  // Sticky highlight: while a project is selected (its popup open), keep its plot
+  // visible; clear it on deselect (popup close). Hover handles the transient case.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    const hasPlot =
+      !!selectedProjectId && projects.some((p) => p.id === selectedProjectId && p.plot_geometry);
+    if (hasPlot) showPlot(map, selectedProjectId as string);
+    else hidePlot(map);
+  }, [selectedProjectId, projects, mapReady]);
 
   // Landmark places (tourism / schools / hospitals) — ONE Mapbox symbol layer.
   // `pois` already holds only the active categories, so refreshing the layer's

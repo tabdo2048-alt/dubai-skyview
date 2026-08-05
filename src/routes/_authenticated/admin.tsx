@@ -4,6 +4,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Plus, Trash2, Star, StarOff, Edit3, Upload, ImagePlus, X } from "lucide-react";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { AdminLocationPicker } from "@/components/map/AdminLocationPicker";
+import { ProjectPlotEditor } from "@/components/map/ProjectPlotEditor";
+import type { Json } from "@/integrations/supabase/types";
 // Client-only: mapbox-gl-draw touches the DOM at import time, so keep it out of
 // the SSR bundle (lazy + a mounted gate), same pattern as the Water Editor.
 const AdminZoneEditor = lazy(() =>
@@ -583,6 +585,7 @@ function ProjectForm({ id, onClose }: { id: string | null; onClose: () => void }
     tour_360_url: existing?.tour_360_url ?? "",
     tags: existing?.tags?.join(", ") ?? "",
     featured: existing?.featured ?? false,
+    plot_geometry: (existing?.plot_geometry as GeoJSON.Polygon | null) ?? null,
   });
   const [gallery, setGallery] = useState(existing?.images ?? []);
   const [imageFiles, setImageFiles] = useState<File[]>([]);
@@ -685,6 +688,7 @@ function ProjectForm({ id, onClose }: { id: string | null; onClose: () => void }
           .split(",")
           .map((tag) => tag.trim())
           .filter(Boolean),
+        plot_geometry: (f.plot_geometry as unknown as Json) ?? null,
       };
       let projectId = id ?? "";
 
@@ -752,6 +756,19 @@ function ProjectForm({ id, onClose }: { id: string | null; onClose: () => void }
             <LocationFromLink onCoords={({ lat, lng }) => setF({ ...f, lat, lng })} />
           </Field>
         </div>
+        {cfg?.mapboxAccessToken && (
+          <div className="sm:col-span-2">
+            <Field label="Plot boundary (optional — draw the land parcel)">
+              <ProjectPlotEditor
+                accessToken={cfg.mapboxAccessToken}
+                lat={f.lat}
+                lng={f.lng}
+                value={f.plot_geometry}
+                onChange={(g) => setF({ ...f, plot_geometry: g })}
+              />
+            </Field>
+          </div>
+        )}
         <Field label="Address"><Input value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} /></Field>
         <Field label="Latitude"><Input type="number" step="0.0001" value={f.lat} onChange={(e) => setF({ ...f, lat: Number(e.target.value) })} required /></Field>
         <Field label="Longitude"><Input type="number" step="0.0001" value={f.lng} onChange={(e) => setF({ ...f, lng: Number(e.target.value) })} required /></Field>

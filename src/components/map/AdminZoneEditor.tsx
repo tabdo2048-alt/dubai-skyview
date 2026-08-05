@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import MapboxDraw from "@mapbox/mapbox-gl-draw";
 import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
-import { kinks, cleanCoords } from "@turf/turf";
+import { normalizePolygon, drawnPolygon, ringVertexCount, hasKinks } from "@/lib/mapDraw";
 import { Trash2, Edit3, Plus, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
@@ -29,23 +29,6 @@ function errMsg(err: unknown, fallback = "Save failed"): string {
   return fallback;
 }
 
-type PolygonGeom = { type: "Polygon"; coordinates: [number, number][][] };
-
-// Auto-close the outer ring and strip duplicate/redundant coords for a clean save.
-function normalizePolygon(geometry: PolygonGeom): PolygonGeom {
-  const cleaned = cleanCoords({ type: "Feature", properties: {}, geometry }) as {
-    geometry: PolygonGeom;
-  };
-  const rings = cleaned.geometry.coordinates.map((ring) => {
-    if (ring.length === 0) return ring;
-    const first = ring[0];
-    const last = ring[ring.length - 1];
-    if (first[0] !== last[0] || first[1] !== last[1]) return [...ring, first];
-    return ring;
-  });
-  return { type: "Polygon", coordinates: rings };
-}
-
 type Props = { accessToken: string };
 
 // Admin-only Zone Editor: draw a boundary on the map (Mapbox GL Draw), name it,
@@ -63,7 +46,7 @@ export function AdminZoneEditor({ accessToken }: Props) {
   const emptyForm = { name: "", category: "RY" as ZoneCategory, value: "" };
   const [form, setForm] = useState(emptyForm);
   // The currently drawn polygon (from Draw), or null when nothing is drawn.
-  const [drawn, setDrawn] = useState<PolygonGeom | null>(null);
+  const [drawn, setDrawn] = useState<GeoJSON.Polygon | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
 
   const load = async () => {
@@ -81,24 +64,16 @@ export function AdminZoneEditor({ accessToken }: Props) {
   const syncDrawn = () => {
     const draw = drawRef.current;
     if (!draw) return;
-    const fc = draw.getAll();
-    const poly = fc.features.find((f) => f.geometry?.type === "Polygon");
-    if (!poly) {
+    const geom = drawnPolygon(draw);
+    if (!geom) {
       setDrawn(null);
       setWarning(null);
       return;
     }
-    const geom = poly.geometry as PolygonGeom;
     setDrawn(geom);
     // Non-blocking quality warnings.
-    const ring = geom.coordinates[0] ?? [];
-    const verts = ring.length > 0 && ring[0][0] === ring[ring.length - 1][0] ? ring.length - 1 : ring.length;
-    if (verts < 3) {
-      setWarning("Polygon has fewer than 3 points.");
-    } else {
-      const self = kinks({ type: "Feature", properties: {}, geometry: geom });
-      setWarning(self.features.length > 0 ? "Polygon self-intersects — points cross over." : null);
-    }
+    if (ringVertexCount(geom) < 3) setWarning("Polygon has fewer than 3 points.");
+    else setWarning(hasKinks(geom) ? "Polygon self-intersects — points cross over." : null);
   };
 
   // Init the map + Draw once.
@@ -154,7 +129,7 @@ export function AdminZoneEditor({ accessToken }: Props) {
     const draw = drawRef.current;
     const map = mapRef.current;
     if (!draw || !map) return;
-    const geom = z.geometry as PolygonGeom;
+    const geom = z.geometry as GeoJSON.Polygon;
     if (geom?.type !== "Polygon") return toast.error("Zone geometry is not a polygon");
     draw.deleteAll();
     draw.add({ type: "Feature", properties: {}, geometry: geom });
