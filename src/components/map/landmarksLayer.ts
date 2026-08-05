@@ -17,13 +17,7 @@ export const LANDMARKS_SOURCE = "landmarks";
 export const LANDMARKS_LAYER = "landmarks-symbol"; // icon + label
 export const LANDMARKS_DOT = "landmarks-dot"; // always-visible category dot (icon-independent base)
 export const LANDMARKS_GLOW = "landmarks-glow"; // soft colour halo under the dot
-export const LANDMARKS_CLUSTER = "landmarks-cluster"; // grouped-count bubble at low zoom
-export const LANDMARKS_CLUSTER_COUNT = "landmarks-cluster-count"; // count label on the bubble
-
-// Only render the per-point layers for UNclustered features; the cluster layers
-// render only the aggregated bubbles. Mutually exclusive, so they never overlap.
-const UNCLUSTERED: mapboxgl.FilterSpecification = ["!", ["has", "point_count"]];
-const CLUSTERED: mapboxgl.FilterSpecification = ["has", "point_count"];
+export const LANDMARKS_HOVER = "landmarks-hover"; // feature-state ring on hover/selected
 
 // Per-category dot colour (matches POI_TABLES / CategoryPanel).
 const DOT_COLOR: mapboxgl.ExpressionSpecification = [
@@ -119,14 +113,32 @@ function toFeatureCollection(pois: PoiPoint[]): GeoJSON.FeatureCollection {
 
 function ensureLayer(map: mapboxgl.Map): void {
   if (!map.getSource(LANDMARKS_SOURCE)) {
-    // Cluster the dense places (schools especially) at low zoom into count
-    // bubbles; clusters break apart by z12, just before the icons/labels appear.
+    // Every place is its own point (no clustering) — promoteId drives the
+    // hover/selected ring via feature-state.
     map.addSource(LANDMARKS_SOURCE, {
       type: "geojson",
       data: EMPTY_FC,
-      cluster: true,
-      clusterMaxZoom: 12,
-      clusterRadius: 46,
+      promoteId: "id",
+    });
+  }
+  // Hover / selected ring — a category-coloured halo shown via feature-state, so
+  // hovering (or clicking) a place highlights it. Sits under the dot.
+  if (!map.getLayer(LANDMARKS_HOVER)) {
+    map.addLayer({
+      id: LANDMARKS_HOVER,
+      type: "circle",
+      source: LANDMARKS_SOURCE,
+      minzoom: 0,
+      paint: {
+        "circle-color": DOT_COLOR,
+        // Bigger than the icon at every zoom so the ring reads AROUND it.
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 8, 18, 11, 22, 14, 28, 17, 33],
+        "circle-opacity": ["case", ["boolean", ["feature-state", "active"], false], 0.18, 0],
+        "circle-stroke-color": DOT_COLOR,
+        "circle-stroke-width": 2.5,
+        "circle-stroke-opacity": ["case", ["boolean", ["feature-state", "active"], false], 0.95, 0],
+        "circle-pitch-alignment": "map",
+      },
     });
   }
   // Soft colour halo under the dot — gives the point a glowing "beacon" look
@@ -137,7 +149,6 @@ function ensureLayer(map: mapboxgl.Map): void {
       type: "circle",
       source: LANDMARKS_SOURCE,
       minzoom: 0,
-      filter: UNCLUSTERED,
       paint: {
         "circle-color": DOT_COLOR,
         "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 7, 11, 12, 15, 16],
@@ -156,7 +167,6 @@ function ensureLayer(map: mapboxgl.Map): void {
       type: "circle",
       source: LANDMARKS_SOURCE,
       minzoom: 0,
-      filter: UNCLUSTERED,
       paint: {
         "circle-color": DOT_COLOR,
         "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 3.5, 11, 5.5, 15, 7.5],
@@ -175,7 +185,6 @@ function ensureLayer(map: mapboxgl.Map): void {
       type: "symbol",
       source: LANDMARKS_SOURCE,
       minzoom: 0, // appear at ALL zooms
-      filter: UNCLUSTERED,
       layout: {
         "icon-image": ["get", "sprite"],
         "icon-anchor": "center",
@@ -204,38 +213,6 @@ function ensureLayer(map: mapboxgl.Map): void {
       },
     });
   }
-  // Cluster bubble — a gold count circle, grown by how many places it holds.
-  if (!map.getLayer(LANDMARKS_CLUSTER)) {
-    map.addLayer({
-      id: LANDMARKS_CLUSTER,
-      type: "circle",
-      source: LANDMARKS_SOURCE,
-      filter: CLUSTERED,
-      paint: {
-        "circle-color": "#c9a84c",
-        "circle-opacity": 0.92,
-        "circle-radius": ["step", ["get", "point_count"], 14, 10, 18, 30, 22, 80, 28],
-        "circle-stroke-color": "#ffffff",
-        "circle-stroke-width": 2,
-        "circle-stroke-opacity": 0.9,
-      },
-    });
-  }
-  if (!map.getLayer(LANDMARKS_CLUSTER_COUNT)) {
-    map.addLayer({
-      id: LANDMARKS_CLUSTER_COUNT,
-      type: "symbol",
-      source: LANDMARKS_SOURCE,
-      filter: CLUSTERED,
-      layout: {
-        "text-field": ["get", "point_count_abbreviated"],
-        "text-size": ["step", ["get", "point_count"], 12, 30, 13, 80, 15],
-        "text-allow-overlap": true,
-        "text-ignore-placement": true,
-      },
-      paint: { "text-color": "#1a1206" },
-    });
-  }
 }
 
 /**
@@ -257,7 +234,7 @@ export async function updateLandmarks(map: mapboxgl.Map, pois: PoiPoint[]): Prom
   const src = map.getSource(LANDMARKS_SOURCE) as mapboxgl.GeoJSONSource | undefined;
   src?.setData(toFeatureCollection(pois));
   const vis = pois.length ? "visible" : "none";
-  for (const id of [LANDMARKS_GLOW, LANDMARKS_DOT, LANDMARKS_LAYER, LANDMARKS_CLUSTER, LANDMARKS_CLUSTER_COUNT]) {
+  for (const id of [LANDMARKS_HOVER, LANDMARKS_GLOW, LANDMARKS_DOT, LANDMARKS_LAYER]) {
     if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", vis);
   }
 }
@@ -367,48 +344,57 @@ function buildPopupContent(
   return root;
 }
 
-/** Wire click (info popup + fly to the place, or expand a cluster) + hover cursor. */
+/** Wire click (info popup + fly to the place) + hover/selected ring highlight
+ *  (feature-state) + cursor. */
 export function addLandmarkInteractions(map: mapboxgl.Map): void {
   ensureLandmarkPopupStyles();
   let popup: mapboxgl.Popup | null = null;
+  let hoverId: string | number | null = null; // under the cursor
+  let selectedId: string | number | null = null; // popup open (sticky highlight)
 
-  // A place: open its popup + fly in.
+  const setActive = (id: string | number | null, active: boolean) => {
+    if (id != null) map.setFeatureState({ source: LANDMARKS_SOURCE, id }, { active });
+  };
+
+  // A place: highlight it, open its popup, fly in.
   const onPlaceClick = (e: mapboxgl.MapLayerMouseEvent) => {
     const f = e.features?.[0];
     if (!f || f.geometry.type !== "Point") return;
     const center = f.geometry.coordinates as [number, number];
     const c = map.getCenter();
+    if (selectedId != null && selectedId !== f.id) setActive(selectedId, selectedId === hoverId);
+    selectedId = f.id ?? null;
+    setActive(selectedId, true);
     popup?.remove(); // one popup at a time
     popup = new mapboxgl.Popup({ offset: 16, closeButton: true, maxWidth: "240px", className: "lm-popup" })
       .setLngLat(center)
       .setDOMContent(buildPopupContent(f.properties ?? {}, center, [c.lng, c.lat]))
       .addTo(map);
+    popup.on("close", () => {
+      if (selectedId != null && selectedId !== hoverId) setActive(selectedId, false);
+      selectedId = null;
+    });
     map.flyTo({ center, zoom: Math.max(map.getZoom(), 14.5), duration: 1000, essential: true });
   };
 
-  // A cluster: zoom to the level where it breaks apart, centred on it.
-  const onClusterClick = (e: mapboxgl.MapLayerMouseEvent) => {
-    const f = e.features?.[0];
-    if (!f || f.geometry.type !== "Point") return;
-    const clusterId = f.properties?.cluster_id;
-    const src = map.getSource(LANDMARKS_SOURCE) as mapboxgl.GeoJSONSource | undefined;
-    if (clusterId == null || !src) return;
-    const center = f.geometry.coordinates as [number, number];
-    src.getClusterExpansionZoom(clusterId as number, (err, zoom) => {
-      if (err || zoom == null) return;
-      map.easeTo({ center, zoom: zoom + 0.2, duration: 700, essential: true });
-    });
+  // Hover highlight: track the feature under the cursor via feature-state.
+  const onHoverMove = (e: mapboxgl.MapLayerMouseEvent) => {
+    const id = e.features?.[0]?.id ?? null;
+    if (id === hoverId) return;
+    if (hoverId != null && hoverId !== selectedId) setActive(hoverId, false);
+    hoverId = id;
+    if (id != null) setActive(id, true);
+    map.getCanvas().style.cursor = id != null ? "pointer" : "";
+  };
+  const onHoverLeave = () => {
+    if (hoverId != null && hoverId !== selectedId) setActive(hoverId, false);
+    hoverId = null;
+    map.getCanvas().style.cursor = "";
   };
 
-  const setCursor = (v: string) => () => {
-    map.getCanvas().style.cursor = v;
-  };
   for (const id of [LANDMARKS_DOT, LANDMARKS_LAYER]) {
     map.on("click", id, onPlaceClick);
-    map.on("mouseenter", id, setCursor("pointer"));
-    map.on("mouseleave", id, setCursor(""));
+    map.on("mousemove", id, onHoverMove);
+    map.on("mouseleave", id, onHoverLeave);
   }
-  map.on("click", LANDMARKS_CLUSTER, onClusterClick);
-  map.on("mouseenter", LANDMARKS_CLUSTER, setCursor("pointer"));
-  map.on("mouseleave", LANDMARKS_CLUSTER, setCursor(""));
 }
