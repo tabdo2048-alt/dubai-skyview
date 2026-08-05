@@ -28,6 +28,7 @@ export function ProjectPlotEditor({ accessToken, lat, lng, value, onChange }: Pr
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const drawRef = useRef<MapboxDraw | null>(null);
+  const markerRef = useRef<mapboxgl.Marker | null>(null); // the project's location point
   // The geometry we last emitted — lets the value-sync effect ignore our own echo.
   const emittedRef = useRef<GeoJSON.Polygon | null>(null);
   const onChangeRef = useRef(onChange);
@@ -92,6 +93,14 @@ export function ProjectPlotEditor({ accessToken, lat, lng, value, onChange }: Pr
     map.on("draw.delete", sync);
     map.on("load", () => {
       setTimeout(() => map.resize(), 60);
+      // Show the project's location so the admin can trace the plot around it.
+      const dot = document.createElement("div");
+      dot.style.cssText =
+        "width:14px;height:14px;border-radius:9999px;background:#e9c766;" +
+        "border:2px solid #fff;box-shadow:0 1px 6px rgba(0,0,0,.5);pointer-events:none";
+      markerRef.current = new mapboxgl.Marker({ element: dot, anchor: "center" })
+        .setLngLat([lngRef.current, latRef.current])
+        .addTo(map);
       setReady(true);
     });
     mapRef.current = map;
@@ -100,9 +109,15 @@ export function ProjectPlotEditor({ accessToken, lat, lng, value, onChange }: Pr
       map.remove();
       mapRef.current = null;
       drawRef.current = null;
+      markerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken]);
+
+  // Keep the location dot on the current project coordinate as it's edited.
+  useEffect(() => {
+    markerRef.current?.setLngLat([lng, lat]);
+  }, [lat, lng]);
 
   // Load an EXTERNAL value into Draw (existing project on open, or a reset from the
   // parent) — never our own echo. Runs once the map is ready and whenever value changes.
