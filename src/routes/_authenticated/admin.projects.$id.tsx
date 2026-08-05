@@ -1,0 +1,53 @@
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { ArrowLeft, Loader2 } from "lucide-react";
+import { AppNavbar } from "@/components/layout/AppNavbar";
+import { Button } from "@/components/ui/button";
+import { useAuth, useIsAdmin } from "@/hooks/use-auth";
+import { useProjects } from "@/hooks/use-projects";
+import { ProjectForm } from "./admin";
+
+export const Route = createFileRoute("/_authenticated/admin/projects/$id")({
+  component: EditProjectPage,
+});
+
+// Dedicated edit page. Renders the shared ProjectForm only once the project has
+// loaded, so the form always mounts with populated data (fixes the inline form's
+// "reload to edit" bug). Remounts per id — switching projects just works.
+function EditProjectPage() {
+  const { id } = Route.useParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const { data: isAdmin, isLoading: adminLoading } = useIsAdmin(user);
+  const { data: projects = [], isLoading } = useProjects();
+  const project = projects.find((p) => p.id === id);
+
+  return (
+    <div className="min-h-screen">
+      <AppNavbar />
+      <div className="mx-auto max-w-6xl px-4 py-8">
+        <Button asChild variant="ghost" size="sm" className="text-muted-foreground hover:text-cream">
+          <Link to="/admin">
+            <ArrowLeft className="mr-1 h-4 w-4" /> Back to projects
+          </Link>
+        </Button>
+        <h1 className="mt-4 font-display text-3xl text-cream">
+          Edit <span className="text-gold-gradient">project</span>
+        </h1>
+
+        {adminLoading || isLoading ? (
+          <div className="mt-6 flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+          </div>
+        ) : !isAdmin ? (
+          <div className="mt-6 text-muted-foreground">This account is not an administrator.</div>
+        ) : !project ? (
+          <div className="mt-6 text-muted-foreground">Project not found.</div>
+        ) : (
+          <div className="mt-4">
+            <ProjectForm id={id} onClose={() => navigate({ to: "/admin" })} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -54,7 +54,6 @@ function AdminPage() {
   const { data: isAdmin, isLoading: adminLoading } = useIsAdmin(user);
   const { data: projects = [], refetch } = useProjects();
   const qc = useQueryClient();
-  const [editing, setEditing] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
   if (adminLoading) return <div className="min-h-screen"><AppNavbar /><div className="p-10 text-center text-muted-foreground">Checking access…</div></div>;
@@ -100,15 +99,15 @@ function AdminPage() {
 
         <div id="admin-projects" className="mt-4 flex items-center justify-between scroll-mt-24">
           <h1 className="font-display text-4xl text-cream">Admin <span className="text-gold-gradient">Dashboard</span></h1>
-          <Button onClick={() => { setCreating(true); setEditing(null); }} className="bg-gold text-gold-foreground hover:bg-gold/90">
+          <Button onClick={() => setCreating(true)} className="bg-gold text-gold-foreground hover:bg-gold/90">
             <Plus className="mr-1 h-4 w-4" /> New project
           </Button>
         </div>
 
-        {(creating || editing) && (
+        {creating && (
           <ProjectForm
-            id={editing}
-            onClose={() => { setCreating(false); setEditing(null); refetch(); qc.invalidateQueries(); }}
+            id={null}
+            onClose={() => { setCreating(false); refetch(); qc.invalidateQueries(); }}
           />
         )}
 
@@ -127,8 +126,10 @@ function AdminPage() {
               <Button size="icon" variant="ghost" onClick={() => toggleFeatured(p.id, !p.featured)} title="Toggle featured">
                 {p.featured ? <Star className="h-4 w-4 text-gold" /> : <StarOff className="h-4 w-4 text-muted-foreground" />}
               </Button>
-              <Button size="icon" variant="ghost" onClick={() => { setEditing(p.id); setCreating(false); }}>
-                <Edit3 className="h-4 w-4 text-cream" />
+              <Button asChild size="icon" variant="ghost">
+                <Link to="/admin/projects/$id" params={{ id: p.id }}>
+                  <Edit3 className="h-4 w-4 text-cream" />
+                </Link>
               </Button>
               <Button size="icon" variant="ghost" onClick={() => del(p.id)}>
                 <Trash2 className="h-4 w-4 text-destructive" />
@@ -560,7 +561,7 @@ function CommunityManager() {
   );
 }
 
-function ProjectForm({ id, onClose }: { id: string | null; onClose: () => void }) {
+export function ProjectForm({ id, onClose }: { id: string | null; onClose: () => void }) {
   const { data: projects = [] } = useProjects();
   const { data: developers = [] } = useDevelopers();
   const { data: communities = [] } = useCommunities();
