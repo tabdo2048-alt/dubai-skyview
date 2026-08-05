@@ -41,6 +41,10 @@ function errMsg(err: unknown, fallback = "Save failed"): string {
   return fallback;
 }
 
+// Preset plot-boundary colours (gold default + a spread of hues); a native colour
+// input alongside allows any custom colour.
+const PLOT_SWATCHES = ["#c9a84c", "#3b82f6", "#ef4444", "#22c55e", "#a855f7", "#f59e0b", "#06b6d4"];
+
 export const Route = createFileRoute("/_authenticated/admin")({
   component: AdminPage,
 });
@@ -586,6 +590,7 @@ function ProjectForm({ id, onClose }: { id: string | null; onClose: () => void }
     tags: existing?.tags?.join(", ") ?? "",
     featured: existing?.featured ?? false,
     plot_geometry: (existing?.plot_geometry as GeoJSON.Polygon | null) ?? null,
+    plot_color: existing?.plot_color ?? "#c9a84c",
   });
   const [gallery, setGallery] = useState(existing?.images ?? []);
   const [imageFiles, setImageFiles] = useState<File[]>([]);
@@ -759,6 +764,28 @@ function ProjectForm({ id, onClose }: { id: string | null; onClose: () => void }
         {cfg?.mapboxAccessToken && (
           <div className="sm:col-span-2">
             <Field label="Plot boundary (optional — draw the land parcel)">
+              <div className="mb-2 flex items-center gap-2">
+                <span className="text-[11px] text-muted-foreground">Boundary colour:</span>
+                {PLOT_SWATCHES.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setF({ ...f, plot_color: c })}
+                    title={c}
+                    className={`h-6 w-6 rounded-full border transition-transform hover:scale-110 ${
+                      f.plot_color === c ? "border-white ring-2 ring-white/70" : "border-white/30"
+                    }`}
+                    style={{ background: c }}
+                  />
+                ))}
+                <input
+                  type="color"
+                  value={f.plot_color}
+                  onChange={(e) => setF({ ...f, plot_color: e.target.value })}
+                  title="Custom colour"
+                  className="h-6 w-8 cursor-pointer rounded border border-white/30 bg-transparent p-0"
+                />
+              </div>
               <ProjectPlotEditor
                 accessToken={cfg.mapboxAccessToken}
                 lat={f.lat}

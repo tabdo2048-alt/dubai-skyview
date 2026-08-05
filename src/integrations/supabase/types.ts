@@ -197,6 +197,7 @@ export type Database = {
           main_image_url: string | null
           name: string
           payment_plan: string | null
+          plot_color: string | null
           plot_geometry: Json | null
           slug: string
           starting_price_aed: number | null
@@ -225,6 +226,7 @@ export type Database = {
           main_image_url?: string | null
           name: string
           payment_plan?: string | null
+          plot_color?: string | null
           plot_geometry?: Json | null
           slug: string
           starting_price_aed?: number | null
@@ -253,6 +255,7 @@ export type Database = {
           main_image_url?: string | null
           name?: string
           payment_plan?: string | null
+          plot_color?: string | null
           plot_geometry?: Json | null
           slug?: string
           starting_price_aed?: number | null

@@ -26,7 +26,8 @@ export function ensurePlotLayers(map: mapboxgl.Map): void {
       source: PLOTS_SRC,
       filter: NONE,
       paint: {
-        "fill-color": "#c9a84c", // project gold
+        // Per-project colour from the feature (defaults to project gold).
+        "fill-color": ["coalesce", ["get", "color"], "#c9a84c"],
         "fill-opacity": 0,
         "fill-opacity-transition": { duration: FADE_MS, delay: 0 },
       },
@@ -39,7 +40,7 @@ export function ensurePlotLayers(map: mapboxgl.Map): void {
       source: PLOTS_SRC,
       filter: NONE,
       paint: {
-        "line-color": "#e9c766",
+        "line-color": ["coalesce", ["get", "color"], "#c9a84c"],
         "line-width": 2,
         "line-opacity": 0,
         "line-opacity-transition": { duration: FADE_MS, delay: 0 },
@@ -57,7 +58,8 @@ export function setPlotData(map: mapboxgl.Map, projects: ProjectWithRelations[])
   for (const p of projects) {
     const g = p.plot_geometry as GeoJSON.Polygon | null | undefined;
     if (g && g.type === "Polygon") {
-      features.push({ type: "Feature", geometry: g, properties: { id: p.id } });
+      const color = (p.plot_color as string | null | undefined) || "#c9a84c";
+      features.push({ type: "Feature", geometry: g, properties: { id: p.id, color } });
     }
   }
   src.setData({ type: "FeatureCollection", features });
