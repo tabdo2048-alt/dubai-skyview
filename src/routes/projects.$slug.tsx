@@ -13,7 +13,7 @@ import {
   PlayCircle,
   Tag,
 } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { fetchProjectBySlug } from "@/hooks/use-projects";
 import { formatAed } from "@/lib/dubai";
@@ -69,9 +69,17 @@ function ProjectDetail() {
   useEffect(() => {
     if (p) track("view_project", { slug: p.slug, name: p.name, price: p.starting_price_aed });
   }, [p]);
+  // Hero + gallery images for the click-to-swap viewer (hero first, deduped).
+  const images = useMemo(() => {
+    const urls: string[] = [];
+    if (p?.main_image_url) urls.push(p.main_image_url);
+    for (const g of p?.images ?? []) if (g?.url && !urls.includes(g.url)) urls.push(g.url);
+    return urls;
+  }, [p]);
+  const [activeImage, setActiveImage] = useState<string | null>(images[0] ?? null);
+  // Reset to the hero when navigating to another project.
+  useEffect(() => setActiveImage(images[0] ?? null), [p?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!p) throw notFound();
-
-  const gallery = p.images ?? [];
 
   return (
     <div className="min-h-screen">
@@ -84,9 +92,10 @@ function ProjectDetail() {
         <div className="mt-6 grid gap-8 lg:grid-cols-[1.4fr_1fr]">
           <div className="space-y-3">
             <div className="glass gold-hairline overflow-hidden rounded-3xl">
-              {p.main_image_url ? (
+              {activeImage ? (
                 <img
-                  src={p.main_image_url}
+                  key={activeImage}
+                  src={activeImage}
                   alt={p.name}
                   className="h-[420px] w-full object-cover"
                   loading="eager"
@@ -100,23 +109,33 @@ function ProjectDetail() {
               )}
             </div>
 
-            {/* Gallery & floor plans */}
-            {gallery.length > 0 && (
+            {/* Gallery & floor plans — click a thumbnail to show it above. */}
+            {images.length > 1 && (
               <div>
                 <div className="mb-2 mt-4 text-xs uppercase tracking-widest text-muted-foreground">
                   Gallery &amp; floor plans
                 </div>
                 <div className="grid grid-cols-3 gap-3">
-                  {gallery.map((img) => (
-                    <div key={img.id} className="glass gold-hairline aspect-[4/3] overflow-hidden rounded-2xl">
+                  {images.map((url) => (
+                    <button
+                      key={url}
+                      type="button"
+                      onClick={() => setActiveImage(url)}
+                      aria-current={url === activeImage}
+                      className={`glass aspect-[4/3] overflow-hidden rounded-2xl transition ${
+                        url === activeImage ? "ring-2 ring-gold" : "gold-hairline hover:ring-1 hover:ring-gold/60"
+                      }`}
+                    >
                       <img
-                        src={img.url}
+                        src={url}
                         alt={p.name}
-                        className="h-full w-full object-cover transition-transform hover:scale-105"
+                        className={`h-full w-full object-cover transition-transform hover:scale-105 ${
+                          url === activeImage ? "" : "opacity-90"
+                        }`}
                         loading="lazy"
                         decoding="async"
                       />
-                    </div>
+                    </button>
                   ))}
                 </div>
               </div>
