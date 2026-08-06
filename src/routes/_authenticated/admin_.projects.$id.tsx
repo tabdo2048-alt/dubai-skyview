@@ -6,7 +6,9 @@ import { useAuth, useIsAdmin } from "@/hooks/use-auth";
 import { useProjects } from "@/hooks/use-projects";
 import { ProjectForm } from "./admin";
 
-export const Route = createFileRoute("/_authenticated/admin/projects/$id")({
+// `admin_` (trailing underscore) un-nests this from admin.tsx so it renders as a
+// standalone full page at /admin/projects/$id (admin.tsx has no <Outlet/>).
+export const Route = createFileRoute("/_authenticated/admin_/projects/$id")({
   component: EditProjectPage,
 });
 
