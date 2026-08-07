@@ -42,6 +42,11 @@ type FiltersStore = {
   visibleProjectIds: Set<string>;
   toggleProjectVisible: (id: string) => void;
 
+  // Project zones (plot boundaries) pinned visible on the map. While an id is
+  // here its colored plot stays drawn regardless of hover/selection.
+  pinnedPlotIds: Set<string>;
+  togglePlotPinned: (id: string) => void;
+
   // Active zone-highlight categories (RY / FLIP / HH). Independent toggles — any
   // combination can be shown at once, each in its own color. Typed off
   // ZoneCategory rather than a repeated literal union so a rename can't drift.
@@ -89,6 +94,14 @@ export const useFiltersStore = create<FiltersStore>((set) => ({
     if (next.has(id)) next.delete(id);
     else next.add(id);
     return { visibleProjectIds: next };
+  }),
+
+  pinnedPlotIds: new Set(),
+  togglePlotPinned: (id) => set((s) => {
+    const next = new Set(s.pinnedPlotIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return { pinnedPlotIds: next };
   }),
 
   zoneCategories: new Set(),

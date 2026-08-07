@@ -143,6 +143,17 @@
     inset 0 1px 0 oklch(1 0 0 / 0.10),
     0 30px 60px -20px oklch(0 0 0 / 0.7);
 }
+/* Extra-translucent frosted variant for floating cards (the project popup). */
+@utility glass-liquid {
+  background: linear-gradient(180deg, oklch(0.30 0.03 165 / 0.42), oklch(0.14 0.02 165 / 0.58));
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  border: 1px solid oklch(0.85 0.13 85 / 0.30);
+  box-shadow:
+    inset 0 1px 0 oklch(1 0 0 / 0.18),
+    inset 0 -1px 0 oklch(0 0 0 / 0.25),
+    0 30px 70px -25px oklch(0 0 0 / 0.75);
+}
 @utility gold-hairline {
   border: 1px solid oklch(0.78 0.13 85 / 0.35);
 }
@@ -151,6 +162,17 @@
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+}
+
+/* Scrollable but with no visible scrollbar (used by the floating popup). */
+.no-scrollbar {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* old Edge/IE */
+}
+.no-scrollbar::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none; /* Chrome/Safari */
 }
 
 /* Mapbox CSS - self-hosted from node_modules */

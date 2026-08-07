@@ -39,6 +39,13 @@ export function ProjectPopup({ project, onClose }: { project: ProjectWithRelatio
             className="pointer-events-auto absolute inset-0 z-10"
             aria-hidden
           />
+          {/* Positioning wrapper (static transform) is separate from the animated
+              card so Tailwind's centering translate never clashes with framer's
+              transform. Mobile: bottom-center sheet. md+: right-side panel. */}
+          {/* Docked bottom-right on md+ so it never overlaps the top-right
+              Layers/Places controls (which stay usable while the popup is open).
+              Mobile: bottom-center sheet. */}
+          <div className="pointer-events-none absolute bottom-6 left-1/2 z-30 w-[min(440px,calc(100vw-2rem))] -translate-x-1/2 md:left-auto md:right-28 md:w-[370px] md:max-w-[calc(100vw-2rem)] md:-translate-x-0">
           <motion.div
             key={project.id}
             initial={{ opacity: 0, y: 24, scale: 0.98 }}
@@ -46,9 +53,9 @@ export function ProjectPopup({ project, onClose }: { project: ProjectWithRelatio
             exit={{ opacity: 0, y: 24, scale: 0.98 }}
             transition={{ type: "spring", stiffness: 260, damping: 26 }}
             whileHover={{ y: -3 }}
-            className="pointer-events-auto absolute bottom-6 left-1/2 z-30 w-[min(440px,calc(100vw-2rem))] -translate-x-1/2"
+            className="no-scrollbar pointer-events-auto md:max-h-[calc(100vh-9rem)] md:overflow-y-auto"
           >
-            <div className="glass-strong gold-hairline overflow-hidden rounded-3xl shadow-2xl">
+            <div className="glass-liquid gold-hairline overflow-hidden rounded-3xl shadow-2xl">
               <div className="relative h-40 w-full overflow-hidden">
                 {activeImage ? (
                   <img
@@ -155,6 +162,7 @@ export function ProjectPopup({ project, onClose }: { project: ProjectWithRelatio
               </div>
             </div>
           </motion.div>
+          </div>
         </>
       )}
     </AnimatePresence>

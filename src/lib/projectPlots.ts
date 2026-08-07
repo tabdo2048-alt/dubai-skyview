@@ -65,19 +65,25 @@ export function setPlotData(map: mapboxgl.Map, projects: ProjectWithRelations[])
   src.setData({ type: "FeatureCollection", features });
 }
 
-/** Fade in the plot for one project (filter + opacity transition). */
-export function showPlot(map: mapboxgl.Map, id: string): void {
+/** Fade in the plots for a SET of projects (filter + opacity transition). Pass
+ *  an empty array to fade all out. Drives hover, selection and pinned zones. */
+export function setActivePlots(map: mapboxgl.Map, ids: string[]): void {
   if (!map.getLayer(PLOTS_FILL)) return;
-  const filter: mapboxgl.FilterSpecification = ["==", ["get", "id"], id];
+  const filter: mapboxgl.FilterSpecification = ids.length
+    ? ["in", ["get", "id"], ["literal", ids]]
+    : NONE;
   map.setFilter(PLOTS_FILL, filter);
   map.setFilter(PLOTS_LINE, filter);
-  map.setPaintProperty(PLOTS_FILL, "fill-opacity", 0.2);
-  map.setPaintProperty(PLOTS_LINE, "line-opacity", 0.95);
+  map.setPaintProperty(PLOTS_FILL, "fill-opacity", ids.length ? 0.2 : 0);
+  map.setPaintProperty(PLOTS_LINE, "line-opacity", ids.length ? 0.95 : 0);
 }
 
-/** Fade the plot back out. */
+/** Fade in the plot for one project. */
+export function showPlot(map: mapboxgl.Map, id: string): void {
+  setActivePlots(map, [id]);
+}
+
+/** Fade the plots back out. */
 export function hidePlot(map: mapboxgl.Map): void {
-  if (!map.getLayer(PLOTS_FILL)) return;
-  map.setPaintProperty(PLOTS_FILL, "fill-opacity", 0);
-  map.setPaintProperty(PLOTS_LINE, "line-opacity", 0);
+  setActivePlots(map, []);
 }

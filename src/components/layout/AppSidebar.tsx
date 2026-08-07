@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { MapPin, Bed, ChevronLeft, ChevronRight, Building2, X, Eye, EyeOff, Search } from "lucide-react";
+import { MapPin, Bed, ChevronLeft, ChevronRight, Building2, X, Eye, EyeOff, Hexagon, Search } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { useProjects, filterProjects, useCommunities } from "@/hooks/use-projects";
 import { useFiltersStore } from "@/store/filters";
@@ -27,6 +27,8 @@ export function AppSidebar() {
     setSidebarOpen,
     visibleProjectIds,
     toggleProjectVisible,
+    pinnedPlotIds,
+    togglePlotPinned,
   } = useFiltersStore();
   const { data: projects = [], isLoading } = useProjects();
   const { data: communities = [] } = useCommunities();
@@ -133,6 +135,8 @@ export function AppSidebar() {
             {filtered.map((p) => {
               const selected = p.id === selectedProjectId;
               const visible = visibleProjectIds.has(p.id);
+              const zonePinned = pinnedPlotIds.has(p.id);
+              const hasPlot = !!p.plot_geometry;
               return (
                 <div key={p.id} className="relative">
                 <button
@@ -184,6 +188,21 @@ export function AppSidebar() {
                 >
                   {visible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
                 </button>
+                {hasPlot && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      togglePlotPinned(p.id);
+                    }}
+                    aria-label={zonePinned ? "Hide zone" : "Show zone"}
+                    title={zonePinned ? "Hide zone" : "Show zone"}
+                    className={`glass gold-hairline absolute right-11 top-2 z-10 grid h-7 w-7 place-items-center rounded-full transition-colors ${
+                      zonePinned ? "text-gold" : "text-muted-foreground hover:text-cream"
+                    }`}
+                  >
+                    <Hexagon className="h-3.5 w-3.5" />
+                  </button>
+                )}
                 </div>
               );
             })}

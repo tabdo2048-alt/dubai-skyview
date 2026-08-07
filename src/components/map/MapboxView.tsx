@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import { DUBAI_BOUNDS, MAP_MAX_BOUNDS, ZOOM_OUT_BOUNDS, DEFAULT_PITCH, DEFAULT_BEARING, DUBAI_CENTER, DEFAULT_ZOOM } from "@/lib/dubai";
 import {
@@ -19,7 +19,7 @@ import type { ProjectWithRelations } from "@/lib/types";
 import { useFiltersStore } from "@/store/filters";
 import { type PoiPoint } from "@/hooks/use-pois";
 import { updateLandmarks, addLandmarkInteractions } from "./landmarksLayer";
-import { ensurePlotLayers, setPlotData, showPlot, hidePlot } from "@/lib/projectPlots";
+import { ensurePlotLayers, setPlotData, setActivePlots } from "@/lib/projectPlots";
 import {
   ZONE_ORDER,
   ZONE_PULSE,
@@ -219,7 +219,7 @@ export function MapboxView({
   // Loading overlay: shown only until the base Mapbox map is ready. All custom
   // layers are scheduled after that so the map appears quickly.
   const [mapReady, setMapReady] = useState(false);
-  const { selectedProjectId, setSelectedProjectId } = useFiltersStore();
+  const { selectedProjectId, setSelectedProjectId, pinnedPlotIds } = useFiltersStore();
   // Latest landmark POIs, so the style.load/deferred-layer install (which runs
   // outside React) always reads the current data. Click/hover wired once.
   const poisRef = useRef(pois);
@@ -231,6 +231,18 @@ export function MapboxView({
   projectsRef.current = projects;
   const selectedIdRef = useRef(selectedProjectId);
   selectedIdRef.current = selectedProjectId;
+  // Zones pinned visible from the sidebar, plus the transiently hovered marker's
+  // plot — composed together by recomputePlots so pinned/hover/selected coexist.
+  const pinnedPlotsRef = useRef(pinnedPlotIds);
+  pinnedPlotsRef.current = pinnedPlotIds;
+  const hoveredPlotRef = useRef<string | null>(null);
+  const recomputePlots = useCallback((map: mapboxgl.Map) => {
+    const ids = new Set<string>(pinnedPlotsRef.current);
+    const sel = selectedIdRef.current;
+    if (sel && projectsRef.current.some((p) => p.id === sel && p.plot_geometry)) ids.add(sel);
+    if (hoveredPlotRef.current) ids.add(hoveredPlotRef.current);
+    setActivePlots(map, [...ids]);
+  }, []);
 
   useEffect(() => {
     if (!containerRef.current || !accessToken) return;
@@ -1646,12 +1658,16 @@ export function MapboxView({
       el.append(pin, nm);
       el.title = p.name; // name also shown as native tooltip on hover
       el.onclick = () => setSelectedProjectId(p.id);
-      // Hover fades this project's plot boundary in; leaving fades it out unless
-      // the project is currently selected (its popup is open). No-op with no plot.
+      // Hover fades this project's plot boundary in; leaving recomputes (so it
+      // stays if the project is pinned or selected). No-op with no plot.
       if (p.plot_geometry) {
-        el.onmouseenter = () => showPlot(map, p.id);
+        el.onmouseenter = () => {
+          hoveredPlotRef.current = p.id;
+          recomputePlots(map);
+        };
         el.onmouseleave = () => {
-          if (selectedIdRef.current !== p.id) hidePlot(map);
+          if (hoveredPlotRef.current === p.id) hoveredPlotRef.current = null;
+          recomputePlots(map);
         };
       }
       // Bottom-anchored so the pin base sits on the coordinate and the name pill
@@ -1685,16 +1701,14 @@ export function MapboxView({
     setPlotData(map, projects);
   }, [projects, mapReady]);
 
-  // Sticky highlight: while a project is selected (its popup open), keep its plot
-  // visible; clear it on deselect (popup close). Hover handles the transient case.
+  // Recompose the visible plots whenever the pinned set, the selection, or the
+  // data changes. Pinned zones stay drawn; selected shows while its popup is
+  // open; hover is handled transiently on the markers themselves.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
-    const hasPlot =
-      !!selectedProjectId && projects.some((p) => p.id === selectedProjectId && p.plot_geometry);
-    if (hasPlot) showPlot(map, selectedProjectId as string);
-    else hidePlot(map);
-  }, [selectedProjectId, projects, mapReady]);
+    recomputePlots(map);
+  }, [selectedProjectId, pinnedPlotIds, projects, mapReady, recomputePlots]);
 
   // Landmark places (tourism / schools / hospitals) — ONE Mapbox symbol layer.
   // `pois` already holds only the active categories, so refreshing the layer's
@@ -1782,10 +1796,11 @@ export function MapboxView({
       bearing: map.getBearing(),
       duration: 1500,
       essential: true,
-      // Lift the marker up-screen so it settles ABOVE the bottom ProjectPopup
-      // instead of behind it. `offset` is transient (unlike `padding`, which
-      // would persist on the map and skew later recenter/clamp math).
-      offset: [0, window.innerWidth < 768 ? -140 : -170],
+      // Keep the marker clear of the ProjectPopup: mobile docks a bottom sheet
+      // (lift the marker up), md+ docks a right-side panel (push the marker
+      // left). `offset` is transient — unlike `padding`, which would persist on
+      // the map and skew later recenter/clamp math.
+      offset: window.innerWidth < 768 ? [0, -140] : [-190, 0],
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProjectId, active]);
