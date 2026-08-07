@@ -1782,6 +1782,10 @@ export function MapboxView({
       bearing: map.getBearing(),
       duration: 1500,
       essential: true,
+      // Lift the marker up-screen so it settles ABOVE the bottom ProjectPopup
+      // instead of behind it. `offset` is transient (unlike `padding`, which
+      // would persist on the map and skew later recenter/clamp math).
+      offset: [0, window.innerWidth < 768 ? -140 : -170],
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProjectId, active]);
