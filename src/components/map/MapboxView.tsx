@@ -131,7 +131,7 @@ const PROJECT_MARKER_CSS = `
   background:linear-gradient(135deg,rgba(9,13,17,.97),rgba(9,13,17,.97));
   border-right:1.5px solid rgba(201,168,76,.7);border-bottom:1.5px solid rgba(201,168,76,.7);
   transform:translateX(-50%) rotate(45deg)}
-.proj-pin:hover{transform:scale(1.12) translateY(-2px);border-color:#c9a84c;color:#ffd97a;
+.proj-pin:hover,.proj-pin.hovered{transform:scale(1.12) translateY(-2px);border-color:#c9a84c;color:#ffd97a;
   box-shadow:0 11px 28px rgba(0,0,0,.55),0 0 22px rgba(201,168,76,.5)}
 .proj-pin.selected{transform:scale(1.18) translateY(-2px);border-color:#f0d488;color:#1a1206;
   background:linear-gradient(158deg,#e9c766,#c19a3c);
@@ -219,7 +219,7 @@ export function MapboxView({
   // Loading overlay: shown only until the base Mapbox map is ready. All custom
   // layers are scheduled after that so the map appears quickly.
   const [mapReady, setMapReady] = useState(false);
-  const { selectedProjectId, setSelectedProjectId, pinnedPlotIds } = useFiltersStore();
+  const { selectedProjectId, setSelectedProjectId, pinnedPlotIds, hoveredProjectId, setHoveredProjectId } = useFiltersStore();
   // Latest landmark POIs, so the style.load/deferred-layer install (which runs
   // outside React) always reads the current data. Click/hover wired once.
   const poisRef = useRef(pois);
@@ -1658,18 +1658,22 @@ export function MapboxView({
       el.append(pin, nm);
       el.title = p.name; // name also shown as native tooltip on hover
       el.onclick = () => setSelectedProjectId(p.id);
-      // Hover fades this project's plot boundary in; leaving recomputes (so it
-      // stays if the project is pinned or selected). No-op with no plot.
-      if (p.plot_geometry) {
-        el.onmouseenter = () => {
+      // Hover syncs the shared highlight (sidebar card ⇄ marker) and fades this
+      // project's plot in; leaving recomputes so a pinned/selected plot stays.
+      el.onmouseenter = () => {
+        setHoveredProjectId(p.id);
+        if (p.plot_geometry) {
           hoveredPlotRef.current = p.id;
           recomputePlots(map);
-        };
-        el.onmouseleave = () => {
-          if (hoveredPlotRef.current === p.id) hoveredPlotRef.current = null;
+        }
+      };
+      el.onmouseleave = () => {
+        setHoveredProjectId(null);
+        if (hoveredPlotRef.current === p.id) {
+          hoveredPlotRef.current = null;
           recomputePlots(map);
-        };
-      }
+        }
+      };
       // Bottom-anchored so the pin base sits on the coordinate and the name pill
       // hangs beneath without shifting the geographic anchor.
       const m = new mapboxgl.Marker({ element: el, anchor: "bottom" }).setLngLat([p.lng, p.lat]).addTo(map);
@@ -1681,7 +1685,7 @@ export function MapboxView({
         existing.delete(id);
       }
     }
-  }, [projects, setSelectedProjectId]);
+  }, [projects, setSelectedProjectId, setHoveredProjectId, recomputePlots]);
 
   // Highlight selected — toggle the .selected class (styling lives in CSS).
   useEffect(() => {
@@ -1692,6 +1696,14 @@ export function MapboxView({
       pin?.classList.toggle("selected", id === selectedProjectId);
     }
   }, [selectedProjectId]);
+
+  // Sync hover highlight from the sidebar (card hover → lift the matching pin).
+  useEffect(() => {
+    for (const [id, m] of markersRef.current.entries()) {
+      const pin = m.getElement().querySelector(".proj-pin");
+      pin?.classList.toggle("hovered", id === hoveredProjectId);
+    }
+  }, [hoveredProjectId]);
 
   // Keep the plot-boundary source in sync with the projects that have a plot.
   useEffect(() => {

@@ -13,6 +13,11 @@ type FiltersStore = {
   selectedProjectId: string | null;
   setSelectedProjectId: (id: string | null) => void;
 
+  // Project the pointer is over (sidebar card OR map marker) — syncs the
+  // highlight across both panes. Transient, not persisted.
+  hoveredProjectId: string | null;
+  setHoveredProjectId: (id: string | null) => void;
+
   mapMode: MapMode;
   setMapMode: (mode: MapMode) => void;
 
@@ -61,6 +66,9 @@ export const useFiltersStore = create<FiltersStore>((set) => ({
 
   selectedProjectId: null,
   setSelectedProjectId: (id) => set({ selectedProjectId: id }),
+
+  hoveredProjectId: null,
+  setHoveredProjectId: (id) => set({ hoveredProjectId: id }),
 
   mapMode: "satellite",
   setMapMode: (mode) => set({ mapMode: mode }),

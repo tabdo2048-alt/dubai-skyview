@@ -1,5 +1,6 @@
+import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { MapPin, Bed, ChevronLeft, ChevronRight, Building2, X, Eye, EyeOff, Hexagon, Search } from "lucide-react";
+import { MapPin, Bed, ChevronLeft, ChevronRight, Building2, X, Eye, EyeOff, Hexagon, Search, ArrowUpDown } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { useProjects, filterProjects, useCommunities } from "@/hooks/use-projects";
 import { useFiltersStore } from "@/store/filters";
@@ -29,10 +30,15 @@ export function AppSidebar() {
     toggleProjectVisible,
     pinnedPlotIds,
     togglePlotPinned,
+    hoveredProjectId,
+    setHoveredProjectId,
   } = useFiltersStore();
   const { data: projects = [], isLoading } = useProjects();
   const { data: communities = [] } = useCommunities();
-  const filtered = filterProjects(projects, filters);
+  const [sortBy, setSortBy] = useState<SortKey>("default");
+  const filteredRaw = filterProjects(projects, filters);
+  const filtered = useMemo(() => sortProjects(filteredRaw, sortBy), [filteredRaw, sortBy]);
+  const activeChips = useMemo(() => buildActiveChips(filters, communities), [filters, communities]);
 
   const toggle = <K extends "categories" | "statuses" | "communities">(key: K, value: string) => {
     const current = filters[key];
@@ -60,6 +66,38 @@ export function AppSidebar() {
               <X className="mr-1 h-3.5 w-3.5" /> Reset
             </Button>
           </div>
+
+          {/* Sort control. */}
+          <div className="mt-3 flex items-center gap-2">
+            <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground" />
+            <label htmlFor="sort" className="text-[10px] uppercase tracking-widest text-muted-foreground">Sort</label>
+            <select
+              id="sort"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as SortKey)}
+              className="glass gold-hairline ml-auto rounded-full px-3 py-1 text-xs text-cream focus:outline-none focus:ring-1 focus:ring-gold/50"
+            >
+              {SORT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value} className="bg-background text-cream">{o.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Active-filter chips — click a chip to remove that filter. */}
+          {activeChips.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {activeChips.map((c) => (
+                <button
+                  key={c.key}
+                  onClick={() => setFilters(c.patch as never)}
+                  className="glass gold-hairline flex items-center gap-1 rounded-full px-2.5 py-1 text-xs text-cream hover:text-gold"
+                  title={`Remove ${c.label}`}
+                >
+                  {c.label} <X className="h-3 w-3" />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Single scroll area: filters + project list share one gold scrollbar. */}
@@ -130,23 +168,47 @@ export function AppSidebar() {
         </div>
 
           <div className="p-3">
-          {isLoading && <div className="p-6 text-center text-sm text-muted-foreground">Loading Dubai projects…</div>}
+          {isLoading && (
+            <div className="space-y-2">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="glass gold-hairline flex gap-3 rounded-2xl p-2.5">
+                  <div className="h-20 w-24 shrink-0 animate-pulse rounded-xl bg-muted/60" />
+                  <div className="flex-1 space-y-2 py-1">
+                    <div className="h-2.5 w-1/3 animate-pulse rounded bg-muted/60" />
+                    <div className="h-4 w-2/3 animate-pulse rounded bg-muted/50" />
+                    <div className="h-2.5 w-1/2 animate-pulse rounded bg-muted/40" />
+                    <div className="h-3 w-1/4 animate-pulse rounded bg-muted/40" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="space-y-2">
             {filtered.map((p) => {
               const selected = p.id === selectedProjectId;
+              const hovered = p.id === hoveredProjectId;
               const visible = visibleProjectIds.has(p.id);
               const zonePinned = pinnedPlotIds.has(p.id);
               const hasPlot = !!p.plot_geometry;
               return (
-                <div key={p.id} className="relative">
+                <div
+                  key={p.id}
+                  className="relative"
+                  onMouseEnter={() => setHoveredProjectId(p.id)}
+                  onMouseLeave={() => setHoveredProjectId(null)}
+                >
                 <button
                   onClick={() => {
                     setSelectedProjectId(p.id);
                     track("select_project", { id: p.id, name: p.name });
                   }}
-                  className={`group w-full overflow-hidden rounded-2xl text-left transition-all ${
-                    selected ? "gold-hairline ring-2 ring-gold/50" : "border border-border/60 hover:border-gold/40"
-                  } glass`}
+                  className={`group w-full overflow-hidden rounded-2xl text-left transition-all glass ${
+                    selected
+                      ? "gold-hairline ring-2 ring-gold/50"
+                      : hovered
+                        ? "border border-gold/40 ring-1 ring-gold/30"
+                        : "border border-border/60 hover:border-gold/40"
+                  }`}
                 >
                   <div className="flex gap-3 p-2.5">
                     <div className="h-20 w-24 shrink-0 overflow-hidden rounded-xl">
@@ -249,6 +311,76 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
       {children}
     </button>
   );
+}
+
+type SortKey = "default" | "price_asc" | "price_desc" | "handover" | "name";
+
+const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+  { value: "default", label: "Featured" },
+  { value: "price_asc", label: "Price ↑" },
+  { value: "price_desc", label: "Price ↓" },
+  { value: "handover", label: "Handover" },
+  { value: "name", label: "Name A–Z" },
+];
+
+// Sort a copy of the filtered list. Nullish prices/dates sort last.
+function sortProjects<T extends { name: string; starting_price_aed: number | null; completion_date: string | null }>(
+  list: T[],
+  key: SortKey
+): T[] {
+  if (key === "default") return list;
+  const arr = [...list];
+  const num = (v: number | null) => (v == null ? Number.POSITIVE_INFINITY : v);
+  const str = (v: string | null) => v ?? "￿";
+  arr.sort((a, b) => {
+    switch (key) {
+      case "price_asc": return num(a.starting_price_aed) - num(b.starting_price_aed);
+      case "price_desc": return num(b.starting_price_aed) - num(a.starting_price_aed);
+      case "handover": return str(a.completion_date).localeCompare(str(b.completion_date));
+      case "name": return a.name.localeCompare(b.name);
+      default: return 0;
+    }
+  });
+  return arr;
+}
+
+type Chipf = { key: string; label: string; patch: Record<string, unknown> };
+
+// Removable chips describing every active filter. Each carries the setFilters
+// patch that clears just itself.
+function buildActiveChips(
+  filters: {
+    search: string;
+    categories: string[];
+    statuses: string[];
+    communities: string[];
+    minPrice: number | null;
+    maxPrice: number | null;
+    bedrooms: number | null;
+  },
+  communities: { slug: string; name: string }[]
+): Chipf[] {
+  const chips: Chipf[] = [];
+  if (filters.search.trim()) chips.push({ key: "search", label: `“${filters.search.trim()}”`, patch: { search: "" } });
+  for (const c of filters.categories) {
+    const label = CATEGORIES.find((x) => x.value === c)?.label ?? c;
+    chips.push({ key: `cat:${c}`, label, patch: { categories: filters.categories.filter((v) => v !== c) } });
+  }
+  for (const s of filters.statuses) {
+    const label = STATUSES.find((x) => x.value === s)?.label ?? s;
+    chips.push({ key: `st:${s}`, label, patch: { statuses: filters.statuses.filter((v) => v !== s) } });
+  }
+  for (const slug of filters.communities) {
+    const label = communities.find((x) => x.slug === slug)?.name ?? slug;
+    chips.push({ key: `co:${slug}`, label, patch: { communities: filters.communities.filter((v) => v !== slug) } });
+  }
+  if (filters.minPrice != null || filters.maxPrice != null) {
+    chips.push({ key: "price", label: "Price", patch: { minPrice: null, maxPrice: null } });
+  }
+  if (filters.bedrooms != null) {
+    chips.push({ key: "beds", label: `${filters.bedrooms}+ bd`, patch: { bedrooms: null } });
+  }
+  return chips;
 }
 
 export { Badge };
