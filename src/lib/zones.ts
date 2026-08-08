@@ -181,17 +181,68 @@ export function buildZoneLabels(zones: ZoneRow[]): GeoJSON.FeatureCollection {
   return { type: "FeatureCollection", features };
 }
 
+type Bbox = [number, number, number, number]; // minX, minY, maxX, maxY
+function ringBbox(r: Ring): Bbox {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [x, y] of r) {
+    if (x < minX) minX = x; if (x > maxX) maxX = x;
+    if (y < minY) minY = y; if (y > maxY) maxY = y;
+  }
+  return [minX, minY, maxX, maxY];
+}
+function bboxDisjoint(a: Bbox, b: Bbox): boolean {
+  return a[2] < b[0] || a[0] > b[2] || a[3] < b[1] || a[1] > b[3];
+}
+function pointInRing(pt: [number, number], ring: Ring): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+    if (((yi > pt[1]) !== (yj > pt[1])) && pt[0] < ((xj - xi) * (pt[1] - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+function segCross(p1: [number, number], p2: [number, number], p3: [number, number], p4: [number, number]): boolean {
+  const d = (a: [number, number], b: [number, number], c: [number, number]) =>
+    (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  const d1 = d(p3, p4, p1), d2 = d(p3, p4, p2), d3 = d(p1, p2, p3), d4 = d(p1, p2, p4);
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
+// Do two closed rings overlap (share interior area)? Edge crossing OR one ring's
+// vertex sitting inside the other (containment). Cheap; no turf.
+function ringsOverlap(a: Ring, b: Ring): boolean {
+  for (let i = 0; i < a.length - 1; i++) {
+    for (let j = 0; j < b.length - 1; j++) {
+      if (segCross(a[i], a[i + 1], b[j], b[j + 1])) return true;
+    }
+  }
+  return pointInRing(a[0], b) || pointInRing(b[0], a);
+}
+
 // Inverted mask: one polygon whose outer ring is the local cover rectangle and
 // whose holes are the active zones. Filling it dark darkens everything EXCEPT
 // the zones. Each hole is normalized to CW winding (opposite the cover) so it
-// punches through instead of rendering as its own dark shape. Built by hand so
-// no turf import lands in the public map bundle.
+// punches through instead of rendering as its own dark shape.
+//
+// Overlapping holes (e.g. the SAME area appearing in two active categories —
+// RY and HH both have DLRC/Falcon City) break Mapbox's earcut tessellation and
+// render a dark sliver ("shadow"). So holes are deduped: largest first, and any
+// hole that overlaps one already kept is skipped (its area is already revealed
+// by the kept hole). Built by hand so no turf import lands in the public bundle.
 export function buildDimMask(activeZones: ZoneRow[]): GeoJSON.FeatureCollection {
-  const holes: Ring[] = [];
+  const candidates: { ring: Ring; bbox: Bbox; area: number }[] = [];
   for (const z of activeZones) {
-    const ring = polygonRings(z.geometry)[0];
-    if (ring && ring.length >= 4) holes.push(toHoleRing(ring));
+    const raw = polygonRings(z.geometry)[0];
+    if (!raw || raw.length < 4) continue;
+    const ring = toHoleRing(raw);
+    candidates.push({ ring, bbox: ringBbox(ring), area: Math.abs(ringSignedArea(ring)) });
   }
+  candidates.sort((a, b) => b.area - a.area); // keep larger holes, skip overlapping smaller
+  const kept: { ring: Ring; bbox: Bbox }[] = [];
+  for (const c of candidates) {
+    const clashes = kept.some((k) => !bboxDisjoint(k.bbox, c.bbox) && ringsOverlap(k.ring, c.ring));
+    if (!clashes) kept.push({ ring: c.ring, bbox: c.bbox });
+  }
+  const holes: Ring[] = kept.map((k) => k.ring);
   if (holes.length === 0) return emptyFC();
   return {
     type: "FeatureCollection",
