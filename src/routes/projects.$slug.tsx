@@ -165,7 +165,7 @@ function ProjectDetail() {
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <Button asChild className="bg-gold text-gold-foreground hover:bg-gold/90">
+              <Button asChild className="shimmer bg-gold text-gold-foreground hover:bg-gold/90">
                 <a
                   href={`https://wa.me/971586620600?text=${encodeURIComponent(`Interested in ${p.name}`)}`}
                   target="_blank"

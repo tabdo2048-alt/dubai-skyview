@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { MapPin, Bed, ChevronLeft, ChevronRight, Building2, X, Eye, EyeOff, Hexagon, Search, ArrowUpDown } from "lucide-react";
 import { Link } from "@tanstack/react-router";
@@ -39,6 +39,7 @@ export function AppSidebar() {
   const filteredRaw = filterProjects(projects, filters);
   const filtered = useMemo(() => sortProjects(filteredRaw, sortBy), [filteredRaw, sortBy]);
   const activeChips = useMemo(() => buildActiveChips(filters, communities), [filters, communities]);
+  const countDisplay = useCountUp(filtered.length);
 
   const toggle = <K extends "categories" | "statuses" | "communities">(key: K, value: string) => {
     const current = filters[key];
@@ -58,8 +59,8 @@ export function AppSidebar() {
           <div className="flex items-center justify-between">
             <div>
               <div className="text-xs uppercase tracking-widest text-muted-foreground">Discover</div>
-              <div className="font-display text-2xl leading-tight text-cream">
-                {filtered.length} <span className="text-gold-gradient">projects</span>
+              <div className="font-display text-3xl leading-tight text-cream">
+                {countDisplay} <span className="text-gold-gradient">projects</span>
               </div>
             </div>
             <Button size="sm" variant="ghost" onClick={reset} className="text-muted-foreground hover:text-cream">
@@ -184,15 +185,18 @@ export function AppSidebar() {
             </div>
           )}
           <div className="space-y-2">
-            {filtered.map((p) => {
+            {filtered.map((p, i) => {
               const selected = p.id === selectedProjectId;
               const hovered = p.id === hoveredProjectId;
               const visible = visibleProjectIds.has(p.id);
               const zonePinned = pinnedPlotIds.has(p.id);
               const hasPlot = !!p.plot_geometry;
               return (
-                <div
+                <motion.div
                   key={p.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.32, delay: Math.min(i, 10) * 0.035, ease: [0.2, 0.9, 0.25, 1] }}
                   className="relative"
                   onMouseEnter={() => setHoveredProjectId(p.id)}
                   onMouseLeave={() => setHoveredProjectId(null)}
@@ -265,7 +269,7 @@ export function AppSidebar() {
                     <Hexagon className="h-3.5 w-3.5" />
                   </button>
                 )}
-                </div>
+                </motion.div>
               );
             })}
             {!isLoading && filtered.length === 0 && (
@@ -311,6 +315,31 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
       {children}
     </button>
   );
+}
+
+// Animate a number from its previous value to `target` (rAF, ~500ms). Respects
+// reduced-motion by snapping instantly.
+function useCountUp(target: number): number {
+  const [display, setDisplay] = useState(target);
+  const fromRef = useRef(target);
+  useEffect(() => {
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const from = fromRef.current;
+    if (reduce || from === target) { setDisplay(target); fromRef.current = target; return; }
+    const start = performance.now();
+    const dur = 500;
+    let raf = 0;
+    const tick = (t: number) => {
+      const p = Math.min(1, (t - start) / dur);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setDisplay(Math.round(from + (target - from) * eased));
+      if (p < 1) raf = requestAnimationFrame(tick);
+      else fromRef.current = target;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target]);
+  return display;
 }
 
 type SortKey = "default" | "price_asc" | "price_desc" | "handover" | "name";

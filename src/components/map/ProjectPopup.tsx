@@ -143,7 +143,7 @@ export function ProjectPopup({ project, onClose }: { project: ProjectWithRelatio
                 )}
 
                 <div className="flex flex-wrap gap-2 pt-1">
-                  <Button asChild size="sm" className="bg-gold text-gold-foreground shadow-[0_0_0_rgba(201,168,76,0)] transition-shadow hover:bg-gold/90 hover:shadow-[0_6px_22px_rgba(201,168,76,0.45)]">
+                  <Button asChild size="sm" className="shimmer bg-gold text-gold-foreground shadow-[0_0_0_rgba(201,168,76,0)] transition-shadow hover:bg-gold/90 hover:shadow-[0_6px_22px_rgba(201,168,76,0.45)]">
                     <Link to="/projects/$slug" params={{ slug: project.slug }}>
                       View details <ArrowRight className="ml-1 h-3.5 w-3.5" />
                     </Link>

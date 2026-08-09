@@ -125,16 +125,18 @@ const PROJECT_MARKER_CSS = `
   border:1.5px solid rgba(201,168,76,.7);
   box-shadow:0 7px 20px rgba(0,0,0,.5),0 0 0 3px rgba(201,168,76,.08);
   color:#e9c766;cursor:pointer;transform:translateZ(0);
+  animation:pinBreathe 4s ease-in-out infinite;
   transition:transform .28s cubic-bezier(.2,.9,.25,1),box-shadow .28s ease,border-color .28s ease,color .28s ease}
+@media (prefers-reduced-motion:reduce){.proj-pin{animation:none}}
 .proj-pin svg{width:18px;height:18px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}
 .proj-pin::after{content:"";position:absolute;bottom:-4px;left:50%;width:9px;height:9px;
   background:linear-gradient(135deg,rgba(9,13,17,.97),rgba(9,13,17,.97));
   border-right:1.5px solid rgba(201,168,76,.7);border-bottom:1.5px solid rgba(201,168,76,.7);
   transform:translateX(-50%) rotate(45deg)}
 .proj-pin:hover,.proj-pin.hovered{transform:scale(1.12) translateY(-2px);border-color:#c9a84c;color:#ffd97a;
-  box-shadow:0 11px 28px rgba(0,0,0,.55),0 0 22px rgba(201,168,76,.5)}
+  animation:none;box-shadow:0 11px 28px rgba(0,0,0,.55),0 0 22px rgba(201,168,76,.5)}
 .proj-pin.selected{transform:scale(1.18) translateY(-2px);border-color:#f0d488;color:#1a1206;
-  background:linear-gradient(158deg,#e9c766,#c19a3c);
+  animation:none;background:linear-gradient(158deg,#e9c766,#c19a3c);
   box-shadow:0 0 28px rgba(201,168,76,.95),0 8px 22px rgba(0,0,0,.5)}
 .proj-pin.selected::after{background:#c19a3c;border-color:#f0d488}
 /* Project marker wrapper: the pin with the project name pill directly below it,
@@ -321,7 +323,20 @@ export function MapboxView({
           didFitWholeRef.current = true;
           // +1.0: cameraForBounds reports ~1 zoom level looser than a true fill,
           // so this makes DUBAI_BOUNDS actually fill the viewport = "just Dubai".
-          map.jumpTo({ center: open.center ?? map.getCenter(), zoom: open.zoom + 1.0 });
+          const target = { center: open.center ?? map.getCenter(), zoom: open.zoom + 1.0 };
+          const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+          if (reduce || !isActiveRef.current) {
+            map.jumpTo(target);
+          } else {
+            // Cinematic entrance: start pulled back + slightly angled, then ease
+            // down into the Dubai frame. One-time (didFitWholeRef guards it).
+            map.jumpTo({
+              center: target.center,
+              zoom: Math.max(map.getMinZoom(), target.zoom - 2.3),
+              bearing: -20,
+            });
+            map.flyTo({ ...target, bearing: 0, duration: 3200, curve: 1.5, essential: true });
+          }
         }
       }
       syncPanBounds();
@@ -434,6 +449,19 @@ export function MapboxView({
         } catch (err) {
           console.warn("neutralizeRoadColors failed (non-fatal)", err);
         }
+
+        // Subtle atmosphere for depth on the 3D map (soft haze + horizon glow).
+        // Guarded — no-ops if the style rejects fog.
+        try {
+          (map.setFog as (f: unknown) => void)?.({
+            range: [1.5, 12],
+            color: "#d6e9f0",
+            "high-color": "#a9c7d6",
+            "horizon-blend": 0.07,
+            "space-color": "#0a1016",
+            "star-intensity": 0.04,
+          });
+        } catch { /* fog unsupported — non-fatal */ }
 
         // No DEM terrain: raising the draped imagery misregisters every custom
         // layer (water, boats, foam render at ellipsoid z=0), so tilting the
@@ -1841,20 +1869,28 @@ export function MapboxView({
         style={{ opacity: metroMode ? 0.28 : 0 }}
       />
 
-      {/* Premium loading overlay — shown until the map is idle (style + tiles in
-          and heavy Three.js layers added), then fades out. No black flicker. */}
+      {/* Faint film-grain over the map for a premium finish (very subtle). */}
+      <div className="grain-overlay z-[4]" aria-hidden />
+
+      {/* Branded splash — shown until the map is idle (style + tiles in and heavy
+          Three.js layers added), then fades out. No black flicker. */}
       <div
         className="pointer-events-none absolute inset-0 z-[5] grid place-items-center transition-opacity duration-700"
         style={{
           opacity: mapReady ? 0 : 1,
-          background: "linear-gradient(180deg, #dff0f5 0%, #c9e6ee 100%)",
+          background: "radial-gradient(120% 120% at 50% 0%, #10202b 0%, #0a1620 55%, #070f16 100%)",
         }}
         aria-hidden={mapReady}
       >
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-9 w-9 animate-spin rounded-full border-2 border-gold/30 border-t-gold" />
-          <div className="font-display text-sm tracking-wide text-emerald-deep/80">
-            Loading Dubai map…
+        <div className="ambient-mesh" aria-hidden />
+        <div className="relative flex flex-col items-center gap-4">
+          <div className="brand-shimmer font-display text-4xl tracking-tight md:text-5xl">
+            Dubai SkyView
+          </div>
+          <div className="hairline-grow h-px w-40 bg-gradient-to-r from-transparent via-gold/70 to-transparent" />
+          <div className="flex items-center gap-2 text-xs uppercase tracking-[0.3em] text-cream/70">
+            <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-gold/30 border-t-gold" />
+            Loading
           </div>
         </div>
       </div>
