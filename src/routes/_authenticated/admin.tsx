@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, lazy, Suspense } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus, Trash2, Star, StarOff, Edit3, Upload, ImagePlus, X } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Star, StarOff, Edit3, Upload, ImagePlus, X, Globe } from "lucide-react";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { AdminLocationPicker } from "@/components/map/AdminLocationPicker";
 import { ProjectPlotEditor } from "@/components/map/ProjectPlotEditor";
@@ -11,9 +11,9 @@ import type { Json } from "@/integrations/supabase/types";
 const AdminZoneEditor = lazy(() =>
   import("@/components/map/AdminZoneEditor").then((m) => ({ default: m.AdminZoneEditor })),
 );
-import { useAuth, useIsAdmin } from "@/hooks/use-auth";
 import { useMapConfig } from "@/hooks/use-map-config";
 import { useProjects, useCommunities, useDevelopers } from "@/hooks/use-projects";
+import { useTenantStore } from "@/store/tenant";
 import { POI_TABLES, type PoiCategory, type PoiPoint } from "@/hooks/use-pois";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -50,22 +50,24 @@ export const Route = createFileRoute("/_authenticated/admin")({
 });
 
 function AdminPage() {
-  const { user } = useAuth();
-  const { data: isAdmin, isLoading: adminLoading } = useIsAdmin(user);
   const { data: projects = [], refetch } = useProjects();
   const qc = useQueryClient();
   const [creating, setCreating] = useState(false);
+  // Access is org-membership based now (the _authenticated gate already ensured
+  // an active subscription). The current tenant scopes every write.
+  const { currentTenantId, loaded: tenantLoaded, load: loadTenants } = useTenantStore();
+  useEffect(() => { void loadTenants(); }, [loadTenants]);
 
-  if (adminLoading) return <div className="min-h-screen"><AppNavbar /><div className="p-10 text-center text-muted-foreground">Checking access…</div></div>;
-  if (!isAdmin) {
+  if (!tenantLoaded) return <div className="min-h-screen"><AppNavbar /><div className="p-10 text-center text-muted-foreground">Loading workspace…</div></div>;
+  if (!currentTenantId) {
     return (
       <div className="min-h-screen">
         <AppNavbar />
         <div className="mx-auto max-w-md px-4 py-16">
           <div className="glass-strong rounded-3xl p-8 text-center">
-            <h1 className="font-display text-3xl text-cream">Admin only</h1>
-            <p className="mt-2 text-sm text-muted-foreground">This account is not an administrator.</p>
-            <Button asChild className="mt-6 bg-gold text-gold-foreground"><Link to="/">Back to map</Link></Button>
+            <h1 className="font-display text-3xl text-cream">No organization</h1>
+            <p className="mt-2 text-sm text-muted-foreground">This account has no active organization.</p>
+            <Button asChild className="mt-6 bg-gold text-gold-foreground"><Link to="/billing">Subscribe</Link></Button>
           </div>
         </div>
       </div>
@@ -84,6 +86,16 @@ function AdminPage() {
   const toggleFeatured = async (id: string, next: boolean) => {
     const { error } = await supabase.from("projects").update({ featured: next }).eq("id", id);
     if (error) return toast.error(error.message);
+    refetch();
+  };
+
+  // Publish / unpublish to the PUBLIC showcase map (is_public). Cast: the column
+  // is new (added by the multi-tenant migration; regenerate types to drop this).
+  const togglePublic = async (id: string, next: boolean) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase.from("projects").update as any)({ is_public: next }).eq("id", id);
+    if (error) return toast.error(error.message);
+    toast.success(next ? "Published to public map" : "Unpublished");
     refetch();
   };
 
@@ -107,6 +119,7 @@ function AdminPage() {
         {creating && (
           <ProjectForm
             id={null}
+            tenantId={currentTenantId}
             onClose={() => { setCreating(false); refetch(); qc.invalidateQueries(); }}
           />
         )}
@@ -125,6 +138,13 @@ function AdminPage() {
               </div>
               <Button size="icon" variant="ghost" onClick={() => toggleFeatured(p.id, !p.featured)} title="Toggle featured">
                 {p.featured ? <Star className="h-4 w-4 text-gold" /> : <StarOff className="h-4 w-4 text-muted-foreground" />}
+              </Button>
+              {/* Publish to the public showcase map (is_public — new column). */}
+              <Button size="icon" variant="ghost"
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                onClick={() => togglePublic(p.id, !(p as any).is_public)}
+                title={(p as unknown as { is_public?: boolean }).is_public ? "Published (public)" : "Private — click to publish"}>
+                <Globe className={`h-4 w-4 ${(p as unknown as { is_public?: boolean }).is_public ? "text-gold" : "text-muted-foreground"}`} />
               </Button>
               <Button asChild size="icon" variant="ghost">
                 <Link to="/admin/projects/$id" params={{ id: p.id }}>
@@ -336,6 +356,7 @@ type DeveloperRow = { id: string; name: string; slug: string; website: string | 
 
 function DeveloperManager() {
   const { data: developers = [] } = useDevelopers();
+  const { currentTenantId } = useTenantStore();
   const qc = useQueryClient();
   const empty = { name: "", slug: "", website: "", logo_url: "", description: "" };
   const [editId, setEditId] = useState<string | null>(null);
@@ -373,7 +394,8 @@ function DeveloperManager() {
         if (error) throw error;
         toast.success("Developer updated");
       } else {
-        const { error } = await supabase.from("developers").insert(payload);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { error } = await (supabase.from("developers").insert as any)({ ...payload, tenant_id: currentTenantId });
         if (error) throw error;
         toast.success("Developer added");
       }
@@ -450,6 +472,7 @@ type CommunityRow = {
 // community dropdown; this just gives it a CRUD surface. Mirrors DeveloperManager.
 function CommunityManager() {
   const { data: communities = [] } = useCommunities();
+  const { currentTenantId } = useTenantStore();
   const qc = useQueryClient();
   const empty = { name: "", slug: "", description: "", hero_image_url: "", center_lat: "", center_lng: "", sort_order: "0" };
   const [editId, setEditId] = useState<string | null>(null);
@@ -493,7 +516,8 @@ function CommunityManager() {
         if (error) throw error;
         toast.success("Community updated");
       } else {
-        const { error } = await supabase.from("communities").insert(payload);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { error } = await (supabase.from("communities").insert as any)({ ...payload, tenant_id: currentTenantId });
         if (error) throw error;
         toast.success("Community added");
       }
@@ -561,7 +585,7 @@ function CommunityManager() {
   );
 }
 
-export function ProjectForm({ id, onClose }: { id: string | null; onClose: () => void }) {
+export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tenantId: string; onClose: () => void }) {
   const { data: projects = [] } = useProjects();
   const { data: developers = [] } = useDevelopers();
   const { data: communities = [] } = useCommunities();
@@ -646,9 +670,11 @@ export function ProjectForm({ id, onClose }: { id: string | null; onClose: () =>
     );
 
     const firstSort = gallery.length;
-    const { error: imageError } = await supabase.from("project_images").insert(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error: imageError } = await (supabase.from("project_images").insert as any)(
       uploaded.map((url, index) => ({
         project_id: projectId,
+        tenant_id: tenantId, // stamp tenancy (new column)
         url,
         sort_order: firstSort + index,
       })),
@@ -702,7 +728,9 @@ export function ProjectForm({ id, onClose }: { id: string | null; onClose: () =>
         const { error } = await supabase.from("projects").update(payload).eq("id", id);
         if (error) throw error;
       } else {
-        const { data, error } = await supabase.from("projects").insert(payload).select("id").single();
+        // Stamp tenancy on create (new column). Cast until types are regenerated.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (supabase.from("projects").insert as any)({ ...payload, tenant_id: tenantId }).select("id").single();
         if (error) throw error;
         if (!data?.id) throw new Error("Project was created without an id");
         projectId = data.id;

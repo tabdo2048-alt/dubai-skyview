@@ -9,15 +9,24 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SignupRouteImport } from './routes/signup'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DevelopersIndexRouteImport } from './routes/developers.index'
 import { Route as CommunitiesIndexRouteImport } from './routes/communities.index'
+import { Route as BillingIndexRouteImport } from './routes/billing.index'
 import { Route as ProjectsSlugRouteImport } from './routes/projects.$slug'
+import { Route as BillingSuccessRouteImport } from './routes/billing.success'
+import { Route as BillingCancelRouteImport } from './routes/billing.cancel'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as AuthenticatedAdminProjectsIdRouteImport } from './routes/_authenticated/admin_.projects.$id'
 
+const SignupRoute = SignupRouteImport.update({
+  id: '/signup',
+  path: '/signup',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
@@ -42,9 +51,24 @@ const CommunitiesIndexRoute = CommunitiesIndexRouteImport.update({
   path: '/communities/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const BillingIndexRoute = BillingIndexRouteImport.update({
+  id: '/billing/',
+  path: '/billing/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProjectsSlugRoute = ProjectsSlugRouteImport.update({
   id: '/projects/$slug',
   path: '/projects/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BillingSuccessRoute = BillingSuccessRouteImport.update({
+  id: '/billing/success',
+  path: '/billing/success',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BillingCancelRoute = BillingCancelRouteImport.update({
+  id: '/billing/cancel',
+  path: '/billing/cancel',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
@@ -62,8 +86,12 @@ const AuthenticatedAdminProjectsIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/signup': typeof SignupRoute
   '/admin': typeof AuthenticatedAdminRoute
+  '/billing/cancel': typeof BillingCancelRoute
+  '/billing/success': typeof BillingSuccessRoute
   '/projects/$slug': typeof ProjectsSlugRoute
+  '/billing/': typeof BillingIndexRoute
   '/communities/': typeof CommunitiesIndexRoute
   '/developers/': typeof DevelopersIndexRoute
   '/admin/projects/$id': typeof AuthenticatedAdminProjectsIdRoute
@@ -71,8 +99,12 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/signup': typeof SignupRoute
   '/admin': typeof AuthenticatedAdminRoute
+  '/billing/cancel': typeof BillingCancelRoute
+  '/billing/success': typeof BillingSuccessRoute
   '/projects/$slug': typeof ProjectsSlugRoute
+  '/billing': typeof BillingIndexRoute
   '/communities': typeof CommunitiesIndexRoute
   '/developers': typeof DevelopersIndexRoute
   '/admin/projects/$id': typeof AuthenticatedAdminProjectsIdRoute
@@ -82,8 +114,12 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
+  '/signup': typeof SignupRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
+  '/billing/cancel': typeof BillingCancelRoute
+  '/billing/success': typeof BillingSuccessRoute
   '/projects/$slug': typeof ProjectsSlugRoute
+  '/billing/': typeof BillingIndexRoute
   '/communities/': typeof CommunitiesIndexRoute
   '/developers/': typeof DevelopersIndexRoute
   '/_authenticated/admin_/projects/$id': typeof AuthenticatedAdminProjectsIdRoute
@@ -93,8 +129,12 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/signup'
     | '/admin'
+    | '/billing/cancel'
+    | '/billing/success'
     | '/projects/$slug'
+    | '/billing/'
     | '/communities/'
     | '/developers/'
     | '/admin/projects/$id'
@@ -102,8 +142,12 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
+    | '/signup'
     | '/admin'
+    | '/billing/cancel'
+    | '/billing/success'
     | '/projects/$slug'
+    | '/billing'
     | '/communities'
     | '/developers'
     | '/admin/projects/$id'
@@ -112,8 +156,12 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/auth'
+    | '/signup'
     | '/_authenticated/admin'
+    | '/billing/cancel'
+    | '/billing/success'
     | '/projects/$slug'
+    | '/billing/'
     | '/communities/'
     | '/developers/'
     | '/_authenticated/admin_/projects/$id'
@@ -123,13 +171,24 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
+  SignupRoute: typeof SignupRoute
+  BillingCancelRoute: typeof BillingCancelRoute
+  BillingSuccessRoute: typeof BillingSuccessRoute
   ProjectsSlugRoute: typeof ProjectsSlugRoute
+  BillingIndexRoute: typeof BillingIndexRoute
   CommunitiesIndexRoute: typeof CommunitiesIndexRoute
   DevelopersIndexRoute: typeof DevelopersIndexRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/signup': {
+      id: '/signup'
+      path: '/signup'
+      fullPath: '/signup'
+      preLoaderRoute: typeof SignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/auth': {
       id: '/auth'
       path: '/auth'
@@ -165,11 +224,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CommunitiesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/billing/': {
+      id: '/billing/'
+      path: '/billing'
+      fullPath: '/billing/'
+      preLoaderRoute: typeof BillingIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/projects/$slug': {
       id: '/projects/$slug'
       path: '/projects/$slug'
       fullPath: '/projects/$slug'
       preLoaderRoute: typeof ProjectsSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/billing/success': {
+      id: '/billing/success'
+      path: '/billing/success'
+      fullPath: '/billing/success'
+      preLoaderRoute: typeof BillingSuccessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/billing/cancel': {
+      id: '/billing/cancel'
+      path: '/billing/cancel'
+      fullPath: '/billing/cancel'
+      preLoaderRoute: typeof BillingCancelRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/admin': {
@@ -206,7 +286,11 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
+  SignupRoute: SignupRoute,
+  BillingCancelRoute: BillingCancelRoute,
+  BillingSuccessRoute: BillingSuccessRoute,
   ProjectsSlugRoute: ProjectsSlugRoute,
+  BillingIndexRoute: BillingIndexRoute,
   CommunitiesIndexRoute: CommunitiesIndexRoute,
   DevelopersIndexRoute: DevelopersIndexRoute,
 }

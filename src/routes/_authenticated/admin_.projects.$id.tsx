@@ -2,8 +2,9 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { Button } from "@/components/ui/button";
-import { useAuth, useIsAdmin } from "@/hooks/use-auth";
+import { useEffect } from "react";
 import { useProjects } from "@/hooks/use-projects";
+import { useTenantStore } from "@/store/tenant";
 import { ProjectForm } from "./admin";
 
 // `admin_` (trailing underscore) un-nests this from admin.tsx so it renders as a
@@ -18,9 +19,9 @@ export const Route = createFileRoute("/_authenticated/admin_/projects/$id")({
 function EditProjectPage() {
   const { id } = Route.useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const { data: isAdmin, isLoading: adminLoading } = useIsAdmin(user);
   const { data: projects = [], isLoading } = useProjects();
+  const { currentTenantId, loaded: tenantLoaded, load: loadTenants } = useTenantStore();
+  useEffect(() => { void loadTenants(); }, [loadTenants]);
   const project = projects.find((p) => p.id === id);
 
   return (
@@ -36,17 +37,17 @@ function EditProjectPage() {
           Edit <span className="text-gold-gradient">project</span>
         </h1>
 
-        {adminLoading || isLoading ? (
+        {!tenantLoaded || isLoading ? (
           <div className="mt-6 flex items-center gap-2 text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading…
           </div>
-        ) : !isAdmin ? (
-          <div className="mt-6 text-muted-foreground">This account is not an administrator.</div>
+        ) : !currentTenantId ? (
+          <div className="mt-6 text-muted-foreground">This account has no active organization.</div>
         ) : !project ? (
           <div className="mt-6 text-muted-foreground">Project not found.</div>
         ) : (
           <div className="mt-4">
-            <ProjectForm id={id} onClose={() => navigate({ to: "/admin" })} />
+            <ProjectForm id={id} tenantId={currentTenantId} onClose={() => navigate({ to: "/admin" })} />
           </div>
         )}
       </div>
