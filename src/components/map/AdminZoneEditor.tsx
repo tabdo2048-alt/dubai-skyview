@@ -6,6 +6,7 @@ import { normalizePolygon, drawnPolygon, ringVertexCount, hasKinks } from "@/lib
 import { Trash2, Edit3, Plus, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Json } from "@/integrations/supabase/types";
+import { useTenantStore } from "@/store/tenant";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -48,6 +49,7 @@ export function AdminZoneEditor({ accessToken }: Props) {
   // The currently drawn polygon (from Draw), or null when nothing is drawn.
   const [drawn, setDrawn] = useState<GeoJSON.Polygon | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
+  const { currentTenantId } = useTenantStore();
 
   const load = async () => {
     setLoading(true);
@@ -150,6 +152,7 @@ export function AdminZoneEditor({ accessToken }: Props) {
     e.preventDefault();
     if (!drawn) return toast.error("Draw a zone boundary on the map first");
     if (!form.name.trim()) return toast.error("Name is required");
+    if (!currentTenantId) return toast.error("No active organization");
     setSaving(true);
     try {
       const geometry = normalizePolygon(drawn);
@@ -164,7 +167,8 @@ export function AdminZoneEditor({ accessToken }: Props) {
         if (error) throw error;
         toast.success("Zone updated");
       } else {
-        const { error } = await supabase.from("zones").insert(payload);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { error } = await (supabase.from("zones").insert as any)({ ...payload, tenant_id: currentTenantId });
         if (error) throw error;
         toast.success("Zone saved");
       }

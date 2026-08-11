@@ -11,6 +11,7 @@ import type { Json } from "@/integrations/supabase/types";
 const AdminZoneEditor = lazy(() =>
   import("@/components/map/AdminZoneEditor").then((m) => ({ default: m.AdminZoneEditor })),
 );
+import { useAuth, useIsAdmin } from "@/hooks/use-auth";
 import { useMapConfig } from "@/hooks/use-map-config";
 import { useProjects, useCommunities, useDevelopers } from "@/hooks/use-projects";
 import { useTenantStore } from "@/store/tenant";
@@ -57,6 +58,10 @@ function AdminPage() {
   // an active subscription). The current tenant scopes every write.
   const { currentTenantId, loaded: tenantLoaded, load: loadTenants } = useTenantStore();
   useEffect(() => { void loadTenants(); }, [loadTenants]);
+  // Global POI/reference data is edited only by the platform owner (legacy
+  // has_role admin), not by tenant admins — hide that section from tenants.
+  const { user } = useAuth();
+  const { data: isPlatformAdmin } = useIsAdmin(user);
 
   if (!tenantLoaded) return <div className="min-h-screen"><AppNavbar /><div className="p-10 text-center text-muted-foreground">Loading workspace…</div></div>;
   if (!currentTenantId) {
@@ -160,7 +165,7 @@ function AdminPage() {
 
         <DeveloperManager />
         <CommunityManager />
-        <PoiManager />
+        {isPlatformAdmin && <PoiManager />}
         <ZoneSection />
       </div>
     </div>
@@ -652,7 +657,9 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
           .replace(/[^a-z0-9]+/g, "-")
           .replace(/^-|-$/g, "")
           .slice(0, 42);
-        const path = `${projectId}/${Date.now()}-${index}-${safeName || "project-image"}.${extension}`;
+        // Prefix with tenant_id so the storage RLS policy (which checks the
+        // leading path segment against tenant membership) authorizes the upload.
+        const path = `${tenantId}/${projectId}/${Date.now()}-${index}-${safeName || "project-image"}.${extension}`;
 
         const { error: uploadError } = await supabase.storage
           .from(PROJECT_MEDIA_BUCKET)
