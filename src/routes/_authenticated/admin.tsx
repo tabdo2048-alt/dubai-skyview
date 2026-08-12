@@ -1144,16 +1144,26 @@ export function SubscribersManager() {
                 </div>
               </div>
               <span className={`text-xs font-medium ${b.cls}`}>{b.label}</span>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={busyId === t.id}
-                onClick={() => toggleSuspend(t)}
-                className="glass gold-hairline text-cream"
-              >
-                <Ban className="mr-1 h-3.5 w-3.5" />
-                {t.suspended ? "Unsuspend" : "Suspend"}
-              </Button>
+              {/* An org a platform admin belongs to cannot be suspended — that
+                  would lock a fellow admin out of the platform. The RPC enforces
+                  it; this only avoids offering a click that must fail.
+                  Unsuspending stays available so a mistake is recoverable. */}
+              {t.has_platform_admin && !t.suspended ? (
+                <span className="flex items-center gap-1 text-xs text-muted-foreground" title="Platform administrators cannot be suspended">
+                  <Shield className="h-3.5 w-3.5" /> Platform admin
+                </span>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={busyId === t.id}
+                  onClick={() => toggleSuspend(t)}
+                  className="glass gold-hairline text-cream"
+                >
+                  <Ban className="mr-1 h-3.5 w-3.5" />
+                  {t.suspended ? "Unsuspend" : "Suspend"}
+                </Button>
+              )}
             </div>
           );
         })}

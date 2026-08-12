@@ -37,6 +37,10 @@ export type PlatformTenant = {
   created_at: string;
   owner_email: string | null;
   project_count: number;
+  // True when a platform administrator belongs to this org. Such an org cannot
+  // be suspended (the RPC refuses), so the UI disables the control instead of
+  // letting the click fail.
+  has_platform_admin?: boolean;
 };
 
 export type TenantMember = {
