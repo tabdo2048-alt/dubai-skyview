@@ -83,3 +83,20 @@ export async function setTenantSuspended(tenantId: string, suspended: boolean): 
   const { error } = await sbAny.rpc("platform_set_suspended", { _tenant: tenantId, _suspended: suspended });
   if (error) throw error;
 }
+
+// One row of the platform-admin users table (every auth account).
+export type PlatformUser = {
+  user_id: string;
+  email: string | null;
+  created_at: string;
+  is_platform_admin: boolean;
+  orgs: string | null;
+  org_roles: string | null;
+};
+
+// Platform-admin: every user account with their org membership.
+export async function fetchPlatformUsers(): Promise<PlatformUser[]> {
+  const { data, error } = await sbAny.rpc("platform_list_users");
+  if (error) throw error;
+  return (data ?? []) as PlatformUser[];
+}

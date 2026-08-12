@@ -15,7 +15,7 @@ import { useAuth, useIsAdmin } from "@/hooks/use-auth";
 import { useMapConfig } from "@/hooks/use-map-config";
 import { useProjects, useCommunities, useDevelopers } from "@/hooks/use-projects";
 import { useTenantStore } from "@/store/tenant";
-import { fetchPlatformTenants, setTenantSuspended, isActiveStatus, type PlatformTenant } from "@/integrations/supabase/saas";
+import { fetchPlatformTenants, setTenantSuspended, isActiveStatus, fetchPlatformUsers, type PlatformTenant, type PlatformUser } from "@/integrations/supabase/saas";
 import { POI_TABLES, type PoiCategory, type PoiPoint } from "@/hooks/use-pois";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -1019,6 +1019,51 @@ export function SubscribersManager() {
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// Platform-admin only: every user account (via platform_list_users RPC).
+export function UsersManager() {
+  const [rows, setRows] = useState<PlatformUser[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        setRows(await fetchPlatformUsers());
+      } catch (err) {
+        toast.error(errMsg(err, "Could not load users"));
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  return (
+    <div id="admin-users" className="mt-10 scroll-mt-24">
+      <h2 className="font-display text-3xl text-cream">Users</h2>
+      <p className="mt-1 text-sm text-muted-foreground">{rows.length} account{rows.length === 1 ? "" : "s"}</p>
+
+      <div className="mt-4 grid gap-2">
+        {loading && <div className="p-4 text-center text-sm text-muted-foreground">Loading…</div>}
+        {!loading && rows.length === 0 && (
+          <div className="glass gold-hairline rounded-2xl p-4 text-center text-sm text-muted-foreground">No users.</div>
+        )}
+        {rows.map((u) => (
+          <div key={u.user_id} className="glass gold-hairline flex items-center gap-3 rounded-2xl p-3">
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-display text-lg text-cream">{u.email ?? "—"}</div>
+              <div className="truncate text-xs text-muted-foreground">
+                {u.orgs ? `${u.orgs} (${u.org_roles ?? "member"})` : "no organization"}
+              </div>
+            </div>
+            {u.is_platform_admin && (
+              <span className="glass gold-hairline rounded-full px-2.5 py-1 text-xs text-gold">Platform admin</span>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );

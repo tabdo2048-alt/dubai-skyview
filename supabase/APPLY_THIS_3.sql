@@ -85,6 +85,29 @@ END $$;
 REVOKE EXECUTE ON FUNCTION public.platform_set_suspended(UUID, BOOLEAN) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.platform_set_suspended(UUID, BOOLEAN) TO authenticated;
 
+-- Platform admin: every user account with its org membership.
+CREATE OR REPLACE FUNCTION public.platform_list_users()
+RETURNS TABLE (user_id UUID, email TEXT, created_at TIMESTAMPTZ, is_platform_admin BOOLEAN, orgs TEXT, org_roles TEXT)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public
+AS $$
+BEGIN
+  IF NOT public.has_role(auth.uid(), 'admin') THEN
+    RAISE EXCEPTION 'forbidden';
+  END IF;
+  RETURN QUERY
+  SELECT u.id, u.email::text, u.created_at,
+    public.has_role(u.id, 'admin') AS is_platform_admin,
+    (SELECT string_agg(t.name, ', ' ORDER BY t.name)
+       FROM public.tenant_members m JOIN public.tenants t ON t.id = m.tenant_id
+      WHERE m.user_id = u.id)::text AS orgs,
+    (SELECT string_agg(DISTINCT m.role::text, ', ')
+       FROM public.tenant_members m WHERE m.user_id = u.id)::text AS org_roles
+  FROM auth.users u
+  ORDER BY u.created_at;
+END $$;
+REVOKE EXECUTE ON FUNCTION public.platform_list_users() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.platform_list_users() TO authenticated;
+
 -- The projects/images/amenities SELECT policies call these helpers, so anon must
 -- be able to EXECUTE them or the public showcase read errors out. They return
 -- empty/false for anon (auth.uid() is null), so this leaks nothing.

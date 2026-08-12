@@ -3,7 +3,7 @@ import { ArrowLeft, Loader2 } from "lucide-react";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { Button } from "@/components/ui/button";
 import { useAuth, useIsAdmin } from "@/hooks/use-auth";
-import { SubscribersManager, PoiManager } from "./admin";
+import { SubscribersManager, UsersManager, PoiManager } from "./admin";
 
 // `admin_` (trailing underscore) un-nests this to a standalone /admin/platform
 // page. Platform-admin (has_role 'admin') ONLY — separate from the per-org
@@ -39,6 +39,7 @@ function PlatformPage() {
         ) : (
           <>
             <SubscribersManager />
+            <UsersManager />
             <PoiManager />
           </>
         )}
