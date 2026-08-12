@@ -15,7 +15,7 @@ import { useAuth, useIsAdmin } from "@/hooks/use-auth";
 import { useMapConfig } from "@/hooks/use-map-config";
 import { useProjects, useCommunities, useDevelopers } from "@/hooks/use-projects";
 import { useTenantStore } from "@/store/tenant";
-import { fetchPlatformTenants, setTenantSuspended, isActiveStatus, fetchPlatformUsers, type PlatformTenant, type PlatformUser } from "@/integrations/supabase/saas";
+import { fetchPlatformTenants, setTenantSuspended, isActiveStatus, fetchPlatformUsers, deletePlatformUser, type PlatformTenant, type PlatformUser } from "@/integrations/supabase/saas";
 import { POI_TABLES, type PoiCategory, type PoiPoint } from "@/hooks/use-pois";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -1028,18 +1028,33 @@ export function SubscribersManager() {
 export function UsersManager() {
   const [rows, setRows] = useState<PlatformUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        setRows(await fetchPlatformUsers());
-      } catch (err) {
-        toast.error(errMsg(err, "Could not load users"));
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+  const load = async () => {
+    setLoading(true);
+    try {
+      setRows(await fetchPlatformUsers());
+    } catch (err) {
+      toast.error(errMsg(err, "Could not load users"));
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => { void load(); }, []);
+
+  const remove = async (u: PlatformUser) => {
+    if (!confirm(`Permanently delete ${u.email ?? "this user"} and the organizations they own? This cannot be undone.`)) return;
+    setBusyId(u.user_id);
+    try {
+      await deletePlatformUser(u.user_id);
+      toast.success("User removed");
+      await load();
+    } catch (err) {
+      toast.error(errMsg(err, "Delete failed"));
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   return (
     <div id="admin-users" className="mt-10 scroll-mt-24">
@@ -1059,8 +1074,18 @@ export function UsersManager() {
                 {u.orgs ? `${u.orgs} (${u.org_roles ?? "member"})` : "no organization"}
               </div>
             </div>
-            {u.is_platform_admin && (
+            {u.is_platform_admin ? (
               <span className="glass gold-hairline rounded-full px-2.5 py-1 text-xs text-gold">Platform admin</span>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busyId === u.user_id}
+                onClick={() => remove(u)}
+                className="glass gold-hairline text-destructive"
+              >
+                <Trash2 className="mr-1 h-3.5 w-3.5" /> Remove
+              </Button>
             )}
           </div>
         ))}

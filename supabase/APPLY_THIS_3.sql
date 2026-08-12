@@ -108,6 +108,24 @@ END $$;
 REVOKE EXECUTE ON FUNCTION public.platform_list_users() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.platform_list_users() TO authenticated;
 
+-- Platform admin: permanently delete a user + the orgs they own. Refuses to
+-- delete a platform admin or the caller.
+CREATE OR REPLACE FUNCTION public.platform_delete_user(_uid UUID)
+RETURNS VOID
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+BEGIN
+  IF NOT public.has_role(auth.uid(), 'admin') THEN RAISE EXCEPTION 'forbidden'; END IF;
+  IF _uid = auth.uid() THEN RAISE EXCEPTION 'cannot delete yourself'; END IF;
+  IF public.has_role(_uid, 'admin') THEN RAISE EXCEPTION 'cannot delete a platform admin'; END IF;
+  DELETE FROM public.tenants t
+  WHERE EXISTS (SELECT 1 FROM public.tenant_members m
+                 WHERE m.tenant_id = t.id AND m.user_id = _uid AND m.role = 'owner');
+  DELETE FROM auth.users WHERE id = _uid;
+END $$;
+REVOKE EXECUTE ON FUNCTION public.platform_delete_user(UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.platform_delete_user(UUID) TO authenticated;
+
 -- The projects/images/amenities SELECT policies call these helpers, so anon must
 -- be able to EXECUTE them or the public showcase read errors out. They return
 -- empty/false for anon (auth.uid() is null), so this leaks nothing.

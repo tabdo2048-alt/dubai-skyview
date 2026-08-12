@@ -100,3 +100,10 @@ export async function fetchPlatformUsers(): Promise<PlatformUser[]> {
   if (error) throw error;
   return (data ?? []) as PlatformUser[];
 }
+
+// Platform-admin: permanently delete a user + the orgs they own (auth + data).
+// The RPC refuses to delete a platform admin or the caller.
+export async function deletePlatformUser(userId: string): Promise<void> {
+  const { error } = await sbAny.rpc("platform_delete_user", { _uid: userId });
+  if (error) throw error;
+}
