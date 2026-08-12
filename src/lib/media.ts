@@ -41,7 +41,14 @@ export function storagePathFromUrl(value: string | null | undefined): string | n
   const index = value.indexOf(PUBLIC_MARKER);
   if (index === -1) return null;
   const path = value.slice(index + PUBLIC_MARKER.length).split("?")[0];
-  return path ? decodeURIComponent(path) : null;
+  if (!path) return null;
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    // A malformed stored URL must not be able to crash the whole projects
+    // query while media paths are being resolved.
+    return null;
+  }
 }
 
 /**

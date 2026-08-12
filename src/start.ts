@@ -34,7 +34,7 @@ const CSP = [
   "img-src 'self' data: blob: https://*.supabase.co https://*.mapbox.com https://*.googleapis.com https://*.gstatic.com https://*.google.com",
   "font-src 'self' data:",
   "style-src 'self' 'unsafe-inline'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:",
+  "script-src 'self' 'unsafe-inline' blob:",
   "worker-src 'self' blob:",
   "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.mapbox.com https://events.mapbox.com https://*.tiles.mapbox.com https://*.googleapis.com https://*.google.com",
   "manifest-src 'self'",

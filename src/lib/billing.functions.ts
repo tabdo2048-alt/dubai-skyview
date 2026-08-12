@@ -13,7 +13,21 @@ const CURRENCY = "aed";
 const PRODUCT_NAME = "Dubai SkyView — Subscription";
 
 function appUrl(): string {
-  return process.env.APP_URL ?? process.env.VITE_APP_URL ?? "http://localhost:8080";
+  const configured = process.env.APP_URL ?? process.env.VITE_APP_URL;
+  if (configured) return configured.replace(/\/+$/, "");
+
+  // Vercel exposes the production URL as a system environment variable. Use
+  // it as a safe deployment fallback so Stripe never sends production users to
+  // the local development server when APP_URL was omitted.
+  const vercelHost = process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL;
+  if (vercelHost) {
+    return /^https?:\/\//i.test(vercelHost) ? vercelHost.replace(/\/+$/, "") : `https://${vercelHost}`;
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Billing is not configured (missing APP_URL). Set APP_URL to the deployed site URL.");
+  }
+  return "http://localhost:8080";
 }
 
 async function stripeClient() {
