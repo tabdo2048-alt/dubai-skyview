@@ -22,6 +22,35 @@
 -- still governed by the existing tenant policies.
 -- ============================================================================
 
+-- These objects were previously created manually but were missing from the
+-- tracked bootstrap. Keep a clean database installable from migrations alone.
+CREATE TABLE IF NOT EXISTS public.login_attempts (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  ip TEXT NOT NULL,
+  email TEXT,
+  success BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE public.login_attempts ENABLE ROW LEVEL SECURITY;
+GRANT ALL ON public.login_attempts TO service_role;
+CREATE INDEX IF NOT EXISTS login_attempts_ip_created_at_idx
+  ON public.login_attempts (ip, created_at) WHERE success = false;
+
+CREATE OR REPLACE FUNCTION public.client_ip()
+RETURNS TEXT
+LANGUAGE SQL
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT COALESCE(
+    NULLIF(current_setting('request.headers', true)::json->>'cf-connecting-ip', ''),
+    NULLIF(current_setting('request.headers', true)::json->>'x-real-ip', ''),
+    NULLIF(split_part(current_setting('request.headers', true)::json->>'x-forwarded-for', ',', 1), ''),
+    inet_client_addr()::text
+  )
+$$;
+
 -- 1) anon: read-only everywhere.
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
   ON ALL TABLES IN SCHEMA public FROM anon;

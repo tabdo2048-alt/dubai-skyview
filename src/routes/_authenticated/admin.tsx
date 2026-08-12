@@ -24,6 +24,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { formatAed } from "@/lib/dubai";
+import { mediaSrc } from "@/lib/media";
+import { safeHttpUrl } from "@/lib/utils";
 import { parseLatLngFromGoogleMapsUrl } from "@/lib/googleMapsLink";
 
 const PROJECT_MEDIA_BUCKET = "project-media";
@@ -95,16 +97,6 @@ function AdminPage() {
     refetch();
   };
 
-  // Publish / unpublish to the PUBLIC showcase map (is_public). Cast: the column
-  // is new (added by the multi-tenant migration; regenerate types to drop this).
-  const togglePublic = async (id: string, next: boolean) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase.from("projects").update as any)({ is_public: next }).eq("id", id);
-    if (error) return toast.error(error.message);
-    toast.success(next ? "Published to public map" : "Unpublished");
-    refetch();
-  };
-
   return (
     <div className="min-h-screen">
       <AppNavbar />
@@ -141,7 +133,7 @@ function AdminPage() {
           {projects.map((p) => (
             <div key={p.id} className="glass gold-hairline flex items-center gap-3 rounded-2xl p-3">
               <div className="h-14 w-20 overflow-hidden rounded-lg bg-muted">
-                {p.main_image_url && <img src={p.main_image_url} alt="" className="h-full w-full object-cover" />}
+                {mediaSrc(p.main_image_src, p.main_image_url) && <img src={mediaSrc(p.main_image_src, p.main_image_url)} alt="" className="h-full w-full object-cover" />}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="truncate font-display text-lg text-cream">{p.name}</div>
@@ -151,13 +143,6 @@ function AdminPage() {
               </div>
               <Button size="icon" variant="ghost" onClick={() => toggleFeatured(p.id, !p.featured)} title="Toggle featured">
                 {p.featured ? <Star className="h-4 w-4 text-gold" /> : <StarOff className="h-4 w-4 text-muted-foreground" />}
-              </Button>
-              {/* Publish to the public showcase map (is_public — new column). */}
-              <Button size="icon" variant="ghost"
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                onClick={() => togglePublic(p.id, !(p as any).is_public)}
-                title={(p as unknown as { is_public?: boolean }).is_public ? "Published (public)" : "Private — click to publish"}>
-                <Globe className={`h-4 w-4 ${(p as unknown as { is_public?: boolean }).is_public ? "text-gold" : "text-muted-foreground"}`} />
               </Button>
               <Button asChild size="icon" variant="ghost">
                 <Link to="/admin/projects/$id" params={{ id: p.id }}>
@@ -452,7 +437,7 @@ function DeveloperManager() {
         {developers.map((d) => (
           <div key={d.id} className="glass gold-hairline flex items-center gap-3 rounded-2xl p-3">
             <div className="h-10 w-10 overflow-hidden rounded-md bg-muted">
-              {d.logo_url && <img src={d.logo_url} alt="" className="h-full w-full object-cover" />}
+              {safeHttpUrl(d.logo_url) && <img src={safeHttpUrl(d.logo_url) ?? undefined} alt="" className="h-full w-full object-cover" />}
             </div>
             <div className="min-w-0 flex-1">
               <div className="truncate font-display text-lg text-cream">{d.name}</div>
@@ -577,7 +562,7 @@ function CommunityManager() {
         {communities.map((c) => (
           <div key={c.id} className="glass gold-hairline flex items-center gap-3 rounded-2xl p-3">
             <div className="h-10 w-10 overflow-hidden rounded-md bg-muted">
-              {c.hero_image_url && <img src={c.hero_image_url} alt="" className="h-full w-full object-cover" />}
+              {safeHttpUrl(c.hero_image_url) && <img src={safeHttpUrl(c.hero_image_url) ?? undefined} alt="" className="h-full w-full object-cover" />}
             </div>
             <div className="min-w-0 flex-1">
               <div className="truncate font-display text-lg text-cream">{c.name}</div>
@@ -885,7 +870,9 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
           <div className="mt-3 grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {gallery.map((image) => (
               <div key={image.id} className="group relative overflow-hidden rounded-xl border border-gold/20 bg-black/30">
-                <img src={image.url} alt="" className="aspect-video w-full object-cover" />
+                {/* Render the signed URL; every action below still uses
+                    image.url, the canonical stored value. */}
+                <img src={mediaSrc(image.src, image.url)} alt="" className="aspect-video w-full object-cover" />
                 <div className="flex items-center justify-between gap-2 p-2">
                   <Button
                     type="button"
@@ -1051,7 +1038,7 @@ export function PublicProjectsManager() {
           return (
             <div key={p.id} className="glass gold-hairline flex items-center gap-3 rounded-2xl p-3">
               <div className="h-14 w-20 overflow-hidden rounded-lg bg-muted">
-                {p.main_image_url && <img src={p.main_image_url} alt="" className="h-full w-full object-cover" />}
+                {mediaSrc(p.main_image_src, p.main_image_url) && <img src={mediaSrc(p.main_image_src, p.main_image_url)} alt="" className="h-full w-full object-cover" />}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="truncate font-display text-lg text-cream">{p.name}</div>

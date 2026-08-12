@@ -17,7 +17,9 @@ import { useEffect, useMemo, useState } from "react";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { fetchProjectBySlug } from "@/hooks/use-projects";
 import { formatAed } from "@/lib/dubai";
+import { mediaSrc } from "@/lib/media";
 import { track } from "@/lib/analytics";
+import { safeHttpUrl } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import type { ProjectWithRelations } from "@/lib/types";
 
@@ -50,13 +52,21 @@ export const Route = createFileRoute("/projects/$slug")({
       { name: "twitter:card", content: "summary_large_image" },
     ];
     if (p.tags?.length) meta.push({ name: "keywords", content: p.tags.join(", ") });
-    if (p.main_image_url) {
-      meta.push({ property: "og:image", content: p.main_image_url });
-      meta.push({ name: "twitter:image", content: p.main_image_url });
+    // Media lives in a private bucket, so the share image has to be a signed URL.
+    // Caveat: signed URLs expire (SIGNED_URL_TTL_SECONDS), so a crawler that
+    // re-fetches this page long after it was shared gets a dead image. Crawlers
+    // that fetch at share time are fine.
+    const shareImage = mediaSrc(p.main_image_src, p.main_image_url);
+    if (shareImage) {
+      meta.push({ property: "og:image", content: shareImage });
+      meta.push({ name: "twitter:image", content: shareImage });
     }
     return {
       meta,
-      scripts: [{ type: "application/ld+json", children: JSON.stringify(buildListingJsonLd(p)) }],
+      // JSON-LD is inserted into a raw script element by the head renderer.
+      // Escape HTML-significant characters so DB content cannot terminate the
+      // script and inject markup.
+      scripts: [{ type: "application/ld+json", children: safeJsonForHtml(buildListingJsonLd(p)) }],
     };
   },
   component: ProjectDetail,
@@ -72,8 +82,12 @@ function ProjectDetail() {
   // Hero + gallery images for the click-to-swap viewer (hero first, deduped).
   const images = useMemo(() => {
     const urls: string[] = [];
-    if (p?.main_image_url) urls.push(p.main_image_url);
-    for (const g of p?.images ?? []) if (g?.url && !urls.includes(g.url)) urls.push(g.url);
+    const hero = mediaSrc(p?.main_image_src, p?.main_image_url);
+    if (hero) urls.push(hero);
+    for (const g of p?.images ?? []) {
+      const src = mediaSrc(g?.src, g?.url);
+      if (src && !urls.includes(src)) urls.push(src);
+    }
     return urls;
   }, [p]);
   const [activeImage, setActiveImage] = useState<string | null>(images[0] ?? null);
@@ -183,19 +197,19 @@ function ProjectDetail() {
                   <CalendarCheck className="mr-1 h-4 w-4" /> Book viewing
                 </a>
               </Button>
-              {p.brochure_url && (
+              {safeHttpUrl(p.brochure_url) && (
                 <Button asChild variant="outline" className="glass gold-hairline text-cream">
-                  <a href={p.brochure_url} target="_blank" rel="noreferrer"><Download className="mr-1 h-4 w-4" /> Brochure</a>
+                  <a href={safeHttpUrl(p.brochure_url) ?? undefined} target="_blank" rel="noreferrer"><Download className="mr-1 h-4 w-4" /> Brochure</a>
                 </Button>
               )}
-              {p.tour_360_url && (
+              {safeHttpUrl(p.tour_360_url) && (
                 <Button asChild variant="outline" className="glass gold-hairline text-cream">
-                  <a href={p.tour_360_url} target="_blank" rel="noreferrer"><PlayCircle className="mr-1 h-4 w-4" /> 360° Tour</a>
+                  <a href={safeHttpUrl(p.tour_360_url) ?? undefined} target="_blank" rel="noreferrer"><PlayCircle className="mr-1 h-4 w-4" /> 360° Tour</a>
                 </Button>
               )}
-              {p.video_url && (
+              {safeHttpUrl(p.video_url) && (
                 <Button asChild variant="outline" className="glass gold-hairline text-cream">
-                  <a href={p.video_url} target="_blank" rel="noreferrer"><PlayCircle className="mr-1 h-4 w-4" /> Video</a>
+                  <a href={safeHttpUrl(p.video_url) ?? undefined} target="_blank" rel="noreferrer"><PlayCircle className="mr-1 h-4 w-4" /> Video</a>
                 </Button>
               )}
             </div>
@@ -253,7 +267,7 @@ function buildListingJsonLd(p: ProjectWithRelations) {
     "@type": "Residence",
     name: p.name,
     description: p.description ?? undefined,
-    image: p.main_image_url ?? undefined,
+    image: mediaSrc(p.main_image_src, p.main_image_url) || undefined,
     numberOfBedrooms: p.bedrooms_min ?? undefined,
     address: {
       "@type": "PostalAddress",
@@ -273,6 +287,13 @@ function buildListingJsonLd(p: ProjectWithRelations) {
         }
       : {}),
   };
+}
+
+function safeJsonForHtml(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026");
 }
 
 function Info({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {

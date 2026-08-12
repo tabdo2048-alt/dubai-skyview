@@ -46,7 +46,38 @@ BEGIN
   END IF;
 END $$;
 
--- Owner's admin IP.
-INSERT INTO public.login_rate_allowlist (ip, note)
-VALUES ('41.69.250.136', 'Owner admin IP — unlimited login attempts')
-ON CONFLICT (ip) DO UPDATE SET note = EXCLUDED.note;
+-- Record only the minimum needed for the IP throttle. The public RPC is
+-- intentionally bounded because an anonymous caller can invoke it directly.
+CREATE OR REPLACE FUNCTION public.record_login_failure(_email TEXT)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_ip TEXT;
+  v_email TEXT;
+BEGIN
+  v_ip := public.client_ip();
+  IF v_ip IS NULL THEN RETURN; END IF;
+  v_email := left(lower(trim(coalesce(_email, ''))), 320);
+
+  IF (
+    SELECT count(*) FROM public.login_attempts
+    WHERE ip = v_ip AND created_at > now() - interval '1 minute'
+  ) >= 20 THEN
+    RETURN;
+  END IF;
+
+  INSERT INTO public.login_attempts (ip, email, success)
+  VALUES (v_ip, NULLIF(v_email, ''), false);
+
+  DELETE FROM public.login_attempts
+  WHERE created_at < now() - interval '2 days';
+END $$;
+
+REVOKE EXECUTE ON FUNCTION public.record_login_failure(TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.record_login_failure(TEXT) TO anon, authenticated;
+
+-- Do not commit a real residential/admin IP here. Add a temporary bypass only
+-- through a privileged database session when operationally necessary.

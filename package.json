@@ -100,11 +100,14 @@
     "globals": "^15.15.0",
     "lightningcss": "^1.30.0",
     "nitro": "3.0.260603-beta",
-    "osmtogeojson": "^3.0.0-beta.5",
+    "osmtogeojson": "3.0.0-beta.5",
     "playwright": "^1.61.1",
     "prettier": "^3.7.3",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.56.1",
     "vite": "^8.0.16"
+  },
+  "overrides": {
+    "@xmldom/xmldom": "0.9.10"
   }
 }

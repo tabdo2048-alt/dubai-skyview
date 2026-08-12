@@ -4,14 +4,21 @@ import { X, MapPin, Bed, Calendar, Wallet, Building2, ArrowRight, MessageCircle,
 import { Link } from "@tanstack/react-router";
 import type { ProjectWithRelations } from "@/lib/types";
 import { formatAed } from "@/lib/dubai";
+import { mediaSrc } from "@/lib/media";
 import { Button } from "@/components/ui/button";
 
 export function ProjectPopup({ project, onClose }: { project: ProjectWithRelations | null; onClose: () => void }) {
   // Hero + gallery images (hero first, deduped) for the click-to-swap viewer.
   const images = useMemo(() => {
+    // Signed URLs (private media bucket) — fall back to the stored value for
+    // rows whose image lives on an external host.
     const urls: string[] = [];
-    if (project?.main_image_url) urls.push(project.main_image_url);
-    for (const g of project?.images ?? []) if (g?.url && !urls.includes(g.url)) urls.push(g.url);
+    const hero = mediaSrc(project?.main_image_src, project?.main_image_url);
+    if (hero) urls.push(hero);
+    for (const g of project?.images ?? []) {
+      const src = mediaSrc(g?.src, g?.url);
+      if (src && !urls.includes(src)) urls.push(src);
+    }
     return urls;
   }, [project]);
   const [activeImage, setActiveImage] = useState<string | null>(images[0] ?? null);

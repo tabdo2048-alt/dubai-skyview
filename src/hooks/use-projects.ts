@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { withSignedProjectMedia } from "@/lib/media";
 import type { ProjectWithRelations, ProjectFilters, ProjectRow } from "@/lib/types";
 
 export function projectsQueryKey() {
@@ -18,7 +19,10 @@ async function fetchAllProjects(): Promise<ProjectWithRelations[]> {
     `)
     .order("featured", { ascending: false })
     .order("created_at", { ascending: false });
-  if (!error) return normalizeProjects(data ?? []);
+  // The media bucket is private, so stored /object/public/ URLs are dead until
+  // signed. Doing it here means every consumer (map popup, sidebar, detail page,
+  // admin list) renders working images without knowing about storage at all.
+  if (!error) return withSignedProjectMedia(normalizeProjects(data ?? []));
 
   console.warn("[Projects] full query failed; falling back to legacy schema", error.message);
   return fetchLegacyProjects();
@@ -46,7 +50,7 @@ export async function fetchProjectBySlug(slug: string): Promise<ProjectWithRelat
     `)
     .eq("slug", slug)
     .maybeSingle();
-  if (!error) return normalizeProject(data);
+  if (!error) return signOne(normalizeProject(data));
 
   console.warn("[Projects] full project query failed; falling back to legacy schema", error.message);
   const { data: legacyData, error: legacyError } = await supabase
@@ -55,7 +59,14 @@ export async function fetchProjectBySlug(slug: string): Promise<ProjectWithRelat
     .eq("slug", slug)
     .maybeSingle();
   if (legacyError) throw legacyError;
-  return normalizeProject(legacyData);
+  return signOne(normalizeProject(legacyData));
+}
+
+// Sign a single project's media (null passes through untouched).
+async function signOne(project: ProjectWithRelations | null): Promise<ProjectWithRelations | null> {
+  if (!project) return null;
+  const [signed] = await withSignedProjectMedia([project]);
+  return signed ?? project;
 }
 
 export function useProject(slug: string) {
@@ -120,7 +131,7 @@ async function fetchLegacyProjects(): Promise<ProjectWithRelations[]> {
     .order("created_at", { ascending: false });
 
   if (error) throw error;
-  return normalizeProjects(data ?? []);
+  return withSignedProjectMedia(normalizeProjects(data ?? []));
 }
 
 function normalizeProjects(items: unknown[]): ProjectWithRelations[] {

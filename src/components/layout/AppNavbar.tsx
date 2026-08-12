@@ -1,8 +1,10 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Search, LogIn, LogOut, LayoutDashboard } from "lucide-react";
+import { Search, LogIn, LogOut, LayoutDashboard, UserRound } from "lucide-react";
+import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth, useIsAdmin } from "@/hooks/use-auth";
+import { useAuth } from "@/hooks/use-auth";
 import { useFiltersStore } from "@/store/filters";
+import { useTenantStore } from "@/store/tenant";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
@@ -16,7 +18,23 @@ export function AppNavbar() {
   const path = useRouterState({ select: (r) => r.location.pathname });
   const { filters, setFilters } = useFiltersStore();
   const { user } = useAuth();
-  const { data: isAdmin } = useIsAdmin(user);
+  const { tenants, currentTenantId, loaded: tenantLoaded, load: loadTenants } = useTenantStore();
+
+  // The workspace is tenant-membership based. The old user_roles check only
+  // identifies platform admins, so regular paid workspace users were missing
+  // the link to their own project data.
+  useEffect(() => {
+    if (user) void loadTenants();
+  }, [user, loadTenants]);
+
+  const canOpenWorkspace = !!user && tenantLoaded && !!currentTenantId;
+  const userMetadata = user?.user_metadata as { full_name?: unknown; name?: unknown } | undefined;
+  const displayName =
+    (typeof userMetadata?.full_name === "string" && userMetadata.full_name.trim()) ||
+    (typeof userMetadata?.name === "string" && userMetadata.name.trim()) ||
+    user?.email?.split("@")[0] ||
+    "User";
+  const organizationName = tenants.find((tenant) => tenant.id === currentTenantId)?.name || displayName;
 
   return (
     <header className="glass-strong sticky top-0 z-40 border-b border-border/60">
@@ -58,16 +76,23 @@ export function AppNavbar() {
           </div>
           {user ? (
             <>
-              {isAdmin && (
+              {canOpenWorkspace && (
                 <Button asChild size="sm" variant="ghost" className="text-cream hover:bg-white/5">
                   <Link to="/admin">
                     <LayoutDashboard className="mr-1 h-4 w-4" /> Admin
                   </Link>
                 </Button>
               )}
-              <Button size="sm" variant="ghost" className="text-cream hover:bg-white/5" onClick={() => supabase.auth.signOut()}>
-                <LogOut className="mr-1 h-4 w-4" /> Sign out
-              </Button>
+              <div className="glass gold-hairline flex min-w-0 items-center gap-1 rounded-full pl-2">
+                <UserRound className="h-4 w-4 shrink-0 text-gold" />
+                <div className="hidden min-w-0 max-w-[120px] sm:block">
+                  <div className="truncate text-xs font-medium text-cream" title={organizationName}>{organizationName}</div>
+                  <div className="truncate text-[10px] text-muted-foreground" title={user.email ?? ""}>{user.email}</div>
+                </div>
+                <Button size="sm" variant="ghost" className="text-cream hover:bg-white/5" onClick={() => supabase.auth.signOut()}>
+                  <LogOut className="mr-1 h-4 w-4" /> <span className="hidden md:inline">Sign out</span>
+                </Button>
+              </div>
             </>
           ) : (
             <Button asChild size="sm" className="bg-gold text-gold-foreground hover:bg-gold/90">

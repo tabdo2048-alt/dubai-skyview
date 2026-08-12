@@ -9,8 +9,12 @@ export type ProjectAmenityRow = Database["public"]["Tables"]["project_amenities"
 export type ProjectWithRelations = ProjectRow & {
   developer: Pick<DeveloperRow, "id" | "name" | "slug"> | null;
   community: Pick<CommunityRow, "id" | "name" | "slug"> | null;
-  images: ProjectImageRow[];
+  images: Array<ProjectImageRow & { src?: string }>;
   amenities: ProjectAmenityRow[];
+  // Renderable signed URL for the private media bucket, added on read by
+  // withSignedProjectMedia. `main_image_url` stays the canonical stored value —
+  // render `main_image_src`, persist `main_image_url`.
+  main_image_src?: string | null;
 };
 
 export type ProjectFilters = {

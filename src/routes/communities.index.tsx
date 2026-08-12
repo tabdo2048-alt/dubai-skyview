@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { useCommunities, useProjects } from "@/hooks/use-projects";
 import { useFiltersStore } from "@/store/filters";
+import { safeHttpUrl } from "@/lib/utils";
 
 export const Route = createFileRoute("/communities/")({
   head: () => ({
@@ -37,8 +38,8 @@ function CommunitiesIndex() {
                 className="glass gold-hairline group relative overflow-hidden rounded-3xl"
               >
                 <div className="aspect-[4/3] w-full overflow-hidden">
-                  {c.hero_image_url ? (
-                    <img src={c.hero_image_url} alt={c.name} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                  {safeHttpUrl(c.hero_image_url) ? (
+                    <img src={safeHttpUrl(c.hero_image_url) ?? undefined} alt={c.name} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
                   ) : (
                     <div className="h-full w-full bg-muted" />
                   )}
