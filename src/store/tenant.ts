@@ -11,6 +11,8 @@ type TenantStore = {
   loaded: boolean;
   load: () => Promise<void>;
   setCurrent: (id: string) => void;
+  // Drop everything on sign-out: these are the previous user's organizations.
+  reset: () => void;
 };
 
 export const useTenantStore = create<TenantStore>((set, get) => ({
@@ -33,4 +35,5 @@ export const useTenantStore = create<TenantStore>((set, get) => ({
     }
   },
   setCurrent: (id) => set({ currentTenantId: id }),
+  reset: () => set({ tenants: [], currentTenantId: null, loaded: false }),
 }));

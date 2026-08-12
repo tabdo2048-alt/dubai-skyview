@@ -12,6 +12,7 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useTenantStore } from "@/store/tenant";
 import { GA_ID } from "@/lib/analytics";
 
 // Origin of the Supabase project (from VITE_SUPABASE_URL) — preconnected so the
@@ -133,8 +134,21 @@ function RootComponent() {
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((event) => {
       if (event !== "SIGNED_IN" && event !== "SIGNED_OUT" && event !== "USER_UPDATED") return;
+
+      if (event === "SIGNED_OUT") {
+        // Every cached row was fetched under the previous session's RLS scope —
+        // for an org admin that is their private projects, for a platform admin
+        // it is every org's. invalidateQueries() keeps serving that stale data
+        // while it refetches, so the signed-out map kept showing it; clear()
+        // drops it outright, and the remounted queries refetch as anon. The
+        // tenant store is reset for the same reason.
+        queryClient.clear();
+        useTenantStore.getState().reset();
+      } else {
+        queryClient.invalidateQueries();
+      }
+
       router.invalidate();
-      if (event !== "SIGNED_OUT") queryClient.invalidateQueries();
     });
     return () => sub.subscription.unsubscribe();
   }, [queryClient, router]);
