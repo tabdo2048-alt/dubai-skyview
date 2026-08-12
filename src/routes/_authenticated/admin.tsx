@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, lazy, Suspense } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus, Trash2, Star, StarOff, Edit3, Upload, ImagePlus, X, Globe } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Star, StarOff, Edit3, Upload, ImagePlus, X, Globe, Shield, Ban } from "lucide-react";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { AdminLocationPicker } from "@/components/map/AdminLocationPicker";
 import { ProjectPlotEditor } from "@/components/map/ProjectPlotEditor";
@@ -15,6 +15,7 @@ import { useAuth, useIsAdmin } from "@/hooks/use-auth";
 import { useMapConfig } from "@/hooks/use-map-config";
 import { useProjects, useCommunities, useDevelopers } from "@/hooks/use-projects";
 import { useTenantStore } from "@/store/tenant";
+import { fetchPlatformTenants, setTenantSuspended, isActiveStatus, type PlatformTenant } from "@/integrations/supabase/saas";
 import { POI_TABLES, type PoiCategory, type PoiPoint } from "@/hooks/use-pois";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -116,9 +117,16 @@ function AdminPage() {
 
         <div id="admin-projects" className="mt-4 flex items-center justify-between scroll-mt-24">
           <h1 className="font-display text-4xl text-cream">Admin <span className="text-gold-gradient">Dashboard</span></h1>
-          <Button onClick={() => setCreating(true)} className="bg-gold text-gold-foreground hover:bg-gold/90">
-            <Plus className="mr-1 h-4 w-4" /> New project
-          </Button>
+          <div className="flex items-center gap-2">
+            {isPlatformAdmin && (
+              <Button asChild variant="outline" className="glass gold-hairline text-cream">
+                <Link to="/admin/platform"><Shield className="mr-1 h-4 w-4" /> Platform</Link>
+              </Button>
+            )}
+            <Button onClick={() => setCreating(true)} className="bg-gold text-gold-foreground hover:bg-gold/90">
+              <Plus className="mr-1 h-4 w-4" /> New project
+            </Button>
+          </div>
         </div>
 
         {creating && (
@@ -165,7 +173,6 @@ function AdminPage() {
 
         <DeveloperManager />
         <CommunityManager />
-        {isPlatformAdmin && <PoiManager />}
         <ZoneSection />
       </div>
     </div>
@@ -191,7 +198,6 @@ const ADMIN_SECTIONS = [
   { id: "admin-projects", label: "Projects" },
   { id: "admin-developers", label: "Developers" },
   { id: "admin-communities", label: "Communities" },
-  { id: "admin-poi", label: "Places of interest" },
   { id: "admin-zones", label: "Zone editor" },
 ] as const;
 
@@ -221,7 +227,7 @@ const POI_CATEGORIES = Object.keys(POI_TABLES) as PoiCategory[];
 // Add / list / delete Places of Interest (tourism, schools, hospitals). Mirrors
 // DeveloperManager, but the active POI table is chosen with a category tab and
 // the location is set with the same map picker used for projects.
-function PoiManager() {
+export function PoiManager() {
   const { data: cfg } = useMapConfig();
   const [category, setCategory] = useState<PoiCategory>("tourism");
   const [rows, setRows] = useState<PoiPoint[]>([]);
@@ -938,6 +944,84 @@ function getProjectMediaPath(url: string) {
   const index = url.indexOf(marker);
   if (index === -1) return null;
   return decodeURIComponent(url.slice(index + marker.length));
+}
+
+// Platform-admin only: every subscriber org, with a suspend toggle. Data comes
+// from the platform_list_tenants RPC (which itself checks has_role admin).
+export function SubscribersManager() {
+  const [rows, setRows] = useState<PlatformTenant[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      setRows(await fetchPlatformTenants());
+    } catch (err) {
+      toast.error(errMsg(err, "Could not load subscribers"));
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => { void load(); }, []);
+
+  const toggleSuspend = async (t: PlatformTenant) => {
+    setBusyId(t.id);
+    try {
+      await setTenantSuspended(t.id, !t.suspended);
+      toast.success(t.suspended ? "Subscriber re-enabled" : "Subscriber suspended");
+      await load();
+    } catch (err) {
+      toast.error(errMsg(err, "Action failed"));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const badge = (t: PlatformTenant) => {
+    if (t.suspended) return { label: "Suspended", cls: "text-destructive" };
+    if (isActiveStatus(t.subscription_status)) return { label: "Active", cls: "text-emerald-400" };
+    return { label: t.subscription_status, cls: "text-muted-foreground" };
+  };
+
+  return (
+    <div id="admin-subscribers" className="mt-10 scroll-mt-24">
+      <h2 className="font-display text-3xl text-cream">Subscribers</h2>
+      <p className="mt-1 text-sm text-muted-foreground">{rows.length} organization{rows.length === 1 ? "" : "s"}</p>
+
+      <div className="mt-4 grid gap-2">
+        {loading && <div className="p-4 text-center text-sm text-muted-foreground">Loading…</div>}
+        {!loading && rows.length === 0 && (
+          <div className="glass gold-hairline rounded-2xl p-4 text-center text-sm text-muted-foreground">No subscribers yet.</div>
+        )}
+        {rows.map((t) => {
+          const b = badge(t);
+          return (
+            <div key={t.id} className="glass gold-hairline flex items-center gap-3 rounded-2xl p-3">
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-display text-lg text-cream">{t.name}</div>
+                <div className="truncate text-xs text-muted-foreground">
+                  {t.owner_email ?? "—"} · {t.project_count} project{t.project_count === 1 ? "" : "s"}
+                  {t.plan ? ` · ${t.plan}` : ""}
+                </div>
+              </div>
+              <span className={`text-xs font-medium ${b.cls}`}>{b.label}</span>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busyId === t.id}
+                onClick={() => toggleSuspend(t)}
+                className="glass gold-hairline text-cream"
+              >
+                <Ban className="mr-1 h-3.5 w-3.5" />
+                {t.suspended ? "Unsuspend" : "Suspend"}
+              </Button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

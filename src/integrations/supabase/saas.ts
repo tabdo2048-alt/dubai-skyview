@@ -21,7 +21,22 @@ export type Tenant = {
   plan: string | null;
   subscription_status: SubscriptionStatus;
   current_period_end: string | null;
+  suspended?: boolean | null;
   created_at: string;
+};
+
+// One row of the platform-admin subscribers table.
+export type PlatformTenant = {
+  id: string;
+  name: string;
+  slug: string;
+  subscription_status: SubscriptionStatus;
+  plan: string | null;
+  suspended: boolean;
+  current_period_end: string | null;
+  created_at: string;
+  owner_email: string | null;
+  project_count: number;
 };
 
 export type TenantMember = {
@@ -37,6 +52,11 @@ export const ACTIVE_STATUSES: SubscriptionStatus[] = ["active", "past_due"];
 export const isActiveStatus = (s: string | null | undefined): boolean =>
   !!s && (ACTIVE_STATUSES as string[]).includes(s);
 
+// A tenant grants access only if its subscription is active AND it is not
+// suspended by a platform admin.
+export const canAccessTenant = (t: { subscription_status: string; suspended?: boolean | null }): boolean =>
+  isActiveStatus(t.subscription_status) && !t.suspended;
+
 // Untyped client view — use only for tables not yet in the generated Database
 // type (tenants, tenant_members) and for tenant_id filters on existing tables.
 export const sbAny = supabase as unknown as SupabaseClient;
@@ -49,4 +69,17 @@ export async function fetchMyTenants(): Promise<Array<TenantMember & { tenant: T
     .order("created_at", { ascending: true });
   if (error) throw error;
   return (data ?? []) as Array<TenantMember & { tenant: Tenant }>;
+}
+
+// Platform-admin: every subscriber org (SECURITY DEFINER RPC gates on has_role).
+export async function fetchPlatformTenants(): Promise<PlatformTenant[]> {
+  const { data, error } = await sbAny.rpc("platform_list_tenants");
+  if (error) throw error;
+  return (data ?? []) as PlatformTenant[];
+}
+
+// Platform-admin: suspend / unsuspend a subscriber.
+export async function setTenantSuspended(tenantId: string, suspended: boolean): Promise<void> {
+  const { error } = await sbAny.rpc("platform_set_suspended", { _tenant: tenantId, _suspended: suspended });
+  if (error) throw error;
 }

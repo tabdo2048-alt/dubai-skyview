@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { fetchMyTenants, isActiveStatus, type Tenant } from "@/integrations/supabase/saas";
+import { fetchMyTenants, canAccessTenant, type Tenant } from "@/integrations/supabase/saas";
 
 // Current-organization context. A paid signup creates exactly one org owned by
 // the user, so `currentTenantId` is normally that org; the field also supports a
@@ -22,7 +22,7 @@ export const useTenantStore = create<TenantStore>((set, get) => ({
       const mine = await fetchMyTenants();
       const tenants = mine.map((m) => m.tenant);
       const preferred =
-        tenants.find((t) => isActiveStatus(t.subscription_status)) ?? tenants[0] ?? null;
+        tenants.find((t) => canAccessTenant(t)) ?? tenants[0] ?? null;
       set({
         tenants,
         currentTenantId: get().currentTenantId ?? preferred?.id ?? null,

@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { fetchMyTenants, isActiveStatus, type Tenant } from "@/integrations/supabase/saas";
+import { fetchMyTenants, canAccessTenant, type Tenant } from "@/integrations/supabase/saas";
 import { createCheckoutSession } from "@/lib/billing.functions";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,7 @@ function BillingPage() {
       }
       try {
         const mine = await fetchMyTenants();
-        const active = mine.find((m) => isActiveStatus(m.tenant.subscription_status));
+        const active = mine.find((m) => canAccessTenant(m.tenant));
         if (active) {
           navigate({ to: "/admin" });
           return;

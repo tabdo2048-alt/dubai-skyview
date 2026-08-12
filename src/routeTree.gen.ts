@@ -20,6 +20,7 @@ import { Route as ProjectsSlugRouteImport } from './routes/projects.$slug'
 import { Route as BillingSuccessRouteImport } from './routes/billing.success'
 import { Route as BillingCancelRouteImport } from './routes/billing.cancel'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
+import { Route as AuthenticatedAdminPlatformRouteImport } from './routes/_authenticated/admin_.platform'
 import { Route as AuthenticatedAdminProjectsIdRouteImport } from './routes/_authenticated/admin_.projects.$id'
 
 const SignupRoute = SignupRouteImport.update({
@@ -76,6 +77,12 @@ const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedAdminPlatformRoute =
+  AuthenticatedAdminPlatformRouteImport.update({
+    id: '/admin_/platform',
+    path: '/admin/platform',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAdminProjectsIdRoute =
   AuthenticatedAdminProjectsIdRouteImport.update({
     id: '/admin_/projects/$id',
@@ -94,6 +101,7 @@ export interface FileRoutesByFullPath {
   '/billing/': typeof BillingIndexRoute
   '/communities/': typeof CommunitiesIndexRoute
   '/developers/': typeof DevelopersIndexRoute
+  '/admin/platform': typeof AuthenticatedAdminPlatformRoute
   '/admin/projects/$id': typeof AuthenticatedAdminProjectsIdRoute
 }
 export interface FileRoutesByTo {
@@ -107,6 +115,7 @@ export interface FileRoutesByTo {
   '/billing': typeof BillingIndexRoute
   '/communities': typeof CommunitiesIndexRoute
   '/developers': typeof DevelopersIndexRoute
+  '/admin/platform': typeof AuthenticatedAdminPlatformRoute
   '/admin/projects/$id': typeof AuthenticatedAdminProjectsIdRoute
 }
 export interface FileRoutesById {
@@ -122,6 +131,7 @@ export interface FileRoutesById {
   '/billing/': typeof BillingIndexRoute
   '/communities/': typeof CommunitiesIndexRoute
   '/developers/': typeof DevelopersIndexRoute
+  '/_authenticated/admin_/platform': typeof AuthenticatedAdminPlatformRoute
   '/_authenticated/admin_/projects/$id': typeof AuthenticatedAdminProjectsIdRoute
 }
 export interface FileRouteTypes {
@@ -137,6 +147,7 @@ export interface FileRouteTypes {
     | '/billing/'
     | '/communities/'
     | '/developers/'
+    | '/admin/platform'
     | '/admin/projects/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -150,6 +161,7 @@ export interface FileRouteTypes {
     | '/billing'
     | '/communities'
     | '/developers'
+    | '/admin/platform'
     | '/admin/projects/$id'
   id:
     | '__root__'
@@ -164,6 +176,7 @@ export interface FileRouteTypes {
     | '/billing/'
     | '/communities/'
     | '/developers/'
+    | '/_authenticated/admin_/platform'
     | '/_authenticated/admin_/projects/$id'
   fileRoutesById: FileRoutesById
 }
@@ -259,6 +272,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/admin_/platform': {
+      id: '/_authenticated/admin_/platform'
+      path: '/admin/platform'
+      fullPath: '/admin/platform'
+      preLoaderRoute: typeof AuthenticatedAdminPlatformRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin_/projects/$id': {
       id: '/_authenticated/admin_/projects/$id'
       path: '/admin/projects/$id'
@@ -271,11 +291,13 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
+  AuthenticatedAdminPlatformRoute: typeof AuthenticatedAdminPlatformRoute
   AuthenticatedAdminProjectsIdRoute: typeof AuthenticatedAdminProjectsIdRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminRoute: AuthenticatedAdminRoute,
+  AuthenticatedAdminPlatformRoute: AuthenticatedAdminPlatformRoute,
   AuthenticatedAdminProjectsIdRoute: AuthenticatedAdminProjectsIdRoute,
 }
 

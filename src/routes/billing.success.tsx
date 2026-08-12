@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { fetchMyTenants, isActiveStatus } from "@/integrations/supabase/saas";
+import { fetchMyTenants, canAccessTenant } from "@/integrations/supabase/saas";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 
 export const Route = createFileRoute("/billing/success")({
@@ -23,7 +23,7 @@ function BillingSuccessPage() {
       if (cancelled) return;
       try {
         const mine = await fetchMyTenants();
-        if (mine.some((m) => isActiveStatus(m.tenant.subscription_status))) {
+        if (mine.some((m) => canAccessTenant(m.tenant))) {
           navigate({ to: "/admin" });
           return;
         }

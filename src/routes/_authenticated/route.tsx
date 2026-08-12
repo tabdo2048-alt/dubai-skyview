@@ -1,6 +1,6 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
-import { fetchMyTenants, isActiveStatus } from "@/integrations/supabase/saas";
+import { fetchMyTenants, canAccessTenant } from "@/integrations/supabase/saas";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
@@ -13,7 +13,7 @@ export const Route = createFileRoute("/_authenticated")({
     // tenant status is written solely by the Stripe webhook (never the client).
     try {
       const mine = await fetchMyTenants();
-      if (!mine.some((m) => isActiveStatus(m.tenant.subscription_status))) {
+      if (!mine.some((m) => canAccessTenant(m.tenant))) {
         throw redirect({ to: "/billing" });
       }
     } catch (e) {
