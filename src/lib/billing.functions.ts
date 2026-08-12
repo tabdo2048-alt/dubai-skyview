@@ -25,12 +25,27 @@ async function stripeClient() {
 
 // Load the caller's tenant via the user-scoped client (RLS guarantees they can
 // only read tenants they belong to), returning null if they are not a member.
-async function loadTenant(
+//
+// Membership alone is NOT enough to act on billing: the tenants SELECT policy
+// admits any 'member', and the Stripe portal can cancel the subscription, change
+// the card and read every past invoice. Both billing entry points therefore
+// require 'admin' or 'owner', checked against tenant_members (itself RLS-scoped
+// to rosters the caller belongs to).
+async function loadTenantForBilling(
   supabase: unknown,
   tenantId: string,
+  userId: string,
 ): Promise<{ id: string; stripe_customer_id: string | null; name: string } | null> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const sb = supabase as any;
+  const { data: membership } = await sb
+    .from("tenant_members")
+    .select("role")
+    .eq("tenant_id", tenantId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (membership?.role !== "admin" && membership?.role !== "owner") return null;
+
   const { data } = await sb
     .from("tenants")
     .select("id, stripe_customer_id, name")
@@ -49,25 +64,38 @@ export const createCheckoutSession = createServerFn({ method: "POST" })
     return input;
   })
   .handler(async ({ data, context }) => {
-    const tenant = await loadTenant(context.supabase, data.tenantId);
-    if (!tenant) throw new Error("Forbidden: not a member of this organization");
+    const tenant = await loadTenantForBilling(context.supabase, data.tenantId, context.userId);
+    if (!tenant) throw new Error("Forbidden: not an admin of this organization");
 
     const stripe = await stripeClient();
 
-    // Ensure a Stripe customer exists for this tenant and persist its id.
+    // Ensure a Stripe customer exists for this tenant and persist its id. The
+    // client role cannot UPDATE tenants.stripe_customer_id directly (that would
+    // let an org admin repoint their org at another org's Stripe customer and
+    // open that customer's billing portal), so persist through the write-once
+    // SECURITY DEFINER RPC and re-read the winner: if a concurrent checkout
+    // already linked a customer, that one stands and ours is discarded.
     let customerId = tenant.stripe_customer_id;
     if (!customerId) {
       const customer = await stripe.customers.create({
         name: tenant.name,
         metadata: { tenant_id: tenant.id },
       });
-      customerId = customer.id;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (context.supabase as any)
+      const sb = context.supabase as any;
+      const { error: linkError } = await sb.rpc("set_tenant_stripe_customer", {
+        _tenant: tenant.id,
+        _customer: customer.id,
+      });
+      if (linkError) throw new Error("Could not link the billing customer to this organization");
+      const { data: linked } = await sb
         .from("tenants")
-        .update({ stripe_customer_id: customerId })
-        .eq("id", tenant.id);
+        .select("stripe_customer_id")
+        .eq("id", tenant.id)
+        .maybeSingle();
+      customerId = (linked?.stripe_customer_id as string | null) ?? customer.id;
     }
+    if (!customerId) throw new Error("Could not link the billing customer to this organization");
 
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
@@ -100,8 +128,9 @@ export const createBillingPortalSession = createServerFn({ method: "POST" })
     return input;
   })
   .handler(async ({ data, context }) => {
-    const tenant = await loadTenant(context.supabase, data.tenantId);
-    if (!tenant?.stripe_customer_id) throw new Error("No billing customer for this organization");
+    const tenant = await loadTenantForBilling(context.supabase, data.tenantId, context.userId);
+    if (!tenant) throw new Error("Forbidden: not an admin of this organization");
+    if (!tenant.stripe_customer_id) throw new Error("No billing customer for this organization");
     const stripe = await stripeClient();
     const session = await stripe.billingPortal.sessions.create({
       customer: tenant.stripe_customer_id,

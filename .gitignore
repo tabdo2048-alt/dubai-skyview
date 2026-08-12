@@ -43,3 +43,4 @@ artifacts
 # local tooling / caches
 .mcp.json
 scripts/.cache/
+.vercel/

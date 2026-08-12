@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { sbAny } from "@/integrations/supabase/saas";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,8 +23,16 @@ function AuthPage() {
     e.preventDefault();
     setLoading(true);
     try {
+      const { error: rlErr } = await sbAny.rpc("check_login_rate");
+      if (rlErr) {
+        toast.error("Too many failed attempts from your network. Try again in about an hour.");
+        return;
+      }
       const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw error;
+      if (error) {
+        await sbAny.rpc("record_login_failure", { _email: email });
+        throw error;
+      }
       toast.success("Welcome back.");
       navigate({ to: "/admin" });
     } catch (err) {

@@ -35,6 +35,7 @@ export default defineConfig(async ({ command, mode }) => {
 
   return {
     define,
+    server: { port: 8080 },
     // Lightning CSS in dev and build alike, so build-time CSS transforms
     // (e.g. -webkit-backdrop-filter handling) match the dev preview.
     css: { transformer: "lightningcss" as const },

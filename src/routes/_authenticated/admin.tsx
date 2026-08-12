@@ -948,6 +948,144 @@ function getProjectMediaPath(url: string) {
 
 // Platform-admin only: every subscriber org, with a suspend toggle. Data comes
 // from the platform_list_tenants RPC (which itself checks has_role admin).
+// Platform-admin only: every project across EVERY organization, with the switch
+// that puts one on the public showcase map.
+//
+// A platform admin passes the `has_role(auth.uid(),'admin')` branch of both the
+// projects read and write policies, so this list is genuinely global — unlike
+// /admin, which RLS scopes to the signed-in user's own org. New projects are
+// still stamped with the platform admin's own tenant (tenant_id is NOT NULL);
+// what makes a project show on the public map is `is_public`, not which org owns
+// it, so publishing from here works regardless of the owning org.
+export function PublicProjectsManager() {
+  const { data: projects = [], refetch } = useProjects();
+  const qc = useQueryClient();
+  const { currentTenantId, loaded: tenantLoaded, load: loadTenants } = useTenantStore();
+  const [creating, setCreating] = useState(false);
+  const [orgNames, setOrgNames] = useState<Record<string, string>>({});
+  const [onlyPublic, setOnlyPublic] = useState(false);
+
+  useEffect(() => { void loadTenants(); }, [loadTenants]);
+
+  // Map tenant_id -> org name so each row shows which subscriber owns it.
+  useEffect(() => {
+    void (async () => {
+      try {
+        const tenants = await fetchPlatformTenants();
+        setOrgNames(Object.fromEntries(tenants.map((t) => [t.id, t.name])));
+      } catch {
+        /* names are cosmetic — the list still works without them */
+      }
+    })();
+  }, []);
+
+  const isPublic = (p: unknown) => Boolean((p as { is_public?: boolean }).is_public);
+
+  const togglePublic = async (id: string, next: boolean) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase.from("projects").update as any)({ is_public: next }).eq("id", id);
+    if (error) return toast.error(error.message);
+    toast.success(next ? "Published to the public map" : "Removed from the public map");
+    qc.invalidateQueries();
+    refetch();
+  };
+
+  const del = async (id: string) => {
+    if (!confirm("Delete this project? This cannot be undone.")) return;
+    const { error } = await supabase.from("projects").delete().eq("id", id);
+    if (error) return toast.error(error.message);
+    toast.success("Project deleted");
+    qc.invalidateQueries();
+    refetch();
+  };
+
+  const shown = onlyPublic ? projects.filter(isPublic) : projects;
+  const publicCount = projects.filter(isPublic).length;
+
+  return (
+    <div id="admin-public-projects" className="mt-10 scroll-mt-24">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className="font-display text-3xl text-cream">Public map projects</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {publicCount} of {projects.length} project{projects.length === 1 ? "" : "s"} shown to visitors.
+            The globe toggles a project on the public map.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setOnlyPublic((v) => !v)}
+            className="glass gold-hairline text-cream"
+          >
+            {onlyPublic ? "Show all" : "Show published only"}
+          </Button>
+          <Button
+            onClick={() => setCreating(true)}
+            disabled={!tenantLoaded || !currentTenantId}
+            className="bg-gold text-gold-foreground hover:bg-gold/90"
+          >
+            <Plus className="mr-1 h-4 w-4" /> New project
+          </Button>
+        </div>
+      </div>
+
+      {creating && currentTenantId && (
+        <ProjectForm
+          id={null}
+          tenantId={currentTenantId}
+          onClose={() => { setCreating(false); refetch(); qc.invalidateQueries(); }}
+        />
+      )}
+
+      <div className="mt-4 grid gap-2">
+        {shown.length === 0 && (
+          <div className="glass gold-hairline rounded-2xl p-4 text-center text-sm text-muted-foreground">
+            {onlyPublic ? "No projects are published yet." : "No projects yet."}
+          </div>
+        )}
+        {shown.map((p) => {
+          const pub = isPublic(p);
+          const org = orgNames[(p as unknown as { tenant_id?: string }).tenant_id ?? ""];
+          return (
+            <div key={p.id} className="glass gold-hairline flex items-center gap-3 rounded-2xl p-3">
+              <div className="h-14 w-20 overflow-hidden rounded-lg bg-muted">
+                {p.main_image_url && <img src={p.main_image_url} alt="" className="h-full w-full object-cover" />}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-display text-lg text-cream">{p.name}</div>
+                <div className="truncate text-xs text-muted-foreground">
+                  {org ? `${org} · ` : ""}{p.developer?.name ?? "—"} · {formatAed(p.starting_price_aed)}
+                </div>
+              </div>
+              <span className={`text-xs font-medium ${pub ? "text-emerald-400" : "text-muted-foreground"}`}>
+                {pub ? "Public" : "Private"}
+              </span>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => togglePublic(p.id, !pub)}
+                title={pub ? "Published — click to remove from the public map" : "Private — click to publish"}
+              >
+                <Globe className={`h-4 w-4 ${pub ? "text-gold" : "text-muted-foreground"}`} />
+              </Button>
+              <Button asChild size="icon" variant="ghost">
+                <Link to="/admin/projects/$id" params={{ id: p.id }}>
+                  <Edit3 className="h-4 w-4 text-cream" />
+                </Link>
+              </Button>
+              <Button size="icon" variant="ghost" onClick={() => del(p.id)}>
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </Button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function SubscribersManager() {
   const [rows, setRows] = useState<PlatformTenant[]>([]);
   const [loading, setLoading] = useState(true);
