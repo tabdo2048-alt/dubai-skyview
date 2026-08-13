@@ -23,6 +23,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") ?? "");
 const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET") ?? "";
+const MONTHLY_PRICE_AED_FILS = 10000;
+const YEARLY_PRICE_AED_FILS = 100000;
+const CURRENCY = "aed";
 
 const admin = createClient(
   Deno.env.get("SUPABASE_URL") ?? "",
@@ -62,6 +65,36 @@ function periodEndIso(sub: Stripe.Subscription): string | null {
   return new Date(seconds * 1000).toISOString();
 }
 
+function expectedPrice(period: "month" | "year"): number {
+  return period === "year" ? YEARLY_PRICE_AED_FILS : MONTHLY_PRICE_AED_FILS;
+}
+
+function configuredPriceId(period: "month" | "year"): string | undefined {
+  return (period === "year"
+    ? Deno.env.get("STRIPE_YEARLY_PRICE_ID")
+    : Deno.env.get("STRIPE_MONTHLY_PRICE_ID"))?.trim() || undefined;
+}
+
+// Never grant access based only on a signed event's metadata. The subscription
+// must contain one of our exact recurring prices (or a configured Price ID).
+function isApprovedSubscription(sub: Stripe.Subscription): boolean {
+  const item = sub.items?.data?.[0];
+  const price = item?.price;
+  if (!price || typeof price === "string") return false;
+
+  const interval = price.recurring?.interval;
+  if (interval !== "month" && interval !== "year") return false;
+
+  const expectedId = configuredPriceId(interval);
+  if (expectedId && price.id !== expectedId) return false;
+
+  return (
+    item.quantity === 1 &&
+    price.currency === CURRENCY &&
+    price.unit_amount === expectedPrice(interval)
+  );
+}
+
 // Fields written to `tenants` from a subscription, shared by every event branch.
 function tenantFieldsFrom(sub: Stripe.Subscription): Record<string, unknown> {
   return {
@@ -93,26 +126,46 @@ async function updateTenant(
   eventCreated: number,
 ): Promise<void> {
   const eventAt = new Date(eventCreated * 1000).toISOString();
-  await admin
+  const { error } = await admin
     .from("tenants")
     .update({ ...fields, last_stripe_event_at: eventAt })
     .eq("id", tenantId)
     .or(`last_stripe_event_at.is.null,last_stripe_event_at.lte.${eventAt}`);
+  if (error) throw new Error("billing state update failed");
 }
 
-// Resolve the tenant id for a subscription: prefer metadata, else look it up by
-// the stored stripe_customer_id.
+// Resolve the tenant only through the stored Stripe customer association. If
+// metadata is present, it must agree with that association; metadata alone is
+// never trusted to select a tenant.
 async function tenantForSubscription(sub: Stripe.Subscription): Promise<string | null> {
   const metaId = (sub.metadata?.tenant_id as string | undefined) ?? null;
-  if (metaId) return metaId;
   const customerId = typeof sub.customer === "string" ? sub.customer : sub.customer?.id;
   if (!customerId) return null;
-  const { data } = await admin
+  const { data, error } = await admin
     .from("tenants")
-    .select("id")
+    .select("id, stripe_customer_id")
     .eq("stripe_customer_id", customerId)
     .maybeSingle();
-  return data?.id ?? null;
+  if (error) throw new Error("billing customer lookup failed");
+  if (!data?.id || data.stripe_customer_id !== customerId) return null;
+  if (metaId && metaId !== data.id) return null;
+  return data.id;
+}
+
+async function tenantForCheckout(
+  tenantId: string,
+  sessionCustomerId: string,
+  subscriptionCustomerId: string,
+): Promise<string | null> {
+  if (sessionCustomerId !== subscriptionCustomerId) return null;
+  const { data, error } = await admin
+    .from("tenants")
+    .select("id, stripe_customer_id")
+    .eq("id", tenantId)
+    .maybeSingle();
+  if (error) throw new Error("checkout tenant lookup failed");
+  if (!data || data.stripe_customer_id !== sessionCustomerId) return null;
+  return data.id;
 }
 
 // Sync a tenant from the authoritative subscription object. Invoice events carry
@@ -120,6 +173,10 @@ async function tenantForSubscription(sub: Stripe.Subscription): Promise<string |
 // one place rather than inferring "paid means active" from the event type.
 async function syncFromSubscriptionId(subId: string, eventCreated: number): Promise<void> {
   const sub = await stripe.subscriptions.retrieve(subId);
+  if (!isApprovedSubscription(sub)) {
+    console.error("Ignoring subscription with an unapproved price", sub.id);
+    return;
+  }
   const tenantId = await tenantForSubscription(sub);
   if (tenantId) await updateTenant(tenantId, tenantFieldsFrom(sub), eventCreated);
 }
@@ -139,15 +196,37 @@ async function handleEvent(event: Stripe.Event): Promise<void> {
       const subId = typeof session.subscription === "string"
         ? session.subscription
         : session.subscription?.id;
-      if (tenantId && subId) {
+      const sessionCustomerId = typeof session.customer === "string"
+        ? session.customer
+        : session.customer?.id;
+      if (session.mode === "subscription" && tenantId && subId && sessionCustomerId) {
         const sub = await stripe.subscriptions.retrieve(subId);
-        await updateTenant(tenantId, tenantFieldsFrom(sub), event.created);
+        if (!isApprovedSubscription(sub)) {
+          console.error("Ignoring checkout with an unapproved price", session.id);
+          break;
+        }
+        const subscriptionCustomerId = typeof sub.customer === "string"
+          ? sub.customer
+          : sub.customer?.id;
+        if (!subscriptionCustomerId) break;
+        const verifiedTenantId = await tenantForCheckout(
+          tenantId,
+          sessionCustomerId,
+          subscriptionCustomerId,
+        );
+        if (verifiedTenantId) {
+          await updateTenant(verifiedTenantId, tenantFieldsFrom(sub), event.created);
+        }
       }
       break;
     }
     case "customer.subscription.updated":
     case "customer.subscription.deleted": {
       const sub = event.data.object as Stripe.Subscription;
+      if (!isApprovedSubscription(sub)) {
+        console.error("Ignoring subscription update with an unapproved price", sub.id);
+        break;
+      }
       const tenantId = await tenantForSubscription(sub);
       if (tenantId) await updateTenant(tenantId, tenantFieldsFrom(sub), event.created);
       break;

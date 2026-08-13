@@ -5,6 +5,8 @@ import { useFiltersStore } from "@/store/filters";
 import { ZONE_ORDER, ZONE_CATEGORIES } from "@/lib/zones";
 
 type Props = {
+  /** Metro is a subscriber-only layer on the public map. */
+  canUseMetro?: boolean;
   // Dev-only Water Debug Editor toggle, threaded from MapContainer (local state).
   showWaterEditor?: boolean;
   waterEditor?: boolean;
@@ -59,7 +61,7 @@ function ToggleRow({
  * long row of individual top-bar pills. Reads/writes the filters store directly;
  * the Satellite/3D view switch stays outside as its own primary control.
  */
-export function LayersMenu({ showWaterEditor, waterEditor, onToggleWaterEditor }: Props) {
+export function LayersMenu({ canUseMetro = false, showWaterEditor, waterEditor, onToggleWaterEditor }: Props) {
   const {
     metroMode,
     setMetroMode,
@@ -89,7 +91,7 @@ export function LayersMenu({ showWaterEditor, waterEditor, onToggleWaterEditor }
   }, [open]);
 
   const activeCount =
-    (metroMode ? 1 : 0) + (trainMode ? 1 : 0) + (roadsMode ? 1 : 0) + zoneCategories.size;
+    (canUseMetro && metroMode ? 1 : 0) + (trainMode ? 1 : 0) + (roadsMode ? 1 : 0) + zoneCategories.size;
 
   return (
     <div ref={rootRef} className="pointer-events-auto relative">
@@ -120,7 +122,9 @@ export function LayersMenu({ showWaterEditor, waterEditor, onToggleWaterEditor }
             <div className="px-2 pb-1 pt-0.5 text-[9px] font-bold uppercase tracking-wider text-cream/55">
               Transit
             </div>
-            <ToggleRow label="Metro" Icon={TrainFront} on={metroMode} onClick={() => setMetroMode(!metroMode)} />
+            {canUseMetro && (
+              <ToggleRow label="Metro" Icon={TrainFront} on={metroMode} onClick={() => setMetroMode(!metroMode)} />
+            )}
             <ToggleRow label="Train" Icon={TramFront} on={trainMode} onClick={() => setTrainMode(!trainMode)} />
             <ToggleRow label="Roads" Icon={Route} on={roadsMode} onClick={() => setRoadsMode(!roadsMode)} />
 

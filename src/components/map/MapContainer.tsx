@@ -1,4 +1,4 @@
-import { useState, useMemo, lazy, Suspense } from "react";
+import { useState, useMemo, lazy, Suspense, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Globe2,
@@ -28,7 +28,10 @@ const WaterDebugEditor = lazy(() =>
 import { shouldShowWaterDebugEditor } from "./waterDebugState";
 import { ROAD_GUIDE, setRouteHighlight } from "./roadsLayer";
 import { useMapConfig } from "@/hooks/use-map-config";
+import { useAuth } from "@/hooks/use-auth";
 import { useFiltersStore } from "@/store/filters";
+import { useTenantStore } from "@/store/tenant";
+import { canAccessTenant } from "@/integrations/supabase/saas";
 import { useProjects, filterProjects } from "@/hooks/use-projects";
 import { usePois, usePoiRealtime } from "@/hooks/use-pois";
 import { useZones, useZonesRealtime } from "@/hooks/use-zones";
@@ -57,11 +60,18 @@ const RAIL_GUIDE: { category: keyof typeof CATEGORY_COLORS; name: string; status
 export function MapContainer() {
   const { data: cfg, isLoading: cfgLoading } = useMapConfig();
   const { data: projects = [] } = useProjects();
+  const { user } = useAuth();
+  const { tenants, loaded: tenantLoaded, load: loadTenants } = useTenantStore();
+  useEffect(() => {
+    if (user) void loadTenants();
+  }, [user, loadTenants]);
+  const canUseMetro = !!user && tenantLoaded && tenants.some(canAccessTenant);
   const {
     filters,
     mapMode,
     setMapMode,
     metroMode,
+    setMetroMode,
     trainMode,
     roadsMode,
     lightPreset,
@@ -72,6 +82,10 @@ export function MapContainer() {
     visibleProjectIds,
     zoneCategories,
   } = useFiltersStore();
+  useEffect(() => {
+    if (!canUseMetro && metroMode) setMetroMode(false);
+  }, [canUseMetro, metroMode, setMetroMode]);
+  const visibleMetroMode = canUseMetro && metroMode;
   const { data: poisData = [] } = usePois(activeCategories);
   // While browsing places, the map goes clean: projects, metro/train/roads and
   // the (dark-dimming) zone spotlight all hide, leaving just the POI markers.
@@ -163,7 +177,7 @@ export function MapContainer() {
                 onCameraChange={setCamera}
                 onReady={() => mapMode === "satellite" && setMapReady(true)}
                 active={mapMode === "satellite"}
-                metroMode={metroMode}
+                metroMode={visibleMetroMode}
                 trainMode={trainMode}
                 roadsMode={roadsMode}
                 lightPreset={lightPreset}
@@ -194,7 +208,7 @@ export function MapContainer() {
                 onReady={() => mapMode === "3d" && setMapReady(true)}
                 onMapReady={waterEditorEnabled ? setEditorMap : undefined}
                 active={mapMode === "3d"}
-                metroMode={metroMode}
+                metroMode={visibleMetroMode}
                 trainMode={trainMode}
                 roadsMode={roadsMode}
                 lightPreset={lightPreset}
@@ -255,6 +269,7 @@ export function MapContainer() {
           </button>
         </div>
         <LayersMenu
+          canUseMetro={canUseMetro}
           showWaterEditor={import.meta.env.DEV}
           waterEditor={waterEditorEnabled}
           onToggleWaterEditor={() => setWaterEditorEnabled((on) => !on)}
@@ -360,7 +375,7 @@ export function MapContainer() {
 
       {/* Dubai Metro Guide — premium legend, only while metro mode plays */}
       <AnimatePresence>
-        {metroMode && (
+        {visibleMetroMode && (
           <motion.div
             key="metro-guide"
             initial={{ opacity: 0, x: -20 }}

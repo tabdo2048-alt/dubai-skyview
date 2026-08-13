@@ -12,6 +12,8 @@
 // manually (max 5) so a shortlink can't 302 into an internal host. The response
 // body read is size-capped and the whole flow is time-bounded.
 
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
 // Google map/shortlink hosts we are willing to fetch. Exact host match only.
 const ALLOWED_HOSTS = new Set([
   "google.com",
@@ -76,6 +78,20 @@ function isAllowedUrl(raw: string): boolean {
   const host = u.hostname.toLowerCase();
   if (isPrivateHostLiteral(host)) return false;
   return ALLOWED_HOSTS.has(host);
+}
+
+async function authenticated(req: Request): Promise<boolean> {
+  const header = req.headers.get("authorization") ?? "";
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY");
+  if (!match || !supabaseUrl || !supabaseKey) return false;
+
+  const client = createClient(supabaseUrl, supabaseKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data, error } = await client.auth.getUser(match[1]);
+  return !error && Boolean(data.user);
 }
 
 function parseLatLng(url: string): { lat: number; lng: number } | null {
@@ -149,6 +165,7 @@ Deno.serve(async (req) => {
 
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
+  if (!(await authenticated(req))) return json({ error: "unauthorized" }, 401);
 
   try {
     const { url } = await req.json().catch(() => ({ url: undefined }));

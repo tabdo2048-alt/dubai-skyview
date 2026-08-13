@@ -68,7 +68,7 @@ function BillingPage() {
             Activate <span className="text-gold-gradient">your workspace</span>
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            {tenant ? tenant.name : "Your organization"} — 100 AED, billed securely by Stripe.
+            {tenant ? tenant.name : "Your organization"} — 100 AED/month or 1,000 AED/year, billed securely by Stripe.
           </p>
 
           {!ready ? (
@@ -81,7 +81,7 @@ function BillingPage() {
               </Button>
               <Button onClick={() => subscribe("year")} disabled={busy !== null} variant="outline"
                 className="glass gold-hairline w-full text-cream">
-                {busy === "year" ? "Redirecting…" : "Subscribe — 100 AED / year"}
+                {busy === "year" ? "Redirecting…" : "Subscribe — 1,000 AED / year"}
               </Button>
             </div>
           )}

@@ -486,7 +486,7 @@ export function MapboxView({
       // Hide Mapbox's own POIs so only our markers show. Runs on every style.load
       // (re-applied after any Satellite↔3D style swap, the classic regression).
       try {
-        hideBasemapPois(map);
+        hideBasemapPois(map, styleLayers);
       } catch (err) {
         console.warn("hideBasemapPois failed (non-fatal)", err);
       }
@@ -661,10 +661,23 @@ export function MapboxView({
   // hospitals, schools, shops) and `transit-label` its bus/metro stops — both
   // clash with our data. Road / water / district / country labels are kept for
   // context. Idempotent + guarded, and re-run on every style load.
-  function hideBasemapPois(map: mapboxgl.Map) {
+  function hideBasemapPois(map: mapboxgl.Map, layers: StyleLayers) {
     for (const id of ["poi-label", "transit-label"]) {
       if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none");
     }
+
+    // Hide transit overlays shipped by the basemap. The user-facing Metro
+    // toggle uses the custom layers created by addMetroLayers below.
+    for (const layer of layers) {
+      const meta = layer as { id: string; ["source-layer"]?: string };
+      const id = meta.id.toLowerCase();
+      const sourceLayer = (meta["source-layer"] ?? "").toLowerCase();
+      const isBasemapTransit = ["transit", "metro", "subway", "rail", "train"].some(
+        (token) => id.includes(token) || sourceLayer.includes(token),
+      );
+      if (isBasemapTransit) map.setLayoutProperty(layer.id, "visibility", "none");
+    }
+
     // The Standard-based 3D style keeps POIs in a config fragment (not listed as
     // layers), so flip the basemap flags too. try/catch: classic styles lack them.
     if (mode === "3d") {

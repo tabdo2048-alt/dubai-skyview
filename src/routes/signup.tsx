@@ -63,7 +63,7 @@ function SignupPage() {
             Create your <span className="text-gold-gradient">workspace</span>
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            100 AED / {period === "month" ? "month" : "year"} — billed securely by Stripe.
+            {period === "month" ? "100 AED / month" : "1,000 AED / year"} — billed securely by Stripe.
           </p>
 
           <form onSubmit={submit} className="mt-6 space-y-4">

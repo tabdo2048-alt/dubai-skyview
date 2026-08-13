@@ -60,6 +60,11 @@ Create a `.env` file in the project root:
 | `SUPABASE_URL` | server | Supabase URL for server functions |
 | `SUPABASE_PUBLISHABLE_KEY` | server | Supabase publishable key for server functions |
 | `SUPABASE_SERVICE_ROLE_KEY` | server | Service-role key (admin operations only — never expose to the client) |
+| `STRIPE_SECRET_KEY` | server | Stripe secret key (server/Edge Functions only) |
+| `STRIPE_WEBHOOK_SECRET` | server/Edge Function | Stripe webhook signing secret |
+| `STRIPE_MONTHLY_PRICE_ID` | server/Edge Function | Optional verified Stripe Price ID for 100 AED/month |
+| `STRIPE_YEARLY_PRICE_ID` | server/Edge Function | Optional verified Stripe Price ID for 1,000 AED/year |
+| `APP_URL` | server | Canonical HTTPS application URL for Stripe redirects |
 | `GOOGLE_MAPS_API_KEY` | server | Optional, for Google geodata lookups |
 | `VITE_WATER_DEBUG` | client | Optional: `true` enables the water debug editor |
 | `VITE_NAVIGATION_DEBUG_OVERLAY` | client | Optional: `true` shows the marine-navigation debug overlay |

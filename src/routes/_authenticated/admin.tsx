@@ -29,6 +29,35 @@ import { safeHttpUrl } from "@/lib/utils";
 import { parseLatLngFromGoogleMapsUrl } from "@/lib/googleMapsLink";
 
 const PROJECT_MEDIA_BUCKET = "project-media";
+const MAX_PROJECT_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_PROJECT_IMAGES = 12;
+const IMAGE_EXTENSIONS: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/avif": "avif",
+};
+
+function imageFileError(file: File): string | null {
+  if (!IMAGE_EXTENSIONS[file.type]) return `${file.name}: only JPEG, PNG, WebP, and AVIF images are allowed`;
+  if (file.size > MAX_PROJECT_IMAGE_BYTES) return `${file.name}: image must be 10 MB or smaller`;
+  return null;
+}
+
+async function hasAllowedImageSignature(file: File): Promise<boolean> {
+  const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+  const startsWith = (...values: number[]) => values.every((value, index) => bytes[index] === value);
+  const isJpeg = startsWith(0xff, 0xd8, 0xff);
+  const isPng = startsWith(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a);
+  const isWebp = startsWith(0x52, 0x49, 0x46, 0x46) && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50;
+  const isAvif = bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70 &&
+    ((bytes[8] === 0x61 && bytes[9] === 0x76 && bytes[10] === 0x69 && bytes[11] === 0x66) ||
+      (bytes[8] === 0x61 && bytes[9] === 0x76 && bytes[10] === 0x69 && bytes[11] === 0x73));
+  return (file.type === "image/jpeg" && isJpeg) ||
+    (file.type === "image/png" && isPng) ||
+    (file.type === "image/webp" && isWebp) ||
+    (file.type === "image/avif" && isAvif);
+}
 
 // Supabase errors (Postgrest/Storage) are plain objects, not Error instances, so
 // `err instanceof Error` misses them and the UI would just say "Save failed".
@@ -638,10 +667,20 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
 
   const uploadProjectImages = async (projectId: string) => {
     if (!imageFiles.length) return [] as string[];
+    if (imageFiles.length > MAX_PROJECT_IMAGES) {
+      throw new Error(`You can upload up to ${MAX_PROJECT_IMAGES} images at a time`);
+    }
+    for (const file of imageFiles) {
+      const validationError = imageFileError(file);
+      if (validationError) throw new Error(validationError);
+      if (!(await hasAllowedImageSignature(file))) {
+        throw new Error(`${file.name}: file contents do not match its image type`);
+      }
+    }
 
     const uploaded = await Promise.all(
       imageFiles.map(async (file, index) => {
-        const extension = file.name.split(".").pop()?.toLowerCase() || "jpg";
+        const extension = IMAGE_EXTENSIONS[file.type];
         const safeName = file.name
           .replace(/\.[^/.]+$/, "")
           .toLowerCase()
@@ -656,7 +695,7 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
           .from(PROJECT_MEDIA_BUCKET)
           .upload(path, file, {
             cacheControl: "31536000",
-            contentType: file.type || "image/jpeg",
+            contentType: file.type,
             upsert: false,
           });
 
@@ -856,11 +895,22 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
           <span className="mt-1 text-xs text-muted-foreground">Select one or more images from your computer.</span>
           <input
             type="file"
-            accept="image/*"
+            accept="image/jpeg,image/png,image/webp,image/avif"
             multiple
             className="sr-only"
             onChange={(e) => {
               const files = Array.from(e.target.files ?? []);
+              const invalid = files.map(imageFileError).find(Boolean);
+              if (invalid) {
+                toast.error(invalid);
+                e.target.value = "";
+                return;
+              }
+              if (imageFiles.length + files.length > MAX_PROJECT_IMAGES) {
+                toast.error(`You can upload up to ${MAX_PROJECT_IMAGES} images at a time`);
+                e.target.value = "";
+                return;
+              }
               setImageFiles((current) => [...current, ...files]);
               e.target.value = "";
             }}

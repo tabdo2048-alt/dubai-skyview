@@ -36,8 +36,8 @@ npm run validate:water      # / validate:metro / verify:earcut
 ```
 
 **Env** (`.env`): `VITE_SUPABASE_URL`, `VITE_SUPABASE_PROJECT_ID`, `MAPBOX_ACCESS_TOKEN`, `GOOGLE_MAPS_API_KEY`.
-⚠️ The live Supabase project is **`fdqbdqsmaguxdnaftxbq`** (from `.env`). The ref in
-`supabase/config.toml` is **stale — ignore it**. Use the `.env` ref for all DB work.
+The live Supabase project is **`fdqbdqsmaguxdnaftxbq`**. Keep it aligned with
+`supabase/config.toml` before running any database command.
 
 ## 3. How the map is wired (data flow)
 

@@ -48,7 +48,7 @@ function AuthPage() {
       <div className="mx-auto grid max-w-md px-4 py-16">
         <div className="glass-strong gold-hairline rounded-3xl p-8">
           <div className="text-xs uppercase tracking-widest text-muted-foreground">Welcome back</div>
-          <h1 className="mt-1 font-display text-4xl text-cream">Dubai <span className="text-gold-gradient">Residences</span></h1>
+          <h1 className="mt-1 font-display text-4xl text-cream"><span className="text-gold-gradient">KEYORA</span></h1>
           <form onSubmit={submit} className="mt-6 space-y-4">
             <div>
               <Label htmlFor="email" className="text-cream">Email</Label>
@@ -59,7 +59,7 @@ function AuthPage() {
               <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} className="glass gold-hairline mt-1 text-cream" />
             </div>
             <Button type="submit" disabled={loading} className="w-full bg-gold text-gold-foreground hover:bg-gold/90">
-              {loading ? "Please wait…" : "Sign in"}
+              {loading ? "Please wait…" : "KEYORA"}
             </Button>
           </form>
         </div>

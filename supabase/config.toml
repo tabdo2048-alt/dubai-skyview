@@ -1,1 +1,11 @@
-project_id = "zsjyexezfctkchdhscmr"
+project_id = "fdqbdqsmaguxdnaftxbq"
+
+# The maps resolver is used from the authenticated admin app. Keep Supabase's
+# JWT gate enabled so it cannot become a public SSRF/proxy endpoint.
+[functions.resolve-maps-link]
+verify_jwt = true
+
+# Stripe authenticates this endpoint with the Stripe-Signature header instead
+# of a Supabase JWT; the function verifies that signature in its handler.
+[functions.stripe-webhook]
+verify_jwt = false
