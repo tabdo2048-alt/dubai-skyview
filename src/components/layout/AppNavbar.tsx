@@ -41,10 +41,12 @@ export function AppNavbar() {
     <header className="glass-strong sticky top-0 z-40 border-b border-border/60">
       <div className="mx-auto flex h-16 max-w-[1600px] items-center gap-4 px-4">
         <Link to="/" className="flex items-center gap-2">
+          {/* 180px source for a 36px render — 5x DPR headroom at 50 KB instead of
+              the 512px master's 250 KB. The master is reserved for og:image. */}
           <img
-            src="/project-logo.svg"
-            alt="Dubai Residences logo"
-            className="h-9 w-9 rounded-full object-cover shadow ring-1 ring-gold/60"
+            src="/brand/keyora-logo-180.png"
+            alt="KEYORA logo"
+            className="h-9 w-9 rounded-xl object-contain"
           />
           <div className="hidden font-display text-xl tracking-wide text-cream sm:block">
             <span className="text-gold-gradient">KEYORA</span>

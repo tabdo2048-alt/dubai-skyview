@@ -26,6 +26,20 @@ const SUPABASE_ORIGIN = (() => {
   }
 })();
 
+// Brand mark, generated from the source artwork by scripts/build-brand-logo.mjs.
+// og:image has to be absolute for most crawlers, so build it from VITE_APP_URL
+// when that's configured and fall back to the relative path otherwise.
+// NOTE: a square logo is a weak share card — swap in a wide banner when one exists.
+const LOGO_PATH = "/brand/keyora-logo.png";
+const OG_IMAGE = (() => {
+  try {
+    const base = import.meta.env.VITE_APP_URL as string | undefined;
+    return base ? new URL(LOGO_PATH, base).href : LOGO_PATH;
+  } catch {
+    return LOGO_PATH;
+  }
+})();
+
 function NotFoundComponent() {
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
@@ -80,11 +94,16 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:title", content: "KEYORA — Luxury Real Estate Map" },
       { property: "og:description", content: "Downtown, Marina, Palm Jumeirah, Bluewaters and beyond — discover the finest properties in Dubai on an interactive satellite and 3D map." },
       { property: "og:type", content: "website" },
+      { property: "og:image", content: OG_IMAGE },
+      { property: "og:image:width", content: "512" },
+      { property: "og:image:height", content: "512" },
       { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:image", content: OG_IMAGE },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
-      { rel: "icon", href: "/project-logo.svg", type: "image/svg+xml" },
+      { rel: "icon", href: "/brand/keyora-logo-32.png", type: "image/png", sizes: "32x32" },
+      { rel: "apple-touch-icon", href: "/brand/keyora-logo-180.png", sizes: "180x180" },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Work+Sans:wght@300;400;500;600;700&display=swap" },
