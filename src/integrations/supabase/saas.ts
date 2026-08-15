@@ -37,10 +37,10 @@ export type PlatformTenant = {
   created_at: string;
   owner_email: string | null;
   project_count: number;
-  // True when a platform administrator belongs to this org. Such an org cannot
-  // be suspended (the RPC refuses), so the UI disables the control instead of
-  // letting the click fail.
+  // True when a platform administrator belongs to this org.
   has_platform_admin?: boolean;
+  // Only the designated platform owner can suspend an org containing admins.
+  can_suspend_platform_admins?: boolean;
 };
 
 export type TenantMember = {
@@ -96,6 +96,8 @@ export type PlatformUser = {
   is_platform_admin: boolean;
   orgs: string | null;
   org_roles: string | null;
+  blocked: boolean;
+  can_block_platform_admins?: boolean;
 };
 
 // Platform-admin: every user account with their org membership.
@@ -103,6 +105,31 @@ export async function fetchPlatformUsers(): Promise<PlatformUser[]> {
   const { data, error } = await sbAny.rpc("platform_list_users");
   if (error) throw error;
   return (data ?? []) as PlatformUser[];
+}
+
+// PostgREST's code for "function not found in the schema cache" — i.e. the
+// account-block SQL (supabase/APPLY_THIS_4.sql) has not been applied yet.
+// In that state the user_blocks table does not exist, so NOBODY is blocked and
+// "not blocked" is the correct answer. This matters because the check runs on
+// the login path: failing closed on a missing function locked EVERY account out,
+// not just blocked ones. Any other error still fails closed.
+//
+// The message is matched as well as the code, because the code has moved between
+// PostgREST versions and a miss here means nobody can sign in. A permission error
+// (42501) is deliberately NOT tolerated: that means the function exists but the
+// grant is wrong, which is a real misconfiguration, not an uninstalled feature.
+function isMissingFunction(error: unknown): boolean {
+  const e = (error ?? {}) as { code?: string; message?: string };
+  return e.code === "PGRST202" || /schema cache|could not find the function/i.test(e.message ?? "");
+}
+
+export async function isCurrentUserBlocked(): Promise<boolean> {
+  const { data, error } = await sbAny.rpc("is_current_user_blocked");
+  if (error) {
+    if (isMissingFunction(error)) return false;
+    throw error;
+  }
+  return Boolean(data);
 }
 
 // Platform-admin: permanently delete a user + the orgs they own (auth + data).

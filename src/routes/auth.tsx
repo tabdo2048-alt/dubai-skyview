@@ -1,12 +1,14 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { sbAny } from "@/integrations/supabase/saas";
+import { sbAny, isCurrentUserBlocked } from "@/integrations/supabase/saas";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+
+const BLOCKED_MESSAGE = "أنت محظور من دخول الموقع.";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({ meta: [{ title: "Sign in — Dubai Residences" }] }),
@@ -18,6 +20,16 @@ function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  // Set by the _authenticated guard when it signs a blocked session out, so the
+  // reason survives the redirect back to this page.
+  const [blockedNotice, setBlockedNotice] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && sessionStorage.getItem("dubai:blocked")) {
+      sessionStorage.removeItem("dubai:blocked");
+      setBlockedNotice(true);
+    }
+  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,9 +42,21 @@ function AuthPage() {
       }
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
+        // A blocked account also carries a Supabase Auth ban, so Auth rejects it
+        // before any RPC runs. Report the block, not "invalid credentials".
+        if (/banned|blocked/i.test(error.message)) throw new Error(BLOCKED_MESSAGE);
         await sbAny.rpc("record_login_failure", { _email: email });
         throw error;
       }
+
+      // Second gate for a block applied while a session already existed. Tolerates
+      // the RPC being absent (see isCurrentUserBlocked) so an unapplied migration
+      // cannot lock everyone out; any other failure signs the session back out.
+      if (await isCurrentUserBlocked()) {
+        await supabase.auth.signOut();
+        throw new Error(BLOCKED_MESSAGE);
+      }
+
       toast.success("Welcome back.");
       navigate({ to: "/admin" });
     } catch (err) {
@@ -49,6 +73,11 @@ function AuthPage() {
         <div className="glass-strong gold-hairline rounded-3xl p-8">
           <div className="text-xs uppercase tracking-widest text-muted-foreground">Welcome back</div>
           <h1 className="mt-1 font-display text-4xl text-cream"><span className="text-gold-gradient">KEYORA</span></h1>
+          {blockedNotice && (
+            <div role="alert" className="mt-4 rounded-xl border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+              {BLOCKED_MESSAGE}
+            </div>
+          )}
           <form onSubmit={submit} className="mt-6 space-y-4">
             <div>
               <Label htmlFor="email" className="text-cream">Email</Label>

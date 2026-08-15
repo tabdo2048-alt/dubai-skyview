@@ -98,6 +98,24 @@ export const requireSupabaseAuth = createMiddleware({ type: 'function' }).server
       throw new Error('Unauthorized: No user ID found in token');
     }
 
+    // Server-side block gate for every server function behind this middleware.
+    // A missing function means the block SQL (supabase/APPLY_THIS_4.sql) is not
+    // applied, so no account can be blocked and the check is a no-op. Every other
+    // error — including a permission error, which means the function exists but is
+    // mis-granted — is treated as a failure to verify and denies the call.
+    const { data: blocked, error: blockCheckError } = await supabase.rpc('is_current_user_blocked');
+    if (blockCheckError) {
+      const missing =
+        blockCheckError.code === 'PGRST202' ||
+        /schema cache|could not find the function/i.test(blockCheckError.message ?? '');
+      if (!missing) {
+        throw new Error('Unauthorized: Could not verify account status');
+      }
+    }
+    if (blocked) {
+      throw new Error('Forbidden: Account is blocked');
+    }
+
     return next({
       context: {
         supabase,
