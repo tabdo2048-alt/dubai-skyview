@@ -12,18 +12,22 @@ export function ProjectPopup({ project, onClose }: { project: ProjectWithRelatio
   const images = useMemo(() => {
     // Signed URLs (private media bucket) — fall back to the stored value for
     // rows whose image lives on an external host.
-    const urls: string[] = [];
-    const hero = mediaSrc(project?.main_image_src, project?.main_image_url);
-    if (hero) urls.push(hero);
+    const urls: Array<{ full: string; thumb: string }> = [];
+    // The map list intentionally contains only the small main thumbnail. The
+    // detail page is where the full-resolution image is fetched.
+    const hero = mediaSrc(project?.main_image_thumb_src, project?.main_image_src ?? project?.main_image_url);
+    const heroThumb = hero;
+    if (hero) urls.push({ full: hero, thumb: heroThumb || hero });
     for (const g of project?.images ?? []) {
-      const src = mediaSrc(g?.src, g?.url);
-      if (src && !urls.includes(src)) urls.push(src);
+      const full = mediaSrc(g?.src, g?.url);
+      const thumb = mediaSrc(g?.thumb_src, g?.src ?? g?.url);
+      if (full && !urls.some((item) => item.full === full)) urls.push({ full, thumb: thumb || full });
     }
     return urls;
   }, [project]);
-  const [activeImage, setActiveImage] = useState<string | null>(images[0] ?? null);
+  const [activeImage, setActiveImage] = useState<string | null>(images[0]?.full ?? null);
   // Reset the hero when a different project is selected.
-  useEffect(() => setActiveImage(images[0] ?? null), [project?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => setActiveImage(images[0]?.full ?? null), [project?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   // Close on Escape.
   useEffect(() => {
     if (!project) return;
@@ -112,18 +116,18 @@ export function ProjectPopup({ project, onClose }: { project: ProjectWithRelatio
                 {/* Thumbnail strip — click to swap the hero (mirrors the detail page). */}
                 {images.length > 1 && (
                   <div className="flex gap-2 overflow-x-auto pb-0.5">
-                    {images.map((url) => (
+                    {images.map(({ full, thumb }) => (
                       <button
-                        key={url}
+                        key={full}
                         type="button"
-                        onClick={() => setActiveImage(url)}
-                        aria-current={url === activeImage}
+                        onClick={() => setActiveImage(full)}
+                        aria-current={full === activeImage}
                         aria-label="Show image"
                         className={`h-10 w-14 shrink-0 overflow-hidden rounded-lg transition ${
-                          url === activeImage ? "ring-2 ring-gold" : "gold-hairline opacity-80 hover:opacity-100"
+                          full === activeImage ? "ring-2 ring-gold" : "gold-hairline opacity-80 hover:opacity-100"
                         }`}
                       >
-                        <img src={url} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />
+                        <img src={thumb} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />
                       </button>
                     ))}
                   </div>

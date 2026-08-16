@@ -18,6 +18,7 @@
 // published projects only.
 import { supabase } from "@/integrations/supabase/client";
 import { safeHttpUrl } from "@/lib/utils";
+import { thumbnailPathFromStoragePath } from "@/lib/image-optimization";
 
 export const PROJECT_MEDIA_BUCKET = "project-media";
 
@@ -51,6 +52,12 @@ export function storagePathFromUrl(value: string | null | undefined): string | n
   }
 }
 
+/** Return the generated thumbnail path for one of our stored object URLs. */
+export function storageThumbnailPathFromUrl(value: string | null | undefined): string | null {
+  const path = storagePathFromUrl(value);
+  return path ? thumbnailPathFromStoragePath(path) : null;
+}
+
 /**
  * Map each input value to something renderable: a signed URL for objects in our
  * bucket, the original string for anything else. Values the caller is not allowed
@@ -62,12 +69,38 @@ export function storagePathFromUrl(value: string | null | undefined): string | n
  * page at share time still get a working image; a much later re-crawl will not.
  */
 export async function resolveMediaUrls(values: Array<string | null | undefined>): Promise<Map<string, string>> {
+  return resolveStorageUrls(values, (value) => storagePathFromUrl(value));
+}
+
+/**
+ * Resolve small generated thumbnails. Older objects do not have a thumbnail,
+ * so those values fall back to their normal signed URL instead of breaking.
+ */
+export async function resolveMediaThumbnailUrls(values: Array<string | null | undefined>): Promise<Map<string, string>> {
+  const out = await resolveStorageUrls(values, (value) => storageThumbnailPathFromUrl(value));
+  const missing = values.filter((value) => {
+    const path = storagePathFromUrl(value);
+    return Boolean(value && path && out.get(value) === undefined);
+  });
+  if (missing.length) {
+    const full = await resolveMediaUrls(missing);
+    for (const value of missing) {
+      if (value) out.set(value, full.get(value) ?? value);
+    }
+  }
+  return out;
+}
+
+async function resolveStorageUrls(
+  values: Array<string | null | undefined>,
+  pathForValue: (value: string) => string | null,
+): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   const pathByValue = new Map<string, string>();
 
   for (const value of values) {
     if (!value || out.has(value) || pathByValue.has(value)) continue;
-    const path = storagePathFromUrl(value);
+    const path = pathForValue(value);
     if (path) pathByValue.set(value, path);
     else out.set(value, value);
   }
@@ -81,15 +114,14 @@ export async function resolveMediaUrls(values: Array<string | null | undefined>)
     .createSignedUrls(paths, SIGNED_URL_TTL_SECONDS);
 
   if (error || !data) {
-    // Signing failed wholesale (offline, bucket missing). Fall back to the stored
-    // value so behaviour degrades to a broken image rather than a crash.
-    for (const v of values_) out.set(v, v);
+    // Signing failed wholesale (offline, bucket missing). Leave storage values
+    // unresolved so thumbnail callers can retry with the full object URL.
     return out;
   }
 
   data.forEach((row, i) => {
     const original = values_[i];
-    out.set(original, row.signedUrl ?? original);
+    if (row.signedUrl) out.set(original, row.signedUrl);
   });
   return out;
 }
@@ -109,26 +141,44 @@ export async function resolveMediaUrls(values: Array<string | null | undefined>)
  */
 export async function withSignedProjectMedia<
   T extends { main_image_url?: string | null; images?: Array<{ url: string }> | null },
->(projects: T[]): Promise<Array<T & SignedMedia>> {
-  const values: Array<string | null | undefined> = [];
-  for (const p of projects) {
-    values.push(p.main_image_url);
-    for (const img of p.images ?? []) values.push(img.url);
-  }
+>(
+  projects: T[],
+  options: { includeGallery?: boolean; thumbnailsOnly?: boolean } = {},
+): Promise<Array<T & SignedMedia>> {
+  const includeGallery = options.includeGallery ?? true;
+  const thumbnailsOnly = options.thumbnailsOnly ?? false;
+  const mainValues: Array<string | null | undefined> = projects.map((project) => project.main_image_url);
+  const galleryValues: Array<string | null | undefined> = includeGallery
+    ? projects.flatMap((project) => (project.images ?? []).map((image) => image.url))
+    : [];
+  const fullValues = thumbnailsOnly ? [] : [...mainValues, ...galleryValues];
+  const thumbValues = thumbnailsOnly ? mainValues : [...mainValues, ...galleryValues];
 
-  const resolved = values.some(Boolean) ? await resolveMediaUrls(values) : new Map<string, string>();
-  const pick = (v: string | null | undefined) => (v ? (resolved.get(v) ?? v) : null);
+  const [resolved, thumbnails] = await Promise.all([
+    fullValues.some(Boolean) ? resolveMediaUrls(fullValues) : Promise.resolve(new Map<string, string>()),
+    thumbValues.some(Boolean) ? resolveMediaThumbnailUrls(thumbValues) : Promise.resolve(new Map<string, string>()),
+  ]);
+  const pick = (map: Map<string, string>, value: string | null | undefined) =>
+    value ? (map.get(value) ?? value) : null;
 
   return projects.map((p) => ({
     ...p,
-    main_image_src: pick(p.main_image_url),
-    images: (p.images ?? []).map((img) => ({ ...img, src: pick(img.url) ?? img.url })),
+    main_image_src: thumbnailsOnly ? null : pick(resolved, p.main_image_url),
+    main_image_thumb_src: pick(thumbnails, p.main_image_url),
+    images: includeGallery
+      ? (p.images ?? []).map((img) => ({
+          ...img,
+          src: pick(resolved, img.url) ?? img.url,
+          thumb_src: pick(thumbnails, img.url) ?? img.url,
+        }))
+      : [],
   })) as Array<T & SignedMedia>;
 }
 
 export type SignedMedia = {
   main_image_src: string | null;
-  images: Array<{ url: string; src: string } & Record<string, unknown>>;
+  main_image_thumb_src: string | null;
+  images: Array<{ url: string; src: string; thumb_src: string } & Record<string, unknown>>;
 };
 
 /** Prefer the signed URL, fall back to whatever was stored. */

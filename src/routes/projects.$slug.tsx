@@ -81,18 +81,20 @@ function ProjectDetail() {
   }, [p]);
   // Hero + gallery images for the click-to-swap viewer (hero first, deduped).
   const images = useMemo(() => {
-    const urls: string[] = [];
+    const urls: Array<{ full: string; thumb: string }> = [];
     const hero = mediaSrc(p?.main_image_src, p?.main_image_url);
-    if (hero) urls.push(hero);
+    const heroThumb = mediaSrc(p?.main_image_thumb_src, p?.main_image_src ?? p?.main_image_url);
+    if (hero) urls.push({ full: hero, thumb: heroThumb || hero });
     for (const g of p?.images ?? []) {
-      const src = mediaSrc(g?.src, g?.url);
-      if (src && !urls.includes(src)) urls.push(src);
+      const full = mediaSrc(g?.src, g?.url);
+      const thumb = mediaSrc(g?.thumb_src, g?.src ?? g?.url);
+      if (full && !urls.some((item) => item.full === full)) urls.push({ full, thumb: thumb || full });
     }
     return urls;
   }, [p]);
-  const [activeImage, setActiveImage] = useState<string | null>(images[0] ?? null);
+  const [activeImage, setActiveImage] = useState<string | null>(images[0]?.full ?? null);
   // Reset to the hero when navigating to another project.
-  useEffect(() => setActiveImage(images[0] ?? null), [p?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => setActiveImage(images[0]?.full ?? null), [p?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!p) throw notFound();
 
   return (
@@ -130,21 +132,21 @@ function ProjectDetail() {
                   Gallery &amp; floor plans
                 </div>
                 <div className="grid grid-cols-3 gap-3">
-                  {images.map((url) => (
+                  {images.map(({ full, thumb }) => (
                     <button
-                      key={url}
+                      key={full}
                       type="button"
-                      onClick={() => setActiveImage(url)}
-                      aria-current={url === activeImage}
+                      onClick={() => setActiveImage(full)}
+                      aria-current={full === activeImage}
                       className={`glass aspect-[4/3] overflow-hidden rounded-2xl transition ${
-                        url === activeImage ? "ring-2 ring-gold" : "gold-hairline hover:ring-1 hover:ring-gold/60"
+                        full === activeImage ? "ring-2 ring-gold" : "gold-hairline hover:ring-1 hover:ring-gold/60"
                       }`}
                     >
                       <img
-                        src={url}
+                        src={thumb}
                         alt={p.name}
                         className={`h-full w-full object-cover transition-transform hover:scale-105 ${
-                          url === activeImage ? "" : "opacity-90"
+                          full === activeImage ? "" : "opacity-90"
                         }`}
                         loading="lazy"
                         decoding="async"

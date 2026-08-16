@@ -7,22 +7,34 @@ export function projectsQueryKey() {
   return ["projects", "list"] as const;
 }
 
+const PROJECT_LIST_SELECT = `
+  id,slug,name,developer_id,community_id,lat,lng,address,starting_price_aed,
+  bedrooms_min,bedrooms_max,bathrooms,completion_date,payment_plan,status,category,
+  tags,description,main_image_url,video_url,tour_360_url,brochure_url,featured,
+  created_at,updated_at,plot_geometry,plot_color,is_public,tenant_id,
+  developer:developers(id,name,slug),
+  community:communities(id,name,slug)
+`;
+
+const PROJECT_DETAIL_SELECT = `
+  *,
+  developer:developers(id,name,slug),
+  community:communities(id,name,slug),
+  images:project_images(*),
+  amenities:project_amenities(*)
+`;
+
 async function fetchAllProjects(): Promise<ProjectWithRelations[]> {
   const { data, error } = await supabase
     .from("projects")
-    .select(`
-      *,
-      developer:developers(id,name,slug),
-      community:communities(id,name,slug),
-      images:project_images(*),
-      amenities:project_amenities(*)
-    `)
+    // Map/sidebar consumers need one small image, not every gallery row and
+    // amenity. Detail/admin editors fetch the full relation separately.
+    .select(PROJECT_LIST_SELECT)
     .order("featured", { ascending: false })
     .order("created_at", { ascending: false });
-  // The media bucket is private, so stored /object/public/ URLs are dead until
-  // signed. Doing it here means every consumer (map popup, sidebar, detail page,
-  // admin list) renders working images without knowing about storage at all.
-  if (!error) return withSignedProjectMedia(normalizeProjects(data ?? []));
+  // Resolve only generated thumbnails for this list. This keeps the initial map
+  // payload and image downloads small while preserving external/legacy URLs.
+  if (!error) return withSignedProjectMedia(normalizeProjects(data ?? []), { includeGallery: false, thumbnailsOnly: true });
 
   console.warn("[Projects] full query failed; falling back to legacy schema", error.message);
   return fetchLegacyProjects();
@@ -41,13 +53,7 @@ export function useProjects() {
 export async function fetchProjectBySlug(slug: string): Promise<ProjectWithRelations | null> {
   const { data, error } = await supabase
     .from("projects")
-    .select(`
-      *,
-      developer:developers(id,name,slug),
-      community:communities(id,name,slug),
-      images:project_images(*),
-      amenities:project_amenities(*)
-    `)
+    .select(PROJECT_DETAIL_SELECT)
     .eq("slug", slug)
     .maybeSingle();
   if (!error) return signOne(normalizeProject(data));
@@ -62,6 +68,17 @@ export async function fetchProjectBySlug(slug: string): Promise<ProjectWithRelat
   return signOne(normalizeProject(legacyData));
 }
 
+/** Full project fetch used by the admin editor without loading every project. */
+export async function fetchProjectById(id: string): Promise<ProjectWithRelations | null> {
+  const { data, error } = await supabase
+    .from("projects")
+    .select(PROJECT_DETAIL_SELECT)
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw error;
+  return signOne(normalizeProject(data));
+}
+
 // Sign a single project's media (null passes through untouched).
 async function signOne(project: ProjectWithRelations | null): Promise<ProjectWithRelations | null> {
   if (!project) return null;
@@ -73,6 +90,14 @@ export function useProject(slug: string) {
   return useQuery({
     queryKey: ["projects", "slug", slug],
     queryFn: () => fetchProjectBySlug(slug),
+  });
+}
+
+export function useProjectById(id: string | null) {
+  return useQuery({
+    queryKey: ["projects", "id", id],
+    queryFn: () => fetchProjectById(id!),
+    enabled: Boolean(id),
   });
 }
 
@@ -131,7 +156,7 @@ async function fetchLegacyProjects(): Promise<ProjectWithRelations[]> {
     .order("created_at", { ascending: false });
 
   if (error) throw error;
-  return withSignedProjectMedia(normalizeProjects(data ?? []));
+  return withSignedProjectMedia(normalizeProjects(data ?? []), { includeGallery: false, thumbnailsOnly: true });
 }
 
 function normalizeProjects(items: unknown[]): ProjectWithRelations[] {

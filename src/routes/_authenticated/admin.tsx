@@ -13,7 +13,7 @@ const AdminZoneEditor = lazy(() =>
 );
 import { useAuth, useIsAdmin } from "@/hooks/use-auth";
 import { useMapConfig } from "@/hooks/use-map-config";
-import { useProjects, useCommunities, useDevelopers } from "@/hooks/use-projects";
+import { useProjects, useProjectById, useCommunities, useDevelopers } from "@/hooks/use-projects";
 import { useTenantStore } from "@/store/tenant";
 import { fetchPlatformTenants, setTenantSuspended, isActiveStatus, fetchPlatformUsers, deletePlatformUser, type PlatformTenant, type PlatformUser } from "@/integrations/supabase/saas";
 import { POI_TABLES, type PoiCategory, type PoiPoint } from "@/hooks/use-pois";
@@ -27,6 +27,8 @@ import { formatAed } from "@/lib/dubai";
 import { mediaSrc } from "@/lib/media";
 import { safeHttpUrl } from "@/lib/utils";
 import { parseLatLngFromGoogleMapsUrl } from "@/lib/googleMapsLink";
+import { setUserBlocked } from "@/lib/user-security.functions";
+import { optimizeProjectImage, thumbnailPathFromStoragePath } from "@/lib/image-optimization";
 
 const PROJECT_MEDIA_BUCKET = "project-media";
 const MAX_PROJECT_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -162,7 +164,7 @@ function AdminPage() {
           {projects.map((p) => (
             <div key={p.id} className="glass gold-hairline flex items-center gap-3 rounded-2xl p-3">
               <div className="h-14 w-20 overflow-hidden rounded-lg bg-muted">
-                {mediaSrc(p.main_image_src, p.main_image_url) && <img src={mediaSrc(p.main_image_src, p.main_image_url)} alt="" className="h-full w-full object-cover" />}
+                {mediaSrc(p.main_image_thumb_src, p.main_image_src ?? p.main_image_url) && <img src={mediaSrc(p.main_image_thumb_src, p.main_image_src ?? p.main_image_url)} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="truncate font-display text-lg text-cream">{p.name}</div>
@@ -611,11 +613,11 @@ function CommunityManager() {
 }
 
 export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tenantId: string; onClose: () => void }) {
-  const { data: projects = [] } = useProjects();
+  const { data: existingProject } = useProjectById(id);
   const { data: developers = [] } = useDevelopers();
   const { data: communities = [] } = useCommunities();
   const { data: cfg } = useMapConfig();
-  const existing = id ? projects.find((p) => p.id === id) : null;
+  const existing = existingProject ?? null;
   const [f, setF] = useState({
     name: existing?.name ?? "",
     slug: existing?.slug ?? "",
@@ -680,7 +682,8 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
 
     const uploaded = await Promise.all(
       imageFiles.map(async (file, index) => {
-        const extension = IMAGE_EXTENSIONS[file.type];
+        const optimized = await optimizeProjectImage(file);
+        const extension = IMAGE_EXTENSIONS[optimized.full.type] ?? (optimized.full.type === "image/jpeg" ? "jpg" : "webp");
         const safeName = file.name
           .replace(/\.[^/.]+$/, "")
           .toLowerCase()
@@ -693,13 +696,26 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
 
         const { error: uploadError } = await supabase.storage
           .from(PROJECT_MEDIA_BUCKET)
-          .upload(path, file, {
+          .upload(path, optimized.full, {
             cacheControl: "31536000",
-            contentType: file.type,
+            contentType: optimized.full.type,
             upsert: false,
           });
 
         if (uploadError) throw uploadError;
+
+        // Keep a tiny, immutable object beside the original. Map/list views
+        // resolve this derived path; old objects fall back to the full image.
+        if (optimized.thumbnail) {
+          const { error: thumbnailError } = await supabase.storage
+            .from(PROJECT_MEDIA_BUCKET)
+            .upload(thumbnailPathFromStoragePath(path), optimized.thumbnail, {
+              cacheControl: "31536000",
+              contentType: optimized.thumbnail.type,
+              upsert: false,
+            });
+          if (thumbnailError) throw thumbnailError;
+        }
 
         const { data } = supabase.storage.from(PROJECT_MEDIA_BUCKET).getPublicUrl(path);
         return data.publicUrl;
@@ -727,7 +743,7 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
 
     const path = getProjectMediaPath(url);
     if (path) {
-      await supabase.storage.from(PROJECT_MEDIA_BUCKET).remove([path]);
+      await supabase.storage.from(PROJECT_MEDIA_BUCKET).remove([path, thumbnailPathFromStoragePath(path)]);
     }
 
     setGallery((items) => items.filter((item) => item.id !== imageId));
@@ -922,7 +938,7 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
               <div key={image.id} className="group relative overflow-hidden rounded-xl border border-gold/20 bg-black/30">
                 {/* Render the signed URL; every action below still uses
                     image.url, the canonical stored value. */}
-                <img src={mediaSrc(image.src, image.url)} alt="" className="aspect-video w-full object-cover" />
+                <img src={mediaSrc(image.thumb_src, image.src ?? image.url)} alt="" className="aspect-video w-full object-cover" loading="lazy" decoding="async" />
                 <div className="flex items-center justify-between gap-2 p-2">
                   <Button
                     type="button"
@@ -1088,7 +1104,7 @@ export function PublicProjectsManager() {
           return (
             <div key={p.id} className="glass gold-hairline flex items-center gap-3 rounded-2xl p-3">
               <div className="h-14 w-20 overflow-hidden rounded-lg bg-muted">
-                {mediaSrc(p.main_image_src, p.main_image_url) && <img src={mediaSrc(p.main_image_src, p.main_image_url)} alt="" className="h-full w-full object-cover" />}
+                {mediaSrc(p.main_image_thumb_src, p.main_image_src ?? p.main_image_url) && <img src={mediaSrc(p.main_image_thumb_src, p.main_image_src ?? p.main_image_url)} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="truncate font-display text-lg text-cream">{p.name}</div>
@@ -1181,11 +1197,10 @@ export function SubscribersManager() {
                 </div>
               </div>
               <span className={`text-xs font-medium ${b.cls}`}>{b.label}</span>
-              {/* An org a platform admin belongs to cannot be suspended — that
-                  would lock a fellow admin out of the platform. The RPC enforces
-                  it; this only avoids offering a click that must fail.
-                  Unsuspending stays available so a mistake is recoverable. */}
-              {t.has_platform_admin && !t.suspended ? (
+              {/* Regular platform admins cannot suspend an org containing a
+                  platform admin. The designated owner override is enforced by
+                  the RPC and is reflected here only for clearer UI feedback. */}
+              {t.has_platform_admin && !t.suspended && !t.can_suspend_platform_admins ? (
                 <span className="flex items-center gap-1 text-xs text-muted-foreground" title="Platform administrators cannot be suspended">
                   <Shield className="h-3.5 w-3.5" /> Platform admin
                 </span>
@@ -1214,6 +1229,7 @@ export function UsersManager() {
   const [rows, setRows] = useState<PlatformUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const { user: currentUser } = useAuth();
 
   const load = async () => {
     setLoading(true);
@@ -1226,6 +1242,19 @@ export function UsersManager() {
     }
   };
   useEffect(() => { void load(); }, []);
+
+  const toggleBlock = async (u: PlatformUser) => {
+    setBusyId(u.user_id);
+    try {
+      await setUserBlocked({ data: { userId: u.user_id, blocked: !u.blocked } });
+      toast.success(u.blocked ? "User unblocked" : "User blocked");
+      await load();
+    } catch (err) {
+      toast.error(errMsg(err, "Could not change user access"));
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   const remove = async (u: PlatformUser) => {
     if (!confirm(`Permanently delete ${u.email ?? "this user"} and the organizations they own? This cannot be undone.`)) return;
@@ -1259,6 +1288,11 @@ export function UsersManager() {
                 {u.orgs ? `${u.orgs} (${u.org_roles ?? "member"})` : "no organization"}
               </div>
             </div>
+            {u.blocked && (
+              <span className="rounded-full border border-destructive/50 px-2.5 py-1 text-xs text-destructive">
+                Blocked
+              </span>
+            )}
             {u.is_platform_admin ? (
               <span className="glass gold-hairline rounded-full px-2.5 py-1 text-xs text-gold">Platform admin</span>
             ) : (
@@ -1272,6 +1306,32 @@ export function UsersManager() {
                 <Trash2 className="mr-1 h-3.5 w-3.5" /> Remove
               </Button>
             )}
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={
+                busyId === u.user_id ||
+                currentUser?.id === u.user_id ||
+                // `blocked` is absent until the account-block SQL is applied to
+                // the database (supabase/APPLY_THIS_4.sql). Disable rather than
+                // let the click fail with a 404 on the missing RPC.
+                u.blocked === undefined ||
+                (u.is_platform_admin && !u.can_block_platform_admins)
+              }
+              onClick={() => void toggleBlock(u)}
+              title={
+                u.blocked === undefined
+                  ? "Account blocking is not installed on this database yet"
+                  : currentUser?.id === u.user_id
+                    ? "You cannot block yourself"
+                    : u.is_platform_admin && !u.can_block_platform_admins
+                      ? "Only ashraf@admin.com can block a platform administrator"
+                      : undefined
+              }
+              className="glass gold-hairline text-destructive"
+            >
+              <Ban className="mr-1 h-3.5 w-3.5" /> {u.blocked ? "Unblock" : "Block"}
+            </Button>
           </div>
         ))}
       </div>

@@ -3,7 +3,7 @@ import { ArrowLeft, Loader2 } from "lucide-react";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { Button } from "@/components/ui/button";
 import { useEffect } from "react";
-import { useProjects } from "@/hooks/use-projects";
+import { useProjectById } from "@/hooks/use-projects";
 import { useTenantStore } from "@/store/tenant";
 import { ProjectForm } from "./admin";
 
@@ -19,11 +19,9 @@ export const Route = createFileRoute("/_authenticated/admin_/projects/$id")({
 function EditProjectPage() {
   const { id } = Route.useParams();
   const navigate = useNavigate();
-  const { data: projects = [], isLoading } = useProjects();
+  const { data: project, isLoading } = useProjectById(id);
   const { currentTenantId, loaded: tenantLoaded, load: loadTenants } = useTenantStore();
   useEffect(() => { void loadTenants(); }, [loadTenants]);
-  const project = projects.find((p) => p.id === id);
-
   return (
     <div className="min-h-screen">
       <AppNavbar />

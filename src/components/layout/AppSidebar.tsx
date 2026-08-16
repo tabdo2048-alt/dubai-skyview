@@ -217,8 +217,8 @@ export function AppSidebar() {
                 >
                   <div className="flex gap-3 p-2.5">
                     <div className="h-20 w-24 shrink-0 overflow-hidden rounded-xl">
-                      {mediaSrc(p.main_image_src, p.main_image_url) ? (
-                        <img src={mediaSrc(p.main_image_src, p.main_image_url)} alt={p.name} className="h-full w-full object-cover transition-transform group-hover:scale-105" loading="lazy" decoding="async" />
+                      {mediaSrc(p.main_image_thumb_src, p.main_image_src ?? p.main_image_url) ? (
+                        <img src={mediaSrc(p.main_image_thumb_src, p.main_image_src ?? p.main_image_url)} alt={p.name} className="h-full w-full object-cover transition-transform group-hover:scale-105" loading="lazy" decoding="async" />
                       ) : (
                         <div className="h-full w-full bg-muted" />
                       )}
