@@ -64,12 +64,18 @@ export const DETAIL_ZOOM_THRESHOLDS = {
   MIN_DETAIL_LABELS: 13, // Show detailed info at this zoom
 } as const;
 
+// The single source of truth for `projects.category`. The column is plain TEXT
+// with no CHECK constraint, so adding a value here needs no migration — but the
+// sidebar filter chips and the admin project form both read this list, so a
+// value added anywhere else would filter to nothing.
 export const CATEGORIES = [
   { value: "apartment", label: "Apartment" },
   { value: "villa", label: "Villa" },
   { value: "townhouse", label: "Townhouse" },
   { value: "penthouse", label: "Penthouse" },
   { value: "studio", label: "Studio" },
+  { value: "offices", label: "Offices" },
+  { value: "retail", label: "Retail" },
 ] as const;
 
 export const STATUSES = [

@@ -23,7 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { formatAed } from "@/lib/dubai";
+import { formatAed, CATEGORIES } from "@/lib/dubai";
 import { mediaSrc } from "@/lib/media";
 import { safeHttpUrl } from "@/lib/utils";
 import { parseLatLngFromGoogleMapsUrl } from "@/lib/googleMapsLink";
@@ -888,7 +888,10 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
         <Field label="Bathrooms"><Input type="number" value={f.bathrooms} onChange={(e) => setF({ ...f, bathrooms: Number(e.target.value) })} /></Field>
         <Field label="Category">
           <select value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} className="glass gold-hairline w-full rounded-md p-2 text-cream">
-            {["apartment","villa","townhouse","penthouse","studio"].map((c) => <option key={c} value={c}>{c}</option>)}
+            {/* Read from CATEGORIES so this form and the sidebar filter chips
+                can never drift apart — the previous hardcoded list had already
+                fallen behind. */}
+            {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
           </select>
         </Field>
         <Field label="Status">
