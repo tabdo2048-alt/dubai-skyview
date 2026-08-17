@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchMyTenants, canAccessTenant, type Tenant } from "@/integrations/supabase/saas";
 import { createCheckoutSession } from "@/lib/billing.functions";
+import { formatSubscriptionPeriod } from "@/lib/subscription-period";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -42,6 +43,14 @@ function BillingPage() {
     })();
   }, [navigate]);
 
+  // Named `lastPeriod`, not `period`, because `subscribe` below already takes a
+  // `period` argument meaning the billing interval — a different concept.
+  const lastPeriod = tenant
+    ? formatSubscriptionPeriod(tenant.current_period_end, tenant.subscription_status, {
+        suspended: tenant.suspended,
+      })
+    : null;
+
   const subscribe = async (period: "month" | "year") => {
     if (!tenant) {
       toast.error("No organization found for this account.");
@@ -70,6 +79,17 @@ function BillingPage() {
           <p className="mt-2 text-sm text-muted-foreground">
             {tenant ? tenant.name : "Your organization"} — 100 AED/month or 1,000 AED/year, billed securely by Stripe.
           </p>
+
+          {/* Previous period, when there was one. An active or past_due org is
+              redirected to /admin above, so this only ever renders for an org
+              that is incomplete, canceled or suspended — i.e. it reads as
+              "your last period ended on…", which is the context for resubscribing. */}
+          {lastPeriod && (
+            <p className={`mt-2 text-sm ${lastPeriod.cls}`} title={lastPeriod.title}>
+              {lastPeriod.label}
+              {lastPeriod.detail ? ` · ${lastPeriod.detail}` : ""}
+            </p>
+          )}
 
           {!ready ? (
             <div className="mt-6 text-sm text-muted-foreground">Loading…</div>

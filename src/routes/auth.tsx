@@ -37,7 +37,7 @@ function AuthPage() {
     try {
       const { error: rlErr } = await sbAny.rpc("check_login_rate");
       if (rlErr) {
-        toast.error("Too many failed attempts from your network. Try again in about an hour.");
+        toast.error("Too many failed attempts from your network. Try again in 5 minutes.");
         return;
       }
       const { error } = await supabase.auth.signInWithPassword({ email, password });

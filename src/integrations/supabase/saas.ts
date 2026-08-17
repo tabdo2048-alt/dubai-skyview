@@ -98,6 +98,12 @@ export type PlatformUser = {
   org_roles: string | null;
   blocked: boolean;
   can_block_platform_admins?: boolean;
+  // Subscription of the org granting this user access the longest (see
+  // supabase/migrations/20260817001000_platform_users_subscription_period.sql).
+  // Optional: absent until that migration is applied, so the UI must tolerate
+  // undefined rather than render a blank period.
+  subscription_status?: SubscriptionStatus | null;
+  current_period_end?: string | null;
 };
 
 // Platform-admin: every user account with their org membership.

@@ -7,6 +7,7 @@ import { useFiltersStore } from "@/store/filters";
 import { useTenantStore } from "@/store/tenant";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { formatSubscriptionPeriod } from "@/lib/subscription-period";
 
 const NAV = [
   { to: "/", label: "Map" },
@@ -34,8 +35,15 @@ export function AppNavbar() {
     (typeof userMetadata?.name === "string" && userMetadata.name.trim()) ||
     user?.email?.split("@")[0] ||
     "User";
-  const organizationName =
-    tenants.find((tenant) => tenant.id === currentTenantId)?.name || displayName;
+  const currentTenant = tenants.find((tenant) => tenant.id === currentTenantId);
+  const organizationName = currentTenant?.name || displayName;
+  // The current org's remaining access, shown under the name so a user can see
+  // their own renewal date without visiting the billing page.
+  const period = currentTenant
+    ? formatSubscriptionPeriod(currentTenant.current_period_end, currentTenant.subscription_status, {
+        suspended: currentTenant.suspended,
+      })
+    : null;
 
   return (
     // `glass-strong` applies a border on all four sides. On a full-width sticky
@@ -121,7 +129,7 @@ export function AppNavbar() {
               )}
               <div className="glass gold-hairline flex min-w-0 shrink-0 items-center gap-2 rounded-full py-1 pl-2.5 pr-1">
                 <UserRound className="h-4 w-4 shrink-0 text-gold" />
-                <div className="hidden min-w-0 max-w-[140px] leading-tight sm:block">
+                <div className="hidden min-w-0 max-w-[150px] leading-tight sm:block">
                   <div className="truncate text-xs font-medium text-cream" title={organizationName}>
                     {organizationName}
                   </div>
@@ -131,6 +139,17 @@ export function AppNavbar() {
                   >
                     {user.email}
                   </div>
+                  {period && (
+                    // Only the date here — the chip is 150px wide and "27 days
+                    // left" would push the line to an ellipsis. It goes in the
+                    // tooltip instead.
+                    <div
+                      className={`truncate text-[10px] ${period.cls}`}
+                      title={period.detail ? `${period.title} — ${period.detail}` : period.title}
+                    >
+                      {period.label}
+                    </div>
+                  )}
                 </div>
                 <div className="hidden h-6 w-px bg-gold/20 sm:block" />
                 <Button

@@ -29,6 +29,7 @@ import { safeHttpUrl } from "@/lib/utils";
 import { parseLatLngFromGoogleMapsUrl } from "@/lib/googleMapsLink";
 import { setUserBlocked } from "@/lib/user-security.functions";
 import { optimizeProjectImage, thumbnailPathFromStoragePath } from "@/lib/image-optimization";
+import { formatSubscriptionPeriod } from "@/lib/subscription-period";
 
 const PROJECT_MEDIA_BUCKET = "project-media";
 const MAX_PROJECT_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -1190,10 +1191,24 @@ export function SubscribersManager() {
         )}
         {rows.map((t) => {
           const b = badge(t);
+          // No `suspended` here: this row already renders a Suspended status
+          // badge, so the pill stays focused on the billing period itself.
+          const period = formatSubscriptionPeriod(t.current_period_end, t.subscription_status);
           return (
             <div key={t.id} className="glass gold-hairline flex items-center gap-3 rounded-2xl p-3">
               <div className="min-w-0 flex-1">
-                <div className="truncate font-display text-lg text-cream">{t.name}</div>
+                <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+                  <span className="truncate font-display text-lg text-cream">{t.name}</span>
+                  {period && (
+                    <span
+                      title={period.title}
+                      className={`glass gold-hairline shrink-0 rounded-full px-2 py-0.5 text-[11px] leading-tight ${period.cls}`}
+                    >
+                      {period.label}
+                      {period.detail ? ` · ${period.detail}` : ""}
+                    </span>
+                  )}
+                </div>
                 <div className="truncate text-xs text-muted-foreground">
                   {t.owner_email ?? "—"} · {t.project_count} project{t.project_count === 1 ? "" : "s"}
                   {t.plan ? ` · ${t.plan}` : ""}
@@ -1283,10 +1298,23 @@ export function UsersManager() {
         {!loading && rows.length === 0 && (
           <div className="glass gold-hairline rounded-2xl p-4 text-center text-sm text-muted-foreground">No users.</div>
         )}
-        {rows.map((u) => (
+        {rows.map((u) => {
+          const period = formatSubscriptionPeriod(u.current_period_end, u.subscription_status);
+          return (
           <div key={u.user_id} className="glass gold-hairline flex items-center gap-3 rounded-2xl p-3">
             <div className="min-w-0 flex-1">
-              <div className="truncate font-display text-lg text-cream">{u.email ?? "—"}</div>
+              <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+                <span className="truncate font-display text-lg text-cream">{u.email ?? "—"}</span>
+                {period && (
+                  <span
+                    title={period.title}
+                    className={`glass gold-hairline shrink-0 rounded-full px-2 py-0.5 text-[11px] leading-tight ${period.cls}`}
+                  >
+                    {period.label}
+                    {period.detail ? ` · ${period.detail}` : ""}
+                  </span>
+                )}
+              </div>
               <div className="truncate text-xs text-muted-foreground">
                 {u.orgs ? `${u.orgs} (${u.org_roles ?? "member"})` : "no organization"}
               </div>
@@ -1336,7 +1364,8 @@ export function UsersManager() {
               <Ban className="mr-1 h-3.5 w-3.5" /> {u.blocked ? "Unblock" : "Block"}
             </Button>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
