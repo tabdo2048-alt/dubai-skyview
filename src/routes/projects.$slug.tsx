@@ -12,16 +12,18 @@ import {
   Download,
   PlayCircle,
   Tag,
+  Ruler,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { fetchProjectBySlug } from "@/hooks/use-projects";
-import { formatAed } from "@/lib/dubai";
+import { formatAed, bedroomsLabel, positiveCount } from "@/lib/dubai";
 import { mediaSrc } from "@/lib/media";
 import { track } from "@/lib/analytics";
 import { safeHttpUrl } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import type { ProjectWithRelations } from "@/lib/types";
+import { areaLabel, displayUnitTypes, highestUnitPrice, lowestUnitPrice, pricedUnitTypes } from "@/lib/unit-types";
 
 export const Route = createFileRoute("/projects/$slug")({
   // Fetch on the server so <head> SEO tags + structured data are built from real
@@ -37,12 +39,15 @@ export const Route = createFileRoute("/projects/$slug")({
         ],
       };
     }
-    const price = formatAed(p.starting_price_aed);
+    const price = formatAed(lowestUnitPrice(p.unit_types, p.starting_price_aed));
     const area = p.community?.name ?? p.address ?? "Dubai";
     const title = `${p.name} — ${area} | Dubai Residences`;
+    // The bedrooms sentence is dropped for a project that records none (offices,
+    // retail), rather than shipping "— bedrooms" to search results.
+    const beds = bedroomsLabel(p);
     const description =
       p.description?.slice(0, 155) ??
-      `${p.name} by ${p.developer?.name ?? "a leading developer"} in ${area}. Starting from ${price}. ${bedroomsLabel(p)} bedrooms.`;
+      `${p.name} by ${p.developer?.name ?? "a leading developer"} in ${area}. Starting from ${price}.${beds ? ` ${beds} bedrooms.` : ""}`;
     const meta: Array<Record<string, string>> = [
       { title },
       { name: "description", content: description },
@@ -77,7 +82,7 @@ export const Route = createFileRoute("/projects/$slug")({
 function ProjectDetail() {
   const { project: p } = Route.useLoaderData();
   useEffect(() => {
-    if (p) track("view_project", { slug: p.slug, name: p.name, price: p.starting_price_aed });
+    if (p) track("view_project", { slug: p.slug, name: p.name, price: lowestUnitPrice(p.unit_types, p.starting_price_aed) });
   }, [p]);
   // Hero + gallery images for the click-to-swap viewer (hero first, deduped).
   const images = useMemo(() => {
@@ -93,6 +98,11 @@ function ProjectDetail() {
     return urls;
   }, [p]);
   const [activeImage, setActiveImage] = useState<string | null>(images[0]?.full ?? null);
+  const unitTypes = useMemo(() => displayUnitTypes(p?.unit_types, p?.starting_price_aed), [p]);
+  const priceRows = pricedUnitTypes(unitTypes);
+  const areaRows = unitTypes.filter((item) => areaLabel(item));
+  const beds = p ? bedroomsLabel(p) : null;
+  const baths = positiveCount(p?.bathrooms);
   // Reset to the hero when navigating to another project.
   useEffect(() => setActiveImage(images[0]?.full ?? null), [p?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!p) throw notFound();
@@ -170,11 +180,41 @@ function ProjectDetail() {
             </div>
 
             <div className="glass-strong gold-hairline rounded-3xl p-5">
-              <div className="text-xs uppercase tracking-widest text-muted-foreground">Starting from</div>
-              <div className="text-gold-gradient font-display text-4xl">{formatAed(p.starting_price_aed)}</div>
-              <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                <Info icon={<Bed className="h-4 w-4" />} label="Bedrooms" value={bedroomsLabel(p)} />
-                <Info icon={<Bath className="h-4 w-4" />} label="Bathrooms" value={String(p.bathrooms ?? "—")} />
+              {priceRows.length > 0 && (
+                <div>
+                  <div className="text-xs uppercase tracking-widest text-muted-foreground">Prices by unit type</div>
+                  <div className="mt-3 space-y-2">
+                    {priceRows.map((item) => (
+                      <div key={item.id} className="flex items-center justify-between gap-4 rounded-xl bg-black/15 px-3 py-2">
+                        <span className="font-medium text-cream">{item.label}</span>
+                        <span className="text-gold-gradient">{formatAed(item.price_aed)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Always expanded — the size is a headline number buyers compare
+                  on, so it does not sit behind a disclosure button. */}
+              {areaRows.length > 0 && (
+                <div className={priceRows.length > 0 ? "mt-4" : ""}>
+                  <div className="flex items-center gap-1 text-xs uppercase tracking-widest text-muted-foreground">
+                    <Ruler className="h-3.5 w-3.5" /> Area
+                  </div>
+                  <div className="mt-3 space-y-2 text-sm">
+                    {areaRows.map((item) => (
+                      <div key={item.id} className="flex items-center justify-between gap-4 rounded-xl bg-black/15 px-3 py-2 text-cream">
+                        <span>{item.label}</span>
+                        <span className="text-muted-foreground">{areaLabel(item)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* A stat with no value is dropped (see bedroomsLabel), so the grid
+                  auto-fits rather than reserving two fixed columns. */}
+              <div className="mt-4 grid grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] gap-3 text-sm">
+                {beds && <Info icon={<Bed className="h-4 w-4" />} label="Bedrooms" value={beds} />}
+                {baths != null && <Info icon={<Bath className="h-4 w-4" />} label="Bathrooms" value={String(baths)} />}
                 <Info icon={<Calendar className="h-4 w-4" />} label="Handover" value={p.completion_date ?? "TBA"} />
                 <Info icon={<Wallet className="h-4 w-4" />} label="Payment plan" value={p.payment_plan ?? "Flexible"} />
               </div>
@@ -253,24 +293,30 @@ function ProjectDetail() {
   );
 }
 
-function bedroomsLabel(p: ProjectWithRelations) {
-  const a = p.bedrooms_min;
-  const b = p.bedrooms_max;
-  if (a == null && b == null) return "—";
-  if (b == null || a === b) return String(a ?? b);
-  if (a == null) return String(b);
-  return `${a}–${b}`;
-}
-
 // schema.org structured data — helps search engines render a rich listing.
 function buildListingJsonLd(p: ProjectWithRelations) {
+  const displayRows = displayUnitTypes(p.unit_types, p.starting_price_aed);
+  const pricedRows = pricedUnitTypes(displayRows);
+  const lowPrice = lowestUnitPrice(p.unit_types, p.starting_price_aed);
+  const highPrice = highestUnitPrice(p.unit_types, p.starting_price_aed);
+  const offers = pricedRows.length
+    ? {
+        "@type": "AggregateOffer",
+        lowPrice,
+        highPrice,
+        offerCount: pricedRows.length,
+        priceCurrency: "AED",
+        availability: "https://schema.org/InStock",
+      }
+    : undefined;
+
   return {
     "@context": "https://schema.org",
     "@type": "Residence",
     name: p.name,
     description: p.description ?? undefined,
     image: mediaSrc(p.main_image_src, p.main_image_url) || undefined,
-    numberOfBedrooms: p.bedrooms_min ?? undefined,
+    numberOfBedrooms: positiveCount(p.bedrooms_min) ?? undefined,
     address: {
       "@type": "PostalAddress",
       addressLocality: p.community?.name ?? "Dubai",
@@ -278,16 +324,7 @@ function buildListingJsonLd(p: ProjectWithRelations) {
       addressCountry: "AE",
     },
     geo: { "@type": "GeoCoordinates", latitude: p.lat, longitude: p.lng },
-    ...(p.starting_price_aed
-      ? {
-          offers: {
-            "@type": "Offer",
-            price: p.starting_price_aed,
-            priceCurrency: "AED",
-            availability: "https://schema.org/InStock",
-          },
-        }
-      : {}),
+    ...(offers ? { offers } : {}),
   };
 }
 

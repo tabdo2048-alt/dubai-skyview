@@ -101,3 +101,22 @@ export function formatAed(value: number | null | undefined): string {
   if (value >= 1_000) return `AED ${(value / 1_000).toFixed(0)}K`;
   return `AED ${value.toLocaleString()}`;
 }
+
+// A count of 0 means "this project has none of these" — offices and retail have
+// no bedrooms or bathrooms — and an unset column means "nobody filled it in".
+// Neither is worth a row on a listing, so both collapse to null and every caller
+// omits the field entirely instead of printing "0" or a "—" placeholder that
+// reads like real data.
+export function positiveCount(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
+}
+
+// "3", "1–4", or null when the project records no bedrooms at all.
+export function bedroomsLabel(p: { bedrooms_min?: number | null; bedrooms_max?: number | null }): string | null {
+  const min = positiveCount(p.bedrooms_min);
+  const max = positiveCount(p.bedrooms_max);
+  if (min == null && max == null) return null;
+  if (min == null) return String(max);
+  if (max == null || max === min) return String(min);
+  return `${min}–${max}`;
+}

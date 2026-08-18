@@ -56,10 +56,40 @@ export const ACTIVE_STATUSES: SubscriptionStatus[] = ["active", "past_due"];
 export const isActiveStatus = (s: string | null | undefined): boolean =>
   !!s && (ACTIVE_STATUSES as string[]).includes(s);
 
-// A tenant grants access only if its subscription is active AND it is not
-// suspended by a platform admin.
-export const canAccessTenant = (t: { subscription_status: string; suspended?: boolean | null }): boolean =>
-  isActiveStatus(t.subscription_status) && !t.suspended;
+// True once the paid period is over. A NULL period end means "does not expire"
+// (the unlimited default org), never "expired".
+export const isPeriodExpired = (periodEnd: string | null | undefined): boolean => {
+  if (!periodEnd) return false;
+  const end = new Date(periodEnd).getTime();
+  return Number.isFinite(end) && end < Date.now();
+};
+
+// A tenant grants access only if its subscription is active, its paid period has
+// not run out, and it is not suspended by a platform admin.
+//
+// The date check matters because subscription_status is written solely by the
+// Stripe webhook: a missed or misconfigured event would otherwise leave a tenant
+// 'active' indefinitely past current_period_end. expire_my_subscriptions() (see
+// supabase/migrations/20260818001000_expire_subscription_on_period_end.sql) then
+// settles the database to match.
+export const canAccessTenant = (t: {
+  subscription_status: string;
+  suspended?: boolean | null;
+  current_period_end?: string | null;
+}): boolean => isActiveStatus(t.subscription_status) && !t.suspended && !isPeriodExpired(t.current_period_end);
+
+// Cancel the caller's own orgs whose paid period has elapsed. Returns how many
+// rows were cancelled. Tolerates the function being absent (unapplied migration)
+// so a stale database cannot break the sign-in path — the client-side date check
+// in canAccessTenant already blocks access either way.
+export async function expireMySubscriptions(): Promise<number> {
+  const { data, error } = await sbAny.rpc("expire_my_subscriptions");
+  if (error) {
+    if (isMissingFunction(error)) return 0;
+    throw error;
+  }
+  return Number(data ?? 0);
+}
 
 // Untyped client view — use only for tables not yet in the generated Database
 // type (tenants, tenant_members) and for tenant_id filters on existing tables.

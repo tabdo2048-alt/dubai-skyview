@@ -4,12 +4,14 @@ export type ProjectRow = Database["public"]["Tables"]["projects"]["Row"];
 export type DeveloperRow = Database["public"]["Tables"]["developers"]["Row"];
 export type CommunityRow = Database["public"]["Tables"]["communities"]["Row"];
 export type ProjectImageRow = Database["public"]["Tables"]["project_images"]["Row"];
+export type ProjectUnitTypeRow = Database["public"]["Tables"]["project_unit_types"]["Row"];
 export type ProjectAmenityRow = Database["public"]["Tables"]["project_amenities"]["Row"];
 
 export type ProjectWithRelations = ProjectRow & {
   developer: Pick<DeveloperRow, "id" | "name" | "slug"> | null;
   community: Pick<CommunityRow, "id" | "name" | "slug"> | null;
   images: Array<ProjectImageRow & { src?: string; thumb_src?: string }>;
+  unit_types: ProjectUnitTypeRow[];
   amenities: ProjectAmenityRow[];
   // Renderable signed URL for the private media bucket, added on read by
   // withSignedProjectMedia. `main_image_url` stays the canonical stored value —

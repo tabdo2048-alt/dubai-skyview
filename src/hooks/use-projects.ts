@@ -2,18 +2,26 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { withSignedProjectMedia } from "@/lib/media";
 import type { ProjectWithRelations, ProjectFilters, ProjectRow } from "@/lib/types";
+import { lowestUnitPrice } from "@/lib/unit-types";
 
 export function projectsQueryKey() {
   return ["projects", "list"] as const;
 }
 
+// `unit_types` is selected with `*` rather than a column list on purpose. Naming
+// area_sqm_min/max here would make the WHOLE project list 400 on a database where
+// supabase/migrations/20260818000000_unit_area_square_meters.sql has not been
+// applied yet — one missing column would cost every project, price and marker on
+// the map. With `*`, an un-migrated database simply returns the old sqft columns,
+// nothing reads them, and the area line hides itself.
 const PROJECT_LIST_SELECT = `
   id,slug,name,developer_id,community_id,lat,lng,address,starting_price_aed,
   bedrooms_min,bedrooms_max,bathrooms,completion_date,payment_plan,status,category,
   tags,description,main_image_url,video_url,tour_360_url,brochure_url,featured,
   created_at,updated_at,plot_geometry,plot_color,is_public,tenant_id,
   developer:developers(id,name,slug),
-  community:communities(id,name,slug)
+  community:communities(id,name,slug),
+  unit_types:project_unit_types(*)
 `;
 
 const PROJECT_DETAIL_SELECT = `
@@ -21,6 +29,7 @@ const PROJECT_DETAIL_SELECT = `
   developer:developers(id,name,slug),
   community:communities(id,name,slug),
   images:project_images(*),
+  unit_types:project_unit_types(*),
   amenities:project_amenities(*)
 `;
 
@@ -142,8 +151,9 @@ export function filterProjects(items: ProjectWithRelations[], f: ProjectFilters)
     if (f.statuses.length && !f.statuses.includes(p.status)) return false;
     if (f.communities.length && !(p.community && f.communities.includes(p.community.slug))) return false;
     if (f.tags.length && !f.tags.some((t) => p.tags?.includes(t))) return false;
-    if (f.minPrice != null && (p.starting_price_aed ?? 0) < f.minPrice) return false;
-    if (f.maxPrice != null && (p.starting_price_aed ?? 0) > f.maxPrice) return false;
+    const projectPrice = lowestUnitPrice(p.unit_types, p.starting_price_aed) ?? 0;
+    if (f.minPrice != null && projectPrice < f.minPrice) return false;
+    if (f.maxPrice != null && projectPrice > f.maxPrice) return false;
     if (f.bedrooms != null && (p.bedrooms_min ?? 0) < f.bedrooms && (p.bedrooms_max ?? 0) < f.bedrooms) return false;
     return true;
   });
@@ -173,6 +183,7 @@ function normalizeProject(item: unknown): ProjectWithRelations | null {
     developer?: ProjectWithRelations["developer"];
     community?: ProjectWithRelations["community"];
     images?: ProjectWithRelations["images"];
+    unit_types?: ProjectWithRelations["unit_types"];
     amenities?: ProjectWithRelations["amenities"];
   };
   const coords = extractLocation(raw.location);
@@ -193,6 +204,7 @@ function normalizeProject(item: unknown): ProjectWithRelations | null {
     developer: raw.developer ?? null,
     community: raw.community ?? null,
     images: raw.images ?? [],
+    unit_types: raw.unit_types ?? [],
     amenities: raw.amenities ?? [],
   } as ProjectWithRelations;
 }

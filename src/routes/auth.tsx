@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { sbAny, isCurrentUserBlocked } from "@/integrations/supabase/saas";
+import { sbAny, isCurrentUserBlocked, fetchMyTenants, canAccessTenant } from "@/integrations/supabase/saas";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 
 const BLOCKED_MESSAGE = "أنت محظور من دخول الموقع.";
+const SUBSCRIPTION_ENDED_MESSAGE = "Your subscription has ended. Sign in to renew it.";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({ meta: [{ title: "Sign in — Dubai Residences" }] }),
@@ -23,11 +24,19 @@ function AuthPage() {
   // Set by the _authenticated guard when it signs a blocked session out, so the
   // reason survives the redirect back to this page.
   const [blockedNotice, setBlockedNotice] = useState(false);
+  // Same idea for a subscription that ran out: the guard signs the session out,
+  // this explains why.
+  const [endedNotice, setEndedNotice] = useState(false);
 
   useEffect(() => {
-    if (typeof window !== "undefined" && sessionStorage.getItem("dubai:blocked")) {
+    if (typeof window === "undefined") return;
+    if (sessionStorage.getItem("dubai:blocked")) {
       sessionStorage.removeItem("dubai:blocked");
       setBlockedNotice(true);
+    }
+    if (sessionStorage.getItem("dubai:subscription-ended")) {
+      sessionStorage.removeItem("dubai:subscription-ended");
+      setEndedNotice(true);
     }
   }, []);
 
@@ -58,6 +67,20 @@ function AuthPage() {
       }
 
       toast.success("Welcome back.");
+      // Land a lapsed account on the pay page instead of /admin. The guard on
+      // /admin signs an account with no live subscription straight back out, so
+      // sending them there would bounce them to /auth and they could never reach
+      // checkout to renew. Any failure here falls through to /admin, where the
+      // guard decides — never a silent unlock.
+      try {
+        const mine = await fetchMyTenants();
+        if (!mine.some((m) => canAccessTenant(m.tenant))) {
+          navigate({ to: "/billing" });
+          return;
+        }
+      } catch {
+        /* fall through to /admin and let the guard rule */
+      }
       navigate({ to: "/admin" });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Something went wrong");
@@ -76,6 +99,11 @@ function AuthPage() {
           {blockedNotice && (
             <div role="alert" className="mt-4 rounded-xl border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
               {BLOCKED_MESSAGE}
+            </div>
+          )}
+          {endedNotice && (
+            <div role="alert" className="mt-4 rounded-xl border border-gold/50 bg-gold/10 p-3 text-sm text-cream">
+              {SUBSCRIPTION_ENDED_MESSAGE}
             </div>
           )}
           <form onSubmit={submit} className="mt-6 space-y-4">

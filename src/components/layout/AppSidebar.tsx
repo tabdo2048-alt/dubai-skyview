@@ -4,7 +4,8 @@ import { MapPin, Bed, ChevronLeft, ChevronRight, Building2, X, Eye, EyeOff, Hexa
 import { Link } from "@tanstack/react-router";
 import { useProjects, filterProjects, useCommunities } from "@/hooks/use-projects";
 import { useFiltersStore } from "@/store/filters";
-import { formatAed, CATEGORIES, STATUSES } from "@/lib/dubai";
+import { formatAed, CATEGORIES, STATUSES, bedroomsLabel } from "@/lib/dubai";
+import { lowestUnitPrice } from "@/lib/unit-types";
 import { mediaSrc } from "@/lib/media";
 import { track } from "@/lib/analytics";
 import { Button } from "@/components/ui/button";
@@ -232,12 +233,15 @@ export function AppSidebar() {
                         <MapPin className="h-3 w-3" /> <span className="truncate">{p.community?.name ?? "Dubai"}</span>
                       </div>
                       <div className="mt-1 flex items-center justify-between gap-2">
-                        <span className="text-gold-gradient text-sm font-medium">{formatAed(p.starting_price_aed)}</span>
-                        <span className="text-[10px] text-muted-foreground">
-                          <Bed className="mr-0.5 inline h-3 w-3" />
-                          {p.bedrooms_min ?? "—"}
-                          {p.bedrooms_max && p.bedrooms_max !== p.bedrooms_min ? `–${p.bedrooms_max}` : ""}
-                        </span>
+                          <span className="text-gold-gradient text-sm font-medium">{formatAed(lowestUnitPrice(p.unit_types, p.starting_price_aed))}</span>
+                        {/* Omitted entirely for a project with no bedrooms (0 or
+                            unset) — see bedroomsLabel. */}
+                        {bedroomsLabel(p) && (
+                          <span className="text-[10px] text-muted-foreground">
+                            <Bed className="mr-0.5 inline h-3 w-3" />
+                            {bedroomsLabel(p)}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>

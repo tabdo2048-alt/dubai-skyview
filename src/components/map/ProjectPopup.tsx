@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, MapPin, Bed, Calendar, Wallet, Building2, ArrowRight, MessageCircle, CalendarCheck } from "lucide-react";
+import { X, MapPin, Bed, Calendar, Wallet, Building2, ArrowRight, MessageCircle, CalendarCheck, Ruler } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import type { ProjectWithRelations } from "@/lib/types";
-import { formatAed } from "@/lib/dubai";
+import { formatAed, bedroomsLabel } from "@/lib/dubai";
 import { mediaSrc } from "@/lib/media";
+import { areaLabel, displayUnitTypes, pricedUnitTypes } from "@/lib/unit-types";
 import { Button } from "@/components/ui/button";
 
 export function ProjectPopup({ project, onClose }: { project: ProjectWithRelations | null; onClose: () => void }) {
@@ -26,6 +27,10 @@ export function ProjectPopup({ project, onClose }: { project: ProjectWithRelatio
     return urls;
   }, [project]);
   const [activeImage, setActiveImage] = useState<string | null>(images[0]?.full ?? null);
+  const unitTypes = useMemo(() => displayUnitTypes(project?.unit_types, project?.starting_price_aed), [project]);
+  const priceRows = pricedUnitTypes(unitTypes);
+  const areaRows = unitTypes.filter((item) => areaLabel(item));
+  const bedrooms = project ? bedroomsLabel(project) : null;
   // Reset the hero when a different project is selected.
   useEffect(() => setActiveImage(images[0]?.full ?? null), [project?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   // Close on Escape.
@@ -94,10 +99,6 @@ export function ProjectPopup({ project, onClose }: { project: ProjectWithRelatio
                   </span>
                 )}
                 {/* Price anchored on the hero — clears the header for the name. */}
-                <div className="glass-strong gold-hairline absolute bottom-2.5 right-2.5 rounded-xl px-2.5 py-1 text-right">
-                  <div className="text-[9px] uppercase tracking-widest text-muted-foreground">Starting</div>
-                  <div className="text-gold-gradient font-display text-base leading-none">{formatAed(project.starting_price_aed)}</div>
-                </div>
               </div>
 
               <div className="space-y-3 p-4">
@@ -114,6 +115,21 @@ export function ProjectPopup({ project, onClose }: { project: ProjectWithRelatio
                 </div>
 
                 {/* Thumbnail strip — click to swap the hero (mirrors the detail page). */}
+                {priceRows.length > 0 && (
+                  <div className="glass gold-hairline rounded-2xl p-3">
+                    <div className="mb-2 text-[10px] uppercase tracking-widest text-muted-foreground">Prices by unit type</div>
+                    <div className="space-y-1.5 text-sm">
+                      {priceRows.slice(0, 4).map((item) => (
+                        <div key={item.id} className="flex items-center justify-between gap-3">
+                          <span className="font-medium text-cream">{item.label}</span>
+                          <span className="text-right text-gold-gradient">{formatAed(item.price_aed)}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {priceRows.length > 4 && <div className="mt-2 text-[11px] text-muted-foreground">+{priceRows.length - 4} more unit types</div>}
+                  </div>
+                )}
+
                 {images.length > 1 && (
                   <div className="flex gap-2 overflow-x-auto pb-0.5">
                     {images.map(({ full, thumb }) => (
@@ -137,11 +153,32 @@ export function ProjectPopup({ project, onClose }: { project: ProjectWithRelatio
                   <p className="line-clamp-2 text-sm text-muted-foreground">{project.description}</p>
                 )}
 
-                <div className="grid grid-cols-3 gap-2 text-xs">
-                  <Stat icon={<Bed className="h-3.5 w-3.5" />} label="Bedrooms" value={bedroomsLabel(project)} />
+                {/* auto-fit rather than a fixed 3 columns: a stat with no value is
+                    dropped entirely (see bedroomsLabel), so the survivors have to
+                    fill the row instead of leaving a hole. */}
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(0,1fr))] gap-2 text-xs">
+                  {bedrooms && <Stat icon={<Bed className="h-3.5 w-3.5" />} label="Bedrooms" value={bedrooms} />}
                   <Stat icon={<Calendar className="h-3.5 w-3.5" />} label="Handover" value={project.completion_date ?? "TBA"} />
                   <Stat icon={<Wallet className="h-3.5 w-3.5" />} label="Payment" value={project.payment_plan ?? "Flexible"} />
                 </div>
+
+                {/* Always expanded — the size is a headline number buyers compare
+                    on, so it does not sit behind a disclosure button. */}
+                {areaRows.length > 0 && (
+                  <div className="glass gold-hairline rounded-2xl p-3">
+                    <div className="mb-2 flex items-center gap-1 text-[10px] uppercase tracking-widest text-muted-foreground">
+                      <Ruler className="h-3 w-3" /> Area
+                    </div>
+                    <div className="space-y-1.5 text-xs">
+                      {areaRows.map((item) => (
+                        <div key={item.id} className="flex justify-between gap-3 text-cream">
+                          <span>{item.label}</span>
+                          <span className="text-muted-foreground">{areaLabel(item)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {project.amenities && project.amenities.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
@@ -178,14 +215,6 @@ export function ProjectPopup({ project, onClose }: { project: ProjectWithRelatio
       )}
     </AnimatePresence>
   );
-}
-
-function bedroomsLabel(p: ProjectWithRelations) {
-  const a = p.bedrooms_min, b = p.bedrooms_max;
-  if (a == null && b == null) return "—";
-  if (a === b || b == null) return String(a);
-  if (a == null) return String(b);
-  return `${a}–${b}`;
 }
 
 function Stat({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {

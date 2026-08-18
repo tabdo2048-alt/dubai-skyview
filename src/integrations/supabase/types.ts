@@ -177,6 +177,60 @@ export type Database = {
           },
         ]
       }
+      project_unit_types: {
+        Row: {
+          area_sqm_max: number | null
+          area_sqm_min: number | null
+          created_at: string
+          id: string
+          label: string
+          price_aed: number | null
+          project_id: string
+          sort_order: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          area_sqm_max?: number | null
+          area_sqm_min?: number | null
+          created_at?: string
+          id?: string
+          label: string
+          price_aed?: number | null
+          project_id: string
+          sort_order?: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          area_sqm_max?: number | null
+          area_sqm_min?: number | null
+          created_at?: string
+          id?: string
+          label?: string
+          price_aed?: number | null
+          project_id?: string
+          sort_order?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_unit_types_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_unit_types_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       projects: {
         Row: {
           address: string | null

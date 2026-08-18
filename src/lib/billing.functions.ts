@@ -77,6 +77,26 @@ async function buildCheckoutLineItem(stripe: Awaited<ReturnType<typeof stripeCli
   };
 }
 
+// Stripe subscription statuses that mean the organization really is covered.
+//
+// Everything else — 'canceled', 'incomplete', 'incomplete_expired', 'unpaid',
+// 'paused' — must NOT block a new checkout. An abandoned checkout leaves an
+// 'incomplete' subscription behind for ~23 hours and a failed final retry leaves
+// 'unpaid' indefinitely; treating either as "already subscribed" locks the
+// organization out of ever paying again, which is exactly the state that makes a
+// renewal fail with "already has a subscription".
+const LIVE_SUBSCRIPTION_STATUSES = new Set(["active", "trialing", "past_due"]);
+
+// Period end moved onto the subscription item in newer API versions; read both,
+// the same way supabase/functions/stripe-webhook does.
+function subscriptionPeriodEndMs(subscription: {
+  current_period_end?: number;
+  items?: { data?: Array<{ current_period_end?: number }> };
+}): number | null {
+  const seconds = subscription.items?.data?.[0]?.current_period_end ?? subscription.current_period_end;
+  return typeof seconds === "number" ? seconds * 1000 : null;
+}
+
 async function rejectExistingSubscription(
   stripe: Awaited<ReturnType<typeof stripeClient>>,
   customerId: string,
@@ -87,11 +107,19 @@ async function rejectExistingSubscription(
     limit: 100,
   });
 
-  const blocking = subscriptions.data.find(
-    (subscription) => !["canceled", "incomplete_expired"].includes(subscription.status),
-  );
+  const blocking = subscriptions.data.find((subscription) => {
+    if (!LIVE_SUBSCRIPTION_STATUSES.has(subscription.status)) return false;
+    // Cancelled at period end, and that end has passed: Stripe has not swept the
+    // row yet but the customer has no cover, so they must be able to buy again.
+    const endsAt = subscriptionPeriodEndMs(subscription);
+    if (subscription.cancel_at_period_end && endsAt !== null && endsAt < Date.now()) return false;
+    return true;
+  });
+
   if (blocking) {
-    throw new Error("This organization already has a subscription");
+    throw new Error(
+      "This organization already has an active subscription. Open Manage billing to change or cancel it.",
+    );
   }
 }
 

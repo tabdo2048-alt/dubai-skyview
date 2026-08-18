@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, lazy, Suspense } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus, Trash2, Star, StarOff, Edit3, Upload, ImagePlus, X, Globe, Shield, Ban } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Star, StarOff, Edit3, Upload, ImagePlus, X, Globe, Shield, Ban, ArrowUp, ArrowDown } from "lucide-react";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { AdminLocationPicker } from "@/components/map/AdminLocationPicker";
 import { ProjectPlotEditor } from "@/components/map/ProjectPlotEditor";
@@ -30,6 +30,8 @@ import { parseLatLngFromGoogleMapsUrl } from "@/lib/googleMapsLink";
 import { setUserBlocked } from "@/lib/user-security.functions";
 import { optimizeProjectImage, thumbnailPathFromStoragePath } from "@/lib/image-optimization";
 import { formatSubscriptionPeriod } from "@/lib/subscription-period";
+import type { ProjectUnitTypeRow } from "@/lib/types";
+import { lowestUnitPrice } from "@/lib/unit-types";
 
 const PROJECT_MEDIA_BUCKET = "project-media";
 const MAX_PROJECT_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -40,6 +42,20 @@ const IMAGE_EXTENSIONS: Record<string, string> = {
   "image/webp": "webp",
   "image/avif": "avif",
 };
+
+const UNIT_TYPE_QUICK_PICKS = ["Studio", "1BHK", "2BHK", "3BHK", "4BHK"];
+type UnitTypeDraft = Omit<ProjectUnitTypeRow, "id" | "project_id" | "tenant_id" | "created_at" | "updated_at"> & { id?: string };
+
+function unitTypeDraft(row: ProjectUnitTypeRow): UnitTypeDraft {
+  return {
+    id: row.id,
+    label: row.label,
+    price_aed: row.price_aed,
+    area_sqm_min: row.area_sqm_min,
+    area_sqm_max: row.area_sqm_max,
+    sort_order: row.sort_order,
+  };
+}
 
 function imageFileError(file: File): string | null {
   if (!IMAGE_EXTENSIONS[file.type]) return `${file.name}: only JPEG, PNG, WebP, and AVIF images are allowed`;
@@ -170,7 +186,7 @@ function AdminPage() {
               <div className="min-w-0 flex-1">
                 <div className="truncate font-display text-lg text-cream">{p.name}</div>
                 <div className="truncate text-xs text-muted-foreground">
-                  {p.developer?.name ?? "—"} · {p.community?.name ?? "—"} · {formatAed(p.starting_price_aed)}
+                  {p.developer?.name ?? "—"} · {p.community?.name ?? "—"} · {formatAed(lowestUnitPrice(p.unit_types, p.starting_price_aed))}
                 </div>
               </div>
               <Button size="icon" variant="ghost" onClick={() => toggleFeatured(p.id, !p.featured)} title="Toggle featured">
@@ -627,7 +643,7 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
     lat: existing?.lat ?? 25.1972,
     lng: existing?.lng ?? 55.2744,
     address: existing?.address ?? "",
-    starting_price_aed: existing?.starting_price_aed ?? 0,
+    starting_price_aed: existing?.starting_price_aed ?? null,
     bedrooms_min: existing?.bedrooms_min ?? 1,
     bedrooms_max: existing?.bedrooms_max ?? 3,
     bathrooms: existing?.bathrooms ?? 2,
@@ -646,12 +662,33 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
     plot_color: existing?.plot_color ?? "#c9a84c",
   });
   const [gallery, setGallery] = useState(existing?.images ?? []);
+  const [unitTypes, setUnitTypes] = useState<UnitTypeDraft[]>(() => (existing?.unit_types ?? []).map(unitTypeDraft));
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
+
+  // Child rows (unit types, images) must carry the tenant that owns the PROJECT,
+  // not whichever org the switcher currently has selected. Stamping the selected
+  // org instead is what makes "add a unit type after changing organization" fail
+  // with `project does not belong to the row tenant` — the
+  // validate_project_child_tenant trigger (see
+  // supabase/migrations/20260812110000_security_integrity_hardening.sql and
+  // 20260817100000_project_unit_types.sql) requires child.tenant_id to equal
+  // projects.tenant_id. A project being CREATED is stamped with the selected org
+  // below, so for a new project the two are the same value.
+  //
+  // tenant_id is read through a cast because the generated projects Row type
+  // predates the multi-tenant migration and does not list it; the column is
+  // really there, selected by PROJECT_DETAIL_SELECT's `*`.
+  const projectTenantId = (existing as unknown as { tenant_id?: string } | null)?.tenant_id || tenantId;
+  const foreignTenant = Boolean(existing) && projectTenantId !== tenantId;
 
   useEffect(() => {
     setGallery(existing?.images ?? []);
   }, [existing?.id, existing?.images]);
+
+  useEffect(() => {
+    setUnitTypes((existing?.unit_types ?? []).map(unitTypeDraft));
+  }, [existing?.id, existing?.unit_types]);
 
   const imagePreviews = useMemo(
     () =>
@@ -691,9 +728,10 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
           .replace(/[^a-z0-9]+/g, "-")
           .replace(/^-|-$/g, "")
           .slice(0, 42);
-        // Prefix with tenant_id so the storage RLS policy (which checks the
-        // leading path segment against tenant membership) authorizes the upload.
-        const path = `${tenantId}/${projectId}/${Date.now()}-${index}-${safeName || "project-image"}.${extension}`;
+        // Prefix with the OWNING tenant so the storage RLS policy (which checks
+        // the leading path segment against tenant membership) authorizes the
+        // upload, and so the object sits beside the rest of that project's media.
+        const path = `${projectTenantId}/${projectId}/${Date.now()}-${index}-${safeName || "project-image"}.${extension}`;
 
         const { error: uploadError } = await supabase.storage
           .from(PROJECT_MEDIA_BUCKET)
@@ -728,7 +766,7 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
     const { error: imageError } = await (supabase.from("project_images").insert as any)(
       uploaded.map((url, index) => ({
         project_id: projectId,
-        tenant_id: tenantId, // stamp tenancy (new column)
+        tenant_id: projectTenantId, // the project's own tenant, not the selected one
         url,
         sort_order: firstSort + index,
       })),
@@ -756,8 +794,78 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
     toast.success("Image removed");
   };
 
+  const persistUnitTypes = async (projectId: string) => {
+    const rows = unitTypes.map((item, index) => ({
+      label: item.label.trim(),
+      price_aed: item.price_aed,
+      area_sqm_min: item.area_sqm_min,
+      area_sqm_max: item.area_sqm_max,
+      sort_order: index,
+    }));
+    const existingIds = new Set((existing?.unit_types ?? []).map((item) => item.id));
+    const retainedIds = new Set(unitTypes.flatMap((item) => item.id ? [item.id] : []));
+    const removedIds = [...existingIds].filter((unitTypeId) => !retainedIds.has(unitTypeId));
+
+    if (removedIds.length) {
+      const { error } = await supabase
+        .from("project_unit_types")
+        .delete()
+        .eq("project_id", projectId)
+        .in("id", removedIds);
+      if (error) throw error;
+    }
+
+    const updates = unitTypes.flatMap((item, index) => {
+      if (!item.id) return [];
+      return [{
+        id: item.id,
+        values: rows[index],
+      }];
+    });
+    await Promise.all(updates.map(async ({ id: unitTypeId, values }) => {
+      const { error } = await supabase
+        .from("project_unit_types")
+        .update(values)
+        .eq("id", unitTypeId)
+        .eq("project_id", projectId);
+      if (error) throw error;
+    }));
+
+    const inserts = unitTypes.flatMap((item, index) => item.id ? [] : [{
+      ...rows[index],
+      project_id: projectId,
+      tenant_id: projectTenantId,
+    }]);
+    if (inserts.length) {
+      const { error } = await supabase.from("project_unit_types").insert(inserts);
+      if (error) throw error;
+    }
+  };
+
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
+    for (const [index, item] of unitTypes.entries()) {
+      if (!item.label.trim()) {
+        toast.error(`Unit type ${index + 1}: label is required`);
+        return;
+      }
+      if (item.price_aed != null && (!Number.isFinite(item.price_aed) || item.price_aed <= 0)) {
+        toast.error(`Unit type ${index + 1}: price must be positive`);
+        return;
+      }
+      if (item.area_sqm_min != null && (!Number.isFinite(item.area_sqm_min) || item.area_sqm_min <= 0)) {
+        toast.error(`Unit type ${index + 1}: minimum area must be positive`);
+        return;
+      }
+      if (item.area_sqm_max != null && (!Number.isFinite(item.area_sqm_max) || item.area_sqm_max <= 0)) {
+        toast.error(`Unit type ${index + 1}: maximum area must be positive`);
+        return;
+      }
+      if (item.area_sqm_min != null && item.area_sqm_max != null && item.area_sqm_max < item.area_sqm_min) {
+        toast.error(`Unit type ${index + 1}: maximum area must be at least minimum area`);
+        return;
+      }
+    }
     setSaving(true);
     try {
       const isEditing = Boolean(id);
@@ -799,6 +907,8 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
         if (error) throw error;
       }
 
+      await persistUnitTypes(projectId);
+
       toast.success(isEditing ? "Project updated" : "Project created");
       onClose();
     } catch (err) {
@@ -811,6 +921,16 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
   return (
     <form onSubmit={save} className="glass-strong gold-hairline mt-6 space-y-3 rounded-2xl p-5">
       <h2 className="font-display text-2xl text-cream">{id ? "Edit project" : "New project"}</h2>
+      {/* The switcher is on another org than the one that owns this project. The
+          save still works — unit types and images are stamped with the owning org
+          (projectTenantId) — but say so, because the project will not appear in
+          this org's list and only a member of the owning org can write to it. */}
+      {foreignTenant && (
+        <p className="rounded-xl border border-gold/40 bg-gold/10 p-2.5 text-xs text-cream">
+          This project belongs to a different organization than the one selected. Edits are saved to the owning
+          organization.
+        </p>
+      )}
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Name"><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} required /></Field>
         <Field label="Slug (optional)"><Input value={f.slug} onChange={(e) => setF({ ...f, slug: e.target.value })} /></Field>
@@ -882,7 +1002,6 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
         <Field label="Address"><Input value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} /></Field>
         <Field label="Latitude"><Input type="number" step="0.0001" value={f.lat} onChange={(e) => setF({ ...f, lat: Number(e.target.value) })} required /></Field>
         <Field label="Longitude"><Input type="number" step="0.0001" value={f.lng} onChange={(e) => setF({ ...f, lng: Number(e.target.value) })} required /></Field>
-        <Field label="Starting price (AED)"><Input type="number" value={f.starting_price_aed} onChange={(e) => setF({ ...f, starting_price_aed: Number(e.target.value) })} /></Field>
         <Field label="Completion"><Input value={f.completion_date} onChange={(e) => setF({ ...f, completion_date: e.target.value })} placeholder="Q4 2026" /></Field>
         <Field label="Bedrooms min"><Input type="number" value={f.bedrooms_min} onChange={(e) => setF({ ...f, bedrooms_min: Number(e.target.value) })} /></Field>
         <Field label="Bedrooms max"><Input type="number" value={f.bedrooms_max} onChange={(e) => setF({ ...f, bedrooms_max: Number(e.target.value) })} /></Field>
@@ -906,6 +1025,99 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
         <Field label="Video URL"><Input value={f.video_url} onChange={(e) => setF({ ...f, video_url: e.target.value })} /></Field>
         <Field label="360 tour URL"><Input value={f.tour_360_url} onChange={(e) => setF({ ...f, tour_360_url: e.target.value })} /></Field>
         <Field label="Tags"><Input value={f.tags} onChange={(e) => setF({ ...f, tags: e.target.value })} placeholder="waterfront, luxury, family" /></Field>
+      </div>
+      <div className="space-y-3 rounded-2xl border border-gold/20 bg-black/10 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <Label className="text-xs uppercase tracking-widest text-muted-foreground">Unit type pricing &amp; area</Label>
+            <p className="mt-1 text-xs text-muted-foreground">Add a price and optional area range for every unit type.</p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="glass gold-hairline text-cream"
+            onClick={() => setUnitTypes((current) => [
+              ...current,
+              { label: "", price_aed: null, area_sqm_min: null, area_sqm_max: null, sort_order: current.length },
+            ])}
+          >
+            <Plus className="mr-1 h-4 w-4" /> Add unit type
+          </Button>
+        </div>
+        {unitTypes.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border/60 p-3 text-sm text-muted-foreground">
+            No unit types yet. Existing projects are backfilled from their old starting price.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {unitTypes.map((item, index) => (
+              <div key={item.id ?? `new-unit-${index}`} className="grid gap-2 rounded-xl border border-border/60 bg-black/20 p-3 sm:grid-cols-[1.1fr_1fr_1fr_1fr_auto] sm:items-end">
+                <label className="space-y-1 text-xs text-muted-foreground">
+                  <span>Type</span>
+                  <Input
+                    list="unit-type-quick-picks"
+                    value={item.label}
+                    placeholder="2BHK"
+                    onChange={(e) => setUnitTypes((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, label: e.target.value } : row))}
+                  />
+                </label>
+                <label className="space-y-1 text-xs text-muted-foreground">
+                  <span>Price (AED)</span>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={item.price_aed ?? ""}
+                    placeholder="Optional"
+                    onChange={(e) => setUnitTypes((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, price_aed: e.target.value === "" ? null : Number(e.target.value) } : row))}
+                  />
+                </label>
+                <label className="space-y-1 text-xs text-muted-foreground">
+                  <span>Area min (m²)</span>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={item.area_sqm_min ?? ""}
+                    placeholder="Optional"
+                    onChange={(e) => setUnitTypes((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, area_sqm_min: e.target.value === "" ? null : Number(e.target.value) } : row))}
+                  />
+                </label>
+                <label className="space-y-1 text-xs text-muted-foreground">
+                  <span>Area max (m²)</span>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={item.area_sqm_max ?? ""}
+                    placeholder="Optional"
+                    onChange={(e) => setUnitTypes((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, area_sqm_max: e.target.value === "" ? null : Number(e.target.value) } : row))}
+                  />
+                </label>
+                <div className="flex items-center justify-end gap-1">
+                  <Button type="button" size="icon" variant="ghost" disabled={index === 0} onClick={() => setUnitTypes((current) => {
+                    const next = [...current];
+                    [next[index - 1], next[index]] = [next[index], next[index - 1]];
+                    return next;
+                  })} aria-label="Move unit type up">
+                    <ArrowUp className="h-4 w-4" />
+                  </Button>
+                  <Button type="button" size="icon" variant="ghost" disabled={index === unitTypes.length - 1} onClick={() => setUnitTypes((current) => {
+                    const next = [...current];
+                    [next[index], next[index + 1]] = [next[index + 1], next[index]];
+                    return next;
+                  })} aria-label="Move unit type down">
+                    <ArrowDown className="h-4 w-4" />
+                  </Button>
+                  <Button type="button" size="icon" variant="ghost" onClick={() => setUnitTypes((current) => current.filter((_, rowIndex) => rowIndex !== index))} aria-label="Remove unit type">
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <datalist id="unit-type-quick-picks">
+          {UNIT_TYPE_QUICK_PICKS.map((label) => <option key={label} value={label} />)}
+        </datalist>
       </div>
       <div>
         <Label className="text-xs uppercase tracking-widest text-muted-foreground">Project images from device</Label>
@@ -1113,7 +1325,7 @@ export function PublicProjectsManager() {
               <div className="min-w-0 flex-1">
                 <div className="truncate font-display text-lg text-cream">{p.name}</div>
                 <div className="truncate text-xs text-muted-foreground">
-                  {org ? `${org} · ` : ""}{p.developer?.name ?? "—"} · {formatAed(p.starting_price_aed)}
+                  {org ? `${org} · ` : ""}{p.developer?.name ?? "—"} · {formatAed(lowestUnitPrice(p.unit_types, p.starting_price_aed))}
                 </div>
               </div>
               <span className={`text-xs font-medium ${pub ? "text-emerald-400" : "text-muted-foreground"}`}>
