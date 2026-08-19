@@ -228,7 +228,7 @@ export function AppSidebar() {
                       <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest text-muted-foreground">
                         <Building2 className="h-3 w-3" /> <span className="truncate">{p.developer?.name ?? "—"}</span>
                       </div>
-                      <div className="truncate font-display text-lg leading-tight text-cream">{p.name}</div>
+                      <div className="truncate font-display text-base leading-tight text-cream">{p.name}</div>
                       <div className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
                         <MapPin className="h-3 w-3" /> <span className="truncate">{p.community?.name ?? "Dubai"}</span>
                       </div>

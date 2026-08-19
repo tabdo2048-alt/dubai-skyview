@@ -107,7 +107,7 @@ export function ProjectPopup({ project, onClose }: { project: ProjectWithRelatio
                     <Building2 className="h-3.5 w-3.5" />
                     <span className="truncate">{project.developer?.name ?? "Independent"}</span>
                   </div>
-                  <h3 className="font-display text-xl leading-tight text-cream">{project.name}</h3>
+                  <h3 className="font-display text-lg leading-tight text-cream">{project.name}</h3>
                   <div className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
                     <MapPin className="h-3.5 w-3.5" />
                     <span className="truncate">{project.community?.name ?? project.address ?? "Dubai"}</span>

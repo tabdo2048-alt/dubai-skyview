@@ -106,7 +106,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "apple-touch-icon", href: "/brand/keyora-logo-180.png", sizes: "180x180" },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
-      { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Work+Sans:wght@300;400;500;600;700&display=swap" },
+      // Outfit is the display/brand face (the KEYORA wordmark and every h1-h4);
+      // Work Sans is the body face. Outfit is a variable font, so the weight
+      // range is requested as an axis (100..900) in one file rather than as
+      // separate static weights.
+      { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&family=Work+Sans:wght@300;400;500;600;700&display=swap" },
       // Warm up the connections the map + data need on the critical path, so the
       // TLS/DNS handshake overlaps with JS parse instead of blocking first tile.
       { rel: "preconnect", href: "https://api.mapbox.com", crossOrigin: "anonymous" as const },

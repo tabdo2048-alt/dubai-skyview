@@ -12,7 +12,11 @@
   --radius-2xl: calc(var(--radius) + 8px);
   --radius-3xl: calc(var(--radius) + 12px);
 
-  --font-serif: "Instrument Serif", ui-serif, Georgia, serif;
+  /* The display/brand face: the KEYORA wordmark and every h1-h4. The token is
+     still called --font-serif because it is what Tailwind's `font-serif` utility
+     and the .font-display rule below both read; the value is a SANS (Manrope),
+     so the name is historical, not a description. */
+  --font-serif: "Outfit", ui-sans-serif, system-ui, sans-serif;
   --font-sans: "Work Sans", ui-sans-serif, system-ui, sans-serif;
 
   --color-background: var(--background);
