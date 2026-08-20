@@ -4,6 +4,8 @@ import { X, MapPin, Bed, Calendar, Wallet, Building2, ArrowRight, MessageCircle,
 import { Link } from "@tanstack/react-router";
 import type { ProjectWithRelations } from "@/lib/types";
 import { formatAed, bedroomsLabel } from "@/lib/dubai";
+import { whatsappUrl, viewingMailto } from "@/lib/contact";
+import { track } from "@/lib/analytics";
 import { mediaSrc } from "@/lib/media";
 import { areaLabel, displayUnitTypes, pricedUnitTypes } from "@/lib/unit-types";
 import { Button } from "@/components/ui/button";
@@ -31,6 +33,8 @@ export function ProjectPopup({ project, onClose }: { project: ProjectWithRelatio
   const priceRows = pricedUnitTypes(unitTypes);
   const areaRows = unitTypes.filter((item) => areaLabel(item));
   const bedrooms = project ? bedroomsLabel(project) : null;
+  const whatsapp = project ? whatsappUrl(project.name) : null;
+  const mailto = project ? viewingMailto(project.name) : null;
   // Reset the hero when a different project is selected.
   useEffect(() => setActiveImage(images[0]?.full ?? null), [project?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   // Close on Escape.
@@ -196,16 +200,26 @@ export function ProjectPopup({ project, onClose }: { project: ProjectWithRelatio
                       View details <ArrowRight className="ml-1 h-3.5 w-3.5" />
                     </Link>
                   </Button>
-                  <Button asChild size="sm" variant="outline" className="glass gold-hairline text-cream">
-                    <a href={`https://wa.me/971586620600?text=${encodeURIComponent(`Interested in ${project.name}`)}`} target="_blank" rel="noreferrer">
-                      <MessageCircle className="mr-1 h-3.5 w-3.5" /> WhatsApp
-                    </a>
-                  </Button>
-                  <Button asChild size="sm" variant="outline" className="glass gold-hairline text-cream">
-                    <a href={`mailto:sales@example.ae?subject=${encodeURIComponent(`Book viewing: ${project.name}`)}`}>
-                      <CalendarCheck className="mr-1 h-3.5 w-3.5" /> Book viewing
-                    </a>
-                  </Button>
+                  {/* Both CTAs render only when configured, and both now report the
+                      conversion — these two were the only lead buttons in the app
+                      firing no analytics at all, so demand from the map popup was
+                      invisible while the detail page's identical buttons counted. */}
+                  {whatsapp && (
+                    <Button asChild size="sm" variant="outline" className="glass gold-hairline text-cream">
+                      <a href={whatsapp} target="_blank" rel="noreferrer"
+                         onClick={() => track("lead_whatsapp", { slug: project.slug, name: project.name })}>
+                        <MessageCircle className="mr-1 h-3.5 w-3.5" /> WhatsApp
+                      </a>
+                    </Button>
+                  )}
+                  {mailto && (
+                    <Button asChild size="sm" variant="outline" className="glass gold-hairline text-cream">
+                      <a href={mailto}
+                         onClick={() => track("lead_book_viewing", { slug: project.slug, name: project.name })}>
+                        <CalendarCheck className="mr-1 h-3.5 w-3.5" /> Book viewing
+                      </a>
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>

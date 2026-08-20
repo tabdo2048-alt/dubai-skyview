@@ -18,6 +18,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { fetchProjectBySlug } from "@/hooks/use-projects";
 import { formatAed, bedroomsLabel, positiveCount } from "@/lib/dubai";
+import { whatsappUrl, viewingMailto } from "@/lib/contact";
 import { mediaSrc } from "@/lib/media";
 import { track } from "@/lib/analytics";
 import { safeHttpUrl } from "@/lib/utils";
@@ -103,6 +104,8 @@ function ProjectDetail() {
   const areaRows = unitTypes.filter((item) => areaLabel(item));
   const beds = p ? bedroomsLabel(p) : null;
   const baths = positiveCount(p?.bathrooms);
+  const whatsapp = p ? whatsappUrl(p.name) : null;
+  const mailto = p ? viewingMailto(p.name) : null;
   // Reset to the hero when navigating to another project.
   useEffect(() => setActiveImage(images[0]?.full ?? null), [p?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!p) throw notFound();
@@ -221,24 +224,31 @@ function ProjectDetail() {
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <Button asChild className="shimmer bg-gold text-gold-foreground hover:bg-gold/90">
-                <a
-                  href={`https://wa.me/971586620600?text=${encodeURIComponent(`Interested in ${p.name}`)}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={() => track("lead_whatsapp", { slug: p.slug, name: p.name })}
-                >
-                  <MessageCircle className="mr-1 h-4 w-4" /> WhatsApp
-                </a>
-              </Button>
-              <Button asChild variant="outline" className="glass gold-hairline text-cream">
-                <a
-                  href={`mailto:sales@example.ae?subject=${encodeURIComponent(`Book viewing: ${p.name}`)}`}
-                  onClick={() => track("lead_book_viewing", { slug: p.slug, name: p.name })}
-                >
-                  <CalendarCheck className="mr-1 h-4 w-4" /> Book viewing
-                </a>
-              </Button>
+              {/* Rendered only when a contact channel is configured — the email
+                  previously pointed at a placeholder domain, so the button looked
+                  live but the request went nowhere. */}
+              {whatsapp && (
+                <Button asChild className="shimmer bg-gold text-gold-foreground hover:bg-gold/90">
+                  <a
+                    href={whatsapp}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={() => track("lead_whatsapp", { slug: p.slug, name: p.name })}
+                  >
+                    <MessageCircle className="mr-1 h-4 w-4" /> WhatsApp
+                  </a>
+                </Button>
+              )}
+              {mailto && (
+                <Button asChild variant="outline" className="glass gold-hairline text-cream">
+                  <a
+                    href={mailto}
+                    onClick={() => track("lead_book_viewing", { slug: p.slug, name: p.name })}
+                  >
+                    <CalendarCheck className="mr-1 h-4 w-4" /> Book viewing
+                  </a>
+                </Button>
+              )}
               {safeHttpUrl(p.brochure_url) && (
                 <Button asChild variant="outline" className="glass gold-hairline text-cream">
                   <a href={safeHttpUrl(p.brochure_url) ?? undefined} target="_blank" rel="noreferrer"><Download className="mr-1 h-4 w-4" /> Brochure</a>
