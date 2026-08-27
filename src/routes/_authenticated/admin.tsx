@@ -30,8 +30,9 @@ import { parseLatLngFromGoogleMapsUrl } from "@/lib/googleMapsLink";
 import { setUserBlocked } from "@/lib/user-security.functions";
 import { optimizeProjectImage, thumbnailPathFromStoragePath } from "@/lib/image-optimization";
 import { formatSubscriptionPeriod } from "@/lib/subscription-period";
-import type { ProjectUnitTypeRow } from "@/lib/types";
+import type { ProjectUnitTypeRow, ProjectPaymentPlanRow } from "@/lib/types";
 import { lowestUnitPrice } from "@/lib/unit-types";
+import { legacyPaymentPlanValue } from "@/lib/payment-plans";
 
 const PROJECT_MEDIA_BUCKET = "project-media";
 const MAX_PROJECT_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -53,6 +54,21 @@ function unitTypeDraft(row: ProjectUnitTypeRow): UnitTypeDraft {
     price_aed: row.price_aed,
     area_sqm_min: row.area_sqm_min,
     area_sqm_max: row.area_sqm_max,
+    sort_order: row.sort_order,
+  };
+}
+
+// A launch usually offers several plans side by side ("60/40 on handover",
+// "1% monthly"), so these are repeating rows like unit types rather than the
+// single free-text projects.payment_plan column they replace.
+const PAYMENT_PLAN_QUICK_PICKS = ["60/40 Plan", "70/30 Plan", "1% Monthly", "Post-handover 5 years", "Cash"];
+type PaymentPlanDraft = Omit<ProjectPaymentPlanRow, "id" | "project_id" | "tenant_id" | "created_at" | "updated_at"> & { id?: string };
+
+function paymentPlanDraft(row: ProjectPaymentPlanRow): PaymentPlanDraft {
+  return {
+    id: row.id,
+    label: row.label,
+    details: row.details,
     sort_order: row.sort_order,
   };
 }
@@ -663,6 +679,7 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
   });
   const [gallery, setGallery] = useState(existing?.images ?? []);
   const [unitTypes, setUnitTypes] = useState<UnitTypeDraft[]>(() => (existing?.unit_types ?? []).map(unitTypeDraft));
+  const [paymentPlans, setPaymentPlans] = useState<PaymentPlanDraft[]>(() => (existing?.payment_plans ?? []).map(paymentPlanDraft));
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -689,6 +706,10 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
   useEffect(() => {
     setUnitTypes((existing?.unit_types ?? []).map(unitTypeDraft));
   }, [existing?.id, existing?.unit_types]);
+
+  useEffect(() => {
+    setPaymentPlans((existing?.payment_plans ?? []).map(paymentPlanDraft));
+  }, [existing?.id, existing?.payment_plans]);
 
   const imagePreviews = useMemo(
     () =>
@@ -842,6 +863,49 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
     }
   };
 
+  // Same diff-and-sync shape as persistUnitTypes: delete rows the admin removed,
+  // update the ones with an id, insert the new ones. tenant_id on insert is the
+  // project's owning tenant (projectTenantId), never the selected org.
+  const persistPaymentPlans = async (projectId: string) => {
+    const rows = paymentPlans.map((item, index) => ({
+      label: item.label.trim(),
+      details: item.details?.trim() ? item.details.trim() : null,
+      sort_order: index,
+    }));
+    const existingIds = new Set((existing?.payment_plans ?? []).map((item) => item.id));
+    const retainedIds = new Set(paymentPlans.flatMap((item) => item.id ? [item.id] : []));
+    const removedIds = [...existingIds].filter((planId) => !retainedIds.has(planId));
+
+    if (removedIds.length) {
+      const { error } = await supabase
+        .from("project_payment_plans")
+        .delete()
+        .eq("project_id", projectId)
+        .in("id", removedIds);
+      if (error) throw error;
+    }
+
+    const updates = paymentPlans.flatMap((item, index) => item.id ? [{ id: item.id, values: rows[index] }] : []);
+    await Promise.all(updates.map(async ({ id: planId, values }) => {
+      const { error } = await supabase
+        .from("project_payment_plans")
+        .update(values)
+        .eq("id", planId)
+        .eq("project_id", projectId);
+      if (error) throw error;
+    }));
+
+    const inserts = paymentPlans.flatMap((item, index) => item.id ? [] : [{
+      ...rows[index],
+      project_id: projectId,
+      tenant_id: projectTenantId,
+    }]);
+    if (inserts.length) {
+      const { error } = await supabase.from("project_payment_plans").insert(inserts);
+      if (error) throw error;
+    }
+  };
+
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     for (const [index, item] of unitTypes.entries()) {
@@ -866,6 +930,12 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
         return;
       }
     }
+    for (const [index, item] of paymentPlans.entries()) {
+      if (!item.label.trim()) {
+        toast.error(`Payment plan ${index + 1}: name is required`);
+        return;
+      }
+    }
     setSaving(true);
     try {
       const isEditing = Boolean(id);
@@ -883,6 +953,9 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
           .map((tag) => tag.trim())
           .filter(Boolean),
         plot_geometry: (f.plot_geometry as unknown as Json) ?? null,
+        // Keep the legacy single column in step with the plan rows — the map popup
+        // reads it and never sees the rows. See legacyPaymentPlanValue.
+        payment_plan: legacyPaymentPlanValue(paymentPlans, existing?.payment_plans ?? [], f.payment_plan),
       };
       let projectId = id ?? "";
 
@@ -908,6 +981,7 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
       }
 
       await persistUnitTypes(projectId);
+      await persistPaymentPlans(projectId);
 
       toast.success(isEditing ? "Project updated" : "Project created");
       onClose();
@@ -1019,7 +1093,9 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
             <option value="off_plan">Off plan</option><option value="ready">Ready</option>
           </select>
         </Field>
-        <Field label="Payment plan"><Input value={f.payment_plan} onChange={(e) => setF({ ...f, payment_plan: e.target.value })} /></Field>
+        {/* Payment plans moved to their own repeating-rows section below (a
+            project can have several). The legacy payment_plan column is no longer
+            edited here — it is written from those rows on save. */}
         <Field label="Main image URL"><Input value={f.main_image_url} onChange={(e) => setF({ ...f, main_image_url: e.target.value })} /></Field>
         <Field label="Brochure URL"><Input value={f.brochure_url} onChange={(e) => setF({ ...f, brochure_url: e.target.value })} /></Field>
         <Field label="Video URL"><Input value={f.video_url} onChange={(e) => setF({ ...f, video_url: e.target.value })} /></Field>
@@ -1117,6 +1193,77 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
         )}
         <datalist id="unit-type-quick-picks">
           {UNIT_TYPE_QUICK_PICKS.map((label) => <option key={label} value={label} />)}
+        </datalist>
+      </div>
+      <div className="space-y-3 rounded-2xl border border-gold/20 bg-black/10 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <Label className="text-xs uppercase tracking-widest text-muted-foreground">Payment plans</Label>
+            <p className="mt-1 text-xs text-muted-foreground">Add every plan on offer. Each shows its name; the optional breakdown appears when a buyer expands it on the project page.</p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="glass gold-hairline text-cream"
+            onClick={() => setPaymentPlans((current) => [
+              ...current,
+              { label: "", details: null, sort_order: current.length },
+            ])}
+          >
+            <Plus className="mr-1 h-4 w-4" /> Add payment plan
+          </Button>
+        </div>
+        {paymentPlans.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border/60 p-3 text-sm text-muted-foreground">
+            No payment plans yet. Existing projects keep their previous single plan until you add rows here.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {paymentPlans.map((item, index) => (
+              <div key={item.id ?? `new-plan-${index}`} className="grid gap-2 rounded-xl border border-border/60 bg-black/20 p-3 sm:grid-cols-[1fr_2fr_auto] sm:items-end">
+                <label className="space-y-1 text-xs text-muted-foreground">
+                  <span>Plan name</span>
+                  <Input
+                    list="payment-plan-quick-picks"
+                    value={item.label}
+                    placeholder="60/40 Plan"
+                    onChange={(e) => setPaymentPlans((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, label: e.target.value } : row))}
+                  />
+                </label>
+                <label className="space-y-1 text-xs text-muted-foreground">
+                  <span>Details (optional)</span>
+                  <Input
+                    value={item.details ?? ""}
+                    placeholder="10% booking · 50% during construction · 40% on handover"
+                    onChange={(e) => setPaymentPlans((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, details: e.target.value === "" ? null : e.target.value } : row))}
+                  />
+                </label>
+                <div className="flex items-center justify-end gap-1">
+                  <Button type="button" size="icon" variant="ghost" disabled={index === 0} onClick={() => setPaymentPlans((current) => {
+                    const next = [...current];
+                    [next[index - 1], next[index]] = [next[index], next[index - 1]];
+                    return next;
+                  })} aria-label="Move payment plan up">
+                    <ArrowUp className="h-4 w-4" />
+                  </Button>
+                  <Button type="button" size="icon" variant="ghost" disabled={index === paymentPlans.length - 1} onClick={() => setPaymentPlans((current) => {
+                    const next = [...current];
+                    [next[index], next[index + 1]] = [next[index + 1], next[index]];
+                    return next;
+                  })} aria-label="Move payment plan down">
+                    <ArrowDown className="h-4 w-4" />
+                  </Button>
+                  <Button type="button" size="icon" variant="ghost" onClick={() => setPaymentPlans((current) => current.filter((_, rowIndex) => rowIndex !== index))} aria-label="Remove payment plan">
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <datalist id="payment-plan-quick-picks">
+          {PAYMENT_PLAN_QUICK_PICKS.map((label) => <option key={label} value={label} />)}
         </datalist>
       </div>
       <div>

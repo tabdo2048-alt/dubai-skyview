@@ -24,7 +24,14 @@ const PROJECT_LIST_SELECT = `
   unit_types:project_unit_types(*)
 `;
 
-const PROJECT_DETAIL_SELECT = `
+// Everything the detail/admin views need EXCEPT payment plans. Kept separate
+// because `project_payment_plans` is a whole new table: the `*` trick that makes a
+// missing COLUMN harmless does nothing for a missing RELATION, so naming it in a
+// select is a hard 400 until
+// supabase/migrations/20260821000000_project_payment_plans.sql is applied. Both
+// callers below retry with this base select in that case, which costs one extra
+// round trip on an un-migrated database and keeps the page working.
+const PROJECT_DETAIL_SELECT_BASE = `
   *,
   developer:developers(id,name,slug),
   community:communities(id,name,slug),
@@ -32,6 +39,22 @@ const PROJECT_DETAIL_SELECT = `
   unit_types:project_unit_types(*),
   amenities:project_amenities(*)
 `;
+
+const PROJECT_DETAIL_SELECT = `${PROJECT_DETAIL_SELECT_BASE},
+  payment_plans:project_payment_plans(*)
+`;
+
+// PostgREST's code for "relationship/table not found in the schema cache" — i.e.
+// the payment-plans migration has not been applied. Anything else is a real error
+// and must not be papered over by a silent retry.
+function isMissingRelation(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  return (
+    error.code === "PGRST200" ||
+    error.code === "42P01" ||
+    /could not find (a relationship|the table)|schema cache/i.test(error.message ?? "")
+  );
+}
 
 async function fetchAllProjects(): Promise<ProjectWithRelations[]> {
   const { data, error } = await supabase
@@ -67,6 +90,17 @@ export async function fetchProjectBySlug(slug: string): Promise<ProjectWithRelat
     .maybeSingle();
   if (!error) return signOne(normalizeProject(data));
 
+  // Payment plans not migrated yet: retry without them rather than dropping all
+  // the way to the legacy select, which would also lose images and unit types.
+  if (isMissingRelation(error)) {
+    const retry = await supabase
+      .from("projects")
+      .select(PROJECT_DETAIL_SELECT_BASE)
+      .eq("slug", slug)
+      .maybeSingle();
+    if (!retry.error) return signOne(normalizeProject(retry.data));
+  }
+
   console.warn("[Projects] full project query failed; falling back to legacy schema", error.message);
   const { data: legacyData, error: legacyError } = await supabase
     .from("projects")
@@ -84,8 +118,20 @@ export async function fetchProjectById(id: string): Promise<ProjectWithRelations
     .select(PROJECT_DETAIL_SELECT)
     .eq("id", id)
     .maybeSingle();
-  if (error) throw error;
-  return signOne(normalizeProject(data));
+  if (!error) return signOne(normalizeProject(data));
+
+  // Same tolerance as above: an unapplied payment-plans migration must not stop an
+  // admin from editing a project.
+  if (isMissingRelation(error)) {
+    const retry = await supabase
+      .from("projects")
+      .select(PROJECT_DETAIL_SELECT_BASE)
+      .eq("id", id)
+      .maybeSingle();
+    if (!retry.error) return signOne(normalizeProject(retry.data));
+  }
+
+  throw error;
 }
 
 // Sign a single project's media (null passes through untouched).
@@ -184,6 +230,7 @@ function normalizeProject(item: unknown): ProjectWithRelations | null {
     community?: ProjectWithRelations["community"];
     images?: ProjectWithRelations["images"];
     unit_types?: ProjectWithRelations["unit_types"];
+    payment_plans?: ProjectWithRelations["payment_plans"];
     amenities?: ProjectWithRelations["amenities"];
   };
   const coords = extractLocation(raw.location);
@@ -205,6 +252,7 @@ function normalizeProject(item: unknown): ProjectWithRelations | null {
     community: raw.community ?? null,
     images: raw.images ?? [],
     unit_types: raw.unit_types ?? [],
+    payment_plans: raw.payment_plans ?? [],
     amenities: raw.amenities ?? [],
   } as ProjectWithRelations;
 }

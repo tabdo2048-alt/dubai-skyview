@@ -13,6 +13,7 @@ import {
   PlayCircle,
   Tag,
   Ruler,
+  ChevronDown,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AppNavbar } from "@/components/layout/AppNavbar";
@@ -25,6 +26,7 @@ import { safeHttpUrl } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import type { ProjectWithRelations } from "@/lib/types";
 import { areaLabel, displayUnitTypes, highestUnitPrice, lowestUnitPrice, pricedUnitTypes } from "@/lib/unit-types";
+import { displayPaymentPlans, paymentPlanSummary } from "@/lib/payment-plans";
 
 export const Route = createFileRoute("/projects/$slug")({
   // Fetch on the server so <head> SEO tags + structured data are built from real
@@ -99,15 +101,22 @@ function ProjectDetail() {
     return urls;
   }, [p]);
   const [activeImage, setActiveImage] = useState<string | null>(images[0]?.full ?? null);
+  const [plansOpen, setPlansOpen] = useState(false);
   const unitTypes = useMemo(() => displayUnitTypes(p?.unit_types, p?.starting_price_aed), [p]);
   const priceRows = pricedUnitTypes(unitTypes);
   const areaRows = unitTypes.filter((item) => areaLabel(item));
+  const paymentPlans = useMemo(() => displayPaymentPlans(p?.payment_plans, p?.payment_plan), [p]);
+  // Worth a click only when the collapsed tile is hiding something: several plans,
+  // or one plan carrying an instalment breakdown.
+  const plansExpandable = paymentPlans.length > 1 || Boolean(paymentPlans[0]?.details);
   const beds = p ? bedroomsLabel(p) : null;
   const baths = positiveCount(p?.bathrooms);
   const whatsapp = p ? whatsappUrl(p.name) : null;
   const mailto = p ? viewingMailto(p.name) : null;
   // Reset to the hero when navigating to another project.
   useEffect(() => setActiveImage(images[0]?.full ?? null), [p?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Collapse the plan breakdown when switching projects.
+  useEffect(() => setPlansOpen(false), [p?.id]);
   if (!p) throw notFound();
 
   return (
@@ -219,8 +228,49 @@ function ProjectDetail() {
                 {beds && <Info icon={<Bed className="h-4 w-4" />} label="Bedrooms" value={beds} />}
                 {baths != null && <Info icon={<Bath className="h-4 w-4" />} label="Bathrooms" value={String(baths)} />}
                 <Info icon={<Calendar className="h-4 w-4" />} label="Handover" value={p.completion_date ?? "TBA"} />
-                <Info icon={<Wallet className="h-4 w-4" />} label="Payment plan" value={p.payment_plan ?? "Flexible"} />
+                {/* Only a disclosure when there is something the tile is not
+                    already showing — one plan with no details would open to the
+                    exact line the buyer just read. */}
+                {plansExpandable ? (
+                  <button
+                    type="button"
+                    onClick={() => setPlansOpen((open) => !open)}
+                    aria-expanded={plansOpen}
+                    aria-controls="payment-plans"
+                    className="glass rounded-xl p-3 text-left transition hover:ring-1 hover:ring-gold/60"
+                  >
+                    <div className="flex items-center gap-1 text-[10px] uppercase tracking-widest text-muted-foreground">
+                      <Wallet className="h-4 w-4" /> Payment plan
+                    </div>
+                    <div className="mt-1 flex items-center justify-between gap-2 text-cream">
+                      <span className="truncate">{paymentPlanSummary(paymentPlans)}</span>
+                      <ChevronDown
+                        className={`h-4 w-4 shrink-0 text-gold transition-transform ${plansOpen ? "rotate-180" : ""}`}
+                      />
+                    </div>
+                  </button>
+                ) : (
+                  <Info
+                    icon={<Wallet className="h-4 w-4" />}
+                    label="Payment plan"
+                    value={paymentPlanSummary(paymentPlans)}
+                  />
+                )}
               </div>
+              {/* Rendered outside the auto-fit grid so a long instalment
+                  breakdown gets the card's full width instead of one column. */}
+              {plansExpandable && plansOpen && (
+                <div id="payment-plans" className="mt-3 space-y-2 text-sm">
+                  {paymentPlans.map((plan) => (
+                    <div key={plan.id} className="rounded-xl bg-black/15 px-3 py-2">
+                      <div className="font-medium text-cream">{plan.label}</div>
+                      {plan.details && (
+                        <div className="mt-0.5 whitespace-pre-line text-muted-foreground">{plan.details}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="flex flex-wrap gap-2">

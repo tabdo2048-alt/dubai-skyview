@@ -13,7 +13,19 @@
 // change lands here and nowhere else.
 
 const RAW_EMAIL = (import.meta.env.VITE_CONTACT_EMAIL as string | undefined)?.trim();
-const RAW_WHATSAPP = (import.meta.env.VITE_CONTACT_WHATSAPP as string | undefined)?.trim();
+
+// The number the site shipped with, kept as the default so the WhatsApp button
+// works with no configuration. Overridden by VITE_CONTACT_WHATSAPP.
+//
+// There is deliberately NO email counterpart: the value this replaced was
+// sales@example.ae, a placeholder domain. Defaulting to a dead address would
+// restore the original bug — a button that looks live and silently drops every
+// viewing request. So the email button stays hidden until a real address is set,
+// which is visible and fixable, rather than broken and invisible.
+const DEFAULT_WHATSAPP = "971586620600";
+
+const RAW_WHATSAPP =
+  (import.meta.env.VITE_CONTACT_WHATSAPP as string | undefined)?.trim() || DEFAULT_WHATSAPP;
 
 // An address is only usable if it looks like one — a half-filled env var should
 // hide the button, not render a mailto: that bounces.
