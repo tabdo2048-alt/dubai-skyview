@@ -10,6 +10,7 @@ import {
   MessageCircle,
   CalendarCheck,
   Download,
+  FileDown,
   PlayCircle,
   Tag,
   Ruler,
@@ -27,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import type { ProjectWithRelations } from "@/lib/types";
 import { areaLabel, displayUnitTypes, highestUnitPrice, lowestUnitPrice, pricedUnitTypes } from "@/lib/unit-types";
 import { displayPaymentPlans, paymentPlanSummary } from "@/lib/payment-plans";
+import { UnitOfferDialog } from "@/components/offers/UnitOfferDialog";
 
 export const Route = createFileRoute("/projects/$slug")({
   // Fetch on the server so <head> SEO tags + structured data are built from real
@@ -102,13 +104,14 @@ function ProjectDetail() {
   }, [p]);
   const [activeImage, setActiveImage] = useState<string | null>(images[0]?.full ?? null);
   const [plansOpen, setPlansOpen] = useState(false);
+  const [offerOpen, setOfferOpen] = useState(false);
   const unitTypes = useMemo(() => displayUnitTypes(p?.unit_types, p?.starting_price_aed), [p]);
   const priceRows = pricedUnitTypes(unitTypes);
   const areaRows = unitTypes.filter((item) => areaLabel(item));
   const paymentPlans = useMemo(() => displayPaymentPlans(p?.payment_plans, p?.payment_plan), [p]);
   // Worth a click only when the collapsed tile is hiding something: several plans,
   // or one plan carrying an instalment breakdown.
-  const plansExpandable = paymentPlans.length > 1 || Boolean(paymentPlans[0]?.details);
+  const plansExpandable = paymentPlans.length > 1 || paymentPlans.some((plan) => Boolean(plan.details) || plan.installments.length > 0);
   const beds = p ? bedroomsLabel(p) : null;
   const baths = positiveCount(p?.bathrooms);
   const whatsapp = p ? whatsappUrl(p.name) : null;
@@ -267,6 +270,16 @@ function ProjectDetail() {
                       {plan.details && (
                         <div className="mt-0.5 whitespace-pre-line text-muted-foreground">{plan.details}</div>
                       )}
+                      {plan.installments.length > 0 && (
+                        <div className="mt-2 space-y-1 border-t border-border/40 pt-2 text-xs">
+                          {plan.installments.map((installment) => (
+                            <div key={installment.id} className="flex items-center justify-between gap-3 text-muted-foreground">
+                              <span>{installment.label}</span>
+                              <span>{installment.percentage}%{installment.due_label ? ` · ${installment.due_label}` : ""}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -302,6 +315,11 @@ function ProjectDetail() {
               {safeHttpUrl(p.brochure_url) && (
                 <Button asChild variant="outline" className="glass gold-hairline text-cream">
                   <a href={safeHttpUrl(p.brochure_url) ?? undefined} target="_blank" rel="noreferrer"><Download className="mr-1 h-4 w-4" /> Brochure</a>
+                </Button>
+              )}
+              {priceRows.length > 0 && (
+                <Button type="button" onClick={() => setOfferOpen(true)} className="shimmer bg-gold text-gold-foreground hover:bg-gold/90">
+                  <FileDown className="mr-1 h-4 w-4" /> Sales offer PDF
                 </Button>
               )}
               {safeHttpUrl(p.tour_360_url) && (
@@ -349,6 +367,7 @@ function ProjectDetail() {
           </div>
         </div>
       </div>
+      <UnitOfferDialog project={p} open={offerOpen} onOpenChange={setOfferOpen} />
     </div>
   );
 }

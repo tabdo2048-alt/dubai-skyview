@@ -19,7 +19,7 @@ const PROJECT_LIST_SELECT = `
   bedrooms_min,bedrooms_max,bathrooms,completion_date,payment_plan,status,category,
   tags,description,main_image_url,video_url,tour_360_url,brochure_url,featured,
   created_at,updated_at,plot_geometry,plot_color,is_public,tenant_id,
-  developer:developers(id,name,slug),
+  developer:developers(*),
   community:communities(id,name,slug),
   unit_types:project_unit_types(*)
 `;
@@ -33,14 +33,19 @@ const PROJECT_LIST_SELECT = `
 // round trip on an un-migrated database and keeps the page working.
 const PROJECT_DETAIL_SELECT_BASE = `
   *,
-  developer:developers(id,name,slug),
+  developer:developers(*),
   community:communities(id,name,slug),
   images:project_images(*),
   unit_types:project_unit_types(*),
   amenities:project_amenities(*)
 `;
 
-const PROJECT_DETAIL_SELECT = `${PROJECT_DETAIL_SELECT_BASE},
+const PROJECT_DETAIL_SELECT_WITH_PLANS = `${PROJECT_DETAIL_SELECT_BASE},
+  payment_plans:project_payment_plans(*, installments:project_payment_plan_installments(*)),
+  fees:project_fees(*)
+`;
+
+const PROJECT_DETAIL_SELECT_PLANS = `${PROJECT_DETAIL_SELECT_BASE},
   payment_plans:project_payment_plans(*)
 `;
 
@@ -85,7 +90,7 @@ export function useProjects() {
 export async function fetchProjectBySlug(slug: string): Promise<ProjectWithRelations | null> {
   const { data, error } = await supabase
     .from("projects")
-    .select(PROJECT_DETAIL_SELECT)
+    .select(PROJECT_DETAIL_SELECT_WITH_PLANS)
     .eq("slug", slug)
     .maybeSingle();
   if (!error) return signOne(normalizeProject(data));
@@ -95,10 +100,17 @@ export async function fetchProjectBySlug(slug: string): Promise<ProjectWithRelat
   if (isMissingRelation(error)) {
     const retry = await supabase
       .from("projects")
-      .select(PROJECT_DETAIL_SELECT_BASE)
+      .select(PROJECT_DETAIL_SELECT_PLANS)
       .eq("slug", slug)
       .maybeSingle();
     if (!retry.error) return signOne(normalizeProject(retry.data));
+
+    const baseRetry = await supabase
+      .from("projects")
+      .select(PROJECT_DETAIL_SELECT_BASE)
+      .eq("slug", slug)
+      .maybeSingle();
+    if (!baseRetry.error) return signOne(normalizeProject(baseRetry.data));
   }
 
   console.warn("[Projects] full project query failed; falling back to legacy schema", error.message);
@@ -115,7 +127,7 @@ export async function fetchProjectBySlug(slug: string): Promise<ProjectWithRelat
 export async function fetchProjectById(id: string): Promise<ProjectWithRelations | null> {
   const { data, error } = await supabase
     .from("projects")
-    .select(PROJECT_DETAIL_SELECT)
+    .select(PROJECT_DETAIL_SELECT_WITH_PLANS)
     .eq("id", id)
     .maybeSingle();
   if (!error) return signOne(normalizeProject(data));
@@ -125,10 +137,17 @@ export async function fetchProjectById(id: string): Promise<ProjectWithRelations
   if (isMissingRelation(error)) {
     const retry = await supabase
       .from("projects")
-      .select(PROJECT_DETAIL_SELECT_BASE)
+      .select(PROJECT_DETAIL_SELECT_PLANS)
       .eq("id", id)
       .maybeSingle();
     if (!retry.error) return signOne(normalizeProject(retry.data));
+
+    const baseRetry = await supabase
+      .from("projects")
+      .select(PROJECT_DETAIL_SELECT_BASE)
+      .eq("id", id)
+      .maybeSingle();
+    if (!baseRetry.error) return signOne(normalizeProject(baseRetry.data));
   }
 
   throw error;
@@ -231,6 +250,7 @@ function normalizeProject(item: unknown): ProjectWithRelations | null {
     images?: ProjectWithRelations["images"];
     unit_types?: ProjectWithRelations["unit_types"];
     payment_plans?: ProjectWithRelations["payment_plans"];
+    fees?: ProjectWithRelations["fees"];
     amenities?: ProjectWithRelations["amenities"];
   };
   const coords = extractLocation(raw.location);
@@ -253,6 +273,7 @@ function normalizeProject(item: unknown): ProjectWithRelations | null {
     images: raw.images ?? [],
     unit_types: raw.unit_types ?? [],
     payment_plans: raw.payment_plans ?? [],
+    fees: raw.fees ?? [],
     amenities: raw.amenities ?? [],
   } as ProjectWithRelations;
 }

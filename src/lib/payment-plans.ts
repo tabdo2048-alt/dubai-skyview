@@ -1,9 +1,9 @@
-import type { ProjectPaymentPlanRow } from "@/lib/types";
+import type { ProjectPaymentPlanInstallmentRow, ProjectPaymentPlanRow } from "@/lib/types";
 
 export type DisplayPaymentPlan = Pick<
   ProjectPaymentPlanRow,
-  "id" | "label" | "details" | "sort_order"
->;
+  "id" | "label" | "details" | "is_default" | "sort_order"
+> & { installments: ProjectPaymentPlanInstallmentRow[] };
 
 export function sortPaymentPlans(items: DisplayPaymentPlan[]): DisplayPaymentPlan[] {
   return [...items].sort((a, b) => {
@@ -28,7 +28,7 @@ export function displayPaymentPlans(
   if (sorted.length) return sorted;
   const legacy = legacyPlan?.trim();
   if (!legacy) return [];
-  return [{ id: "legacy-payment-plan", label: legacy, details: null, sort_order: 0 }];
+  return [{ id: "legacy-payment-plan", label: legacy, details: null, is_default: true, sort_order: 0, installments: [] }];
 }
 
 /**

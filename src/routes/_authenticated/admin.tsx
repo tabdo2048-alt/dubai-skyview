@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, lazy, Suspense } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus, Trash2, Star, StarOff, Edit3, Upload, ImagePlus, X, Globe, Shield, Ban, ArrowUp, ArrowDown } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Star, StarOff, Edit3, Upload, ImagePlus, X, Globe, Shield, Ban, ArrowUp, ArrowDown, Copy, Check } from "lucide-react";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { AdminLocationPicker } from "@/components/map/AdminLocationPicker";
 import { ProjectPlotEditor } from "@/components/map/ProjectPlotEditor";
@@ -30,9 +30,10 @@ import { parseLatLngFromGoogleMapsUrl } from "@/lib/googleMapsLink";
 import { setUserBlocked } from "@/lib/user-security.functions";
 import { optimizeProjectImage, thumbnailPathFromStoragePath } from "@/lib/image-optimization";
 import { formatSubscriptionPeriod } from "@/lib/subscription-period";
-import type { ProjectUnitTypeRow, ProjectPaymentPlanRow } from "@/lib/types";
+import type { ProjectFeeRow, ProjectPaymentPlanInstallmentRow, ProjectPaymentPlanRow, ProjectUnitTypeRow } from "@/lib/types";
 import { lowestUnitPrice } from "@/lib/unit-types";
 import { legacyPaymentPlanValue } from "@/lib/payment-plans";
+import { validatePaymentPlanTotal } from "@/lib/offer-calculations";
 
 const PROJECT_MEDIA_BUCKET = "project-media";
 const MAX_PROJECT_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -45,7 +46,11 @@ const IMAGE_EXTENSIONS: Record<string, string> = {
 };
 
 const UNIT_TYPE_QUICK_PICKS = ["Studio", "1BHK", "2BHK", "3BHK", "4BHK"];
-type UnitTypeDraft = Omit<ProjectUnitTypeRow, "id" | "project_id" | "tenant_id" | "created_at" | "updated_at"> & { id?: string };
+type UnitTypeDraft = Omit<ProjectUnitTypeRow, "id" | "project_id" | "tenant_id" | "created_at" | "updated_at"> & {
+  id?: string;
+  floor_plan_src?: string | null;
+  imageFile?: File;
+};
 
 function unitTypeDraft(row: ProjectUnitTypeRow): UnitTypeDraft {
   return {
@@ -54,21 +59,56 @@ function unitTypeDraft(row: ProjectUnitTypeRow): UnitTypeDraft {
     price_aed: row.price_aed,
     area_sqm_min: row.area_sqm_min,
     area_sqm_max: row.area_sqm_max,
+    floor_plan_url: row.floor_plan_url,
+    floor_plan_src: (row as ProjectUnitTypeRow & { floor_plan_src?: string | null }).floor_plan_src ?? null,
     sort_order: row.sort_order,
   };
 }
 
-// A launch usually offers several plans side by side ("60/40 on handover",
-// "1% monthly"), so these are repeating rows like unit types rather than the
-// single free-text projects.payment_plan column they replace.
+// A plan is configured once in the project editor. Its installments, not the
+// plan's free-text description, are the source used by the offer generator.
 const PAYMENT_PLAN_QUICK_PICKS = ["60/40 Plan", "70/30 Plan", "1% Monthly", "Post-handover 5 years", "Cash"];
-type PaymentPlanDraft = Omit<ProjectPaymentPlanRow, "id" | "project_id" | "tenant_id" | "created_at" | "updated_at"> & { id?: string };
+
+type PaymentPlanInstallmentDraft = Omit<ProjectPaymentPlanInstallmentRow, "id" | "payment_plan_id" | "tenant_id" | "created_at" | "updated_at"> & { id?: string };
+
+type PaymentPlanDraft = Omit<ProjectPaymentPlanRow, "id" | "project_id" | "tenant_id" | "created_at" | "updated_at"> & {
+  id?: string;
+  installments: PaymentPlanInstallmentDraft[];
+};
+
+type FeeDraft = Omit<ProjectFeeRow, "id" | "project_id" | "tenant_id" | "created_at" | "updated_at"> & { id?: string };
+
+function installmentDraft(row: ProjectPaymentPlanInstallmentRow): PaymentPlanInstallmentDraft {
+  return {
+    id: row.id,
+    label: row.label,
+    stage: row.stage,
+    percentage: row.percentage,
+    due_type: row.due_type,
+    due_label: row.due_label,
+    months: row.months,
+    sort_order: row.sort_order,
+  };
+}
 
 function paymentPlanDraft(row: ProjectPaymentPlanRow): PaymentPlanDraft {
+  const source = row as ProjectPaymentPlanRow & { installments?: ProjectPaymentPlanInstallmentRow[] };
   return {
     id: row.id,
     label: row.label,
     details: row.details,
+    is_default: Boolean(row.is_default),
+    sort_order: row.sort_order,
+    installments: (source.installments ?? []).map(installmentDraft),
+  };
+}
+
+function feeDraft(row: ProjectFeeRow): FeeDraft {
+  return {
+    id: row.id,
+    label: row.label,
+    fee_type: row.fee_type,
+    value: row.value,
     sort_order: row.sort_order,
   };
 }
@@ -680,6 +720,7 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
   const [gallery, setGallery] = useState(existing?.images ?? []);
   const [unitTypes, setUnitTypes] = useState<UnitTypeDraft[]>(() => (existing?.unit_types ?? []).map(unitTypeDraft));
   const [paymentPlans, setPaymentPlans] = useState<PaymentPlanDraft[]>(() => (existing?.payment_plans ?? []).map(paymentPlanDraft));
+  const [fees, setFees] = useState<FeeDraft[]>(() => (existing?.fees ?? []).map(feeDraft));
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -710,6 +751,10 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
   useEffect(() => {
     setPaymentPlans((existing?.payment_plans ?? []).map(paymentPlanDraft));
   }, [existing?.id, existing?.payment_plans]);
+
+  useEffect(() => {
+    setFees((existing?.fees ?? []).map(feeDraft));
+  }, [existing?.id, existing?.fees]);
 
   const imagePreviews = useMemo(
     () =>
@@ -816,11 +861,36 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
   };
 
   const persistUnitTypes = async (projectId: string) => {
+    const floorPlanUrls = await Promise.all(unitTypes.map(async (item, index) => {
+      if (!item.imageFile) return item.floor_plan_url?.trim() || null;
+
+      const optimized = await optimizeProjectImage(item.imageFile);
+      const extension = IMAGE_EXTENSIONS[optimized.full.type] ?? (optimized.full.type === "image/jpeg" ? "jpg" : "webp");
+      const safeName = item.imageFile.name
+        .replace(/\.[^/.]+$/, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "")
+        .slice(0, 42);
+      const path = `${projectTenantId}/${projectId}/unit-plans/${Date.now()}-${index}-${safeName || "unit-layout"}.${extension}`;
+      const { error: uploadError } = await supabase.storage
+        .from(PROJECT_MEDIA_BUCKET)
+        .upload(path, optimized.full, {
+          cacheControl: "31536000",
+          contentType: optimized.full.type,
+          upsert: false,
+        });
+      if (uploadError) throw uploadError;
+      const { data } = supabase.storage.from(PROJECT_MEDIA_BUCKET).getPublicUrl(path);
+      return data.publicUrl;
+    }));
+
     const rows = unitTypes.map((item, index) => ({
       label: item.label.trim(),
       price_aed: item.price_aed,
       area_sqm_min: item.area_sqm_min,
       area_sqm_max: item.area_sqm_max,
+      floor_plan_url: floorPlanUrls[index],
       sort_order: index,
     }));
     const existingIds = new Set((existing?.unit_types ?? []).map((item) => item.id));
@@ -863,6 +933,52 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
     }
   };
 
+  // Persist the parent plan and its exact installment rows independently. This
+  // keeps existing ids stable while allowing a plan to be edited/reordered.
+  const syncInstallments = async (planId: string, plan: PaymentPlanDraft) => {
+    const oldPlan = (existing?.payment_plans ?? []).find((item) => item.id === planId);
+    const rows = plan.installments.map((item, index) => ({
+      label: item.label.trim(),
+      stage: item.stage?.trim() || null,
+      percentage: item.percentage,
+      due_type: item.due_type?.trim() || null,
+      due_label: item.due_label?.trim() || null,
+      months: item.months,
+      sort_order: index,
+    }));
+    const existingIds = new Set((oldPlan?.installments ?? []).map((item) => item.id));
+    const retainedIds = new Set(plan.installments.flatMap((item) => item.id ? [item.id] : []));
+    const removedIds = [...existingIds].filter((installmentId) => !retainedIds.has(installmentId));
+
+    if (removedIds.length) {
+      const { error } = await supabase
+        .from("project_payment_plan_installments")
+        .delete()
+        .eq("payment_plan_id", planId)
+        .in("id", removedIds);
+      if (error) throw error;
+    }
+
+    await Promise.all(plan.installments.flatMap((item, index) => item.id ? [{ item, values: rows[index] }] : []).map(async ({ item, values }) => {
+      const { error } = await supabase
+        .from("project_payment_plan_installments")
+        .update(values)
+        .eq("id", item.id!)
+        .eq("payment_plan_id", planId);
+      if (error) throw error;
+    }));
+
+    const inserts = plan.installments.flatMap((item, index) => item.id ? [] : [{
+      ...rows[index],
+      payment_plan_id: planId,
+      tenant_id: projectTenantId,
+    }]);
+    if (inserts.length) {
+      const { error } = await supabase.from("project_payment_plan_installments").insert(inserts);
+      if (error) throw error;
+    }
+  };
+
   // Same diff-and-sync shape as persistUnitTypes: delete rows the admin removed,
   // update the ones with an id, insert the new ones. tenant_id on insert is the
   // project's owning tenant (projectTenantId), never the selected org.
@@ -870,6 +986,7 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
     const rows = paymentPlans.map((item, index) => ({
       label: item.label.trim(),
       details: item.details?.trim() ? item.details.trim() : null,
+      is_default: Boolean(item.is_default),
       sort_order: index,
     }));
     const existingIds = new Set((existing?.payment_plans ?? []).map((item) => item.id));
@@ -885,24 +1002,59 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
       if (error) throw error;
     }
 
-    const updates = paymentPlans.flatMap((item, index) => item.id ? [{ id: item.id, values: rows[index] }] : []);
-    await Promise.all(updates.map(async ({ id: planId, values }) => {
+    // Clear the partial unique index before assigning the next default plan.
+    if (paymentPlans.some((item) => item.is_default)) {
       const { error } = await supabase
         .from("project_payment_plans")
-        .update(values)
-        .eq("id", planId)
+        .update({ is_default: false })
         .eq("project_id", projectId);
       if (error) throw error;
-    }));
+    }
 
-    const inserts = paymentPlans.flatMap((item, index) => item.id ? [] : [{
-      ...rows[index],
-      project_id: projectId,
-      tenant_id: projectTenantId,
-    }]);
-    if (inserts.length) {
-      const { error } = await supabase.from("project_payment_plans").insert(inserts);
+    for (const [index, item] of paymentPlans.entries()) {
+      let planId = item.id;
+      if (planId) {
+        const { error } = await supabase
+          .from("project_payment_plans")
+          .update(rows[index])
+          .eq("id", planId)
+          .eq("project_id", projectId);
+        if (error) throw error;
+      } else {
+        const { data, error } = await supabase
+          .from("project_payment_plans")
+          .insert({ ...rows[index], project_id: projectId, tenant_id: projectTenantId })
+          .select("id")
+          .single();
+        if (error) throw error;
+        planId = data.id;
+      }
+      await syncInstallments(planId, item);
+    }
+  };
+
+  const persistFees = async (projectId: string) => {
+    const rows = fees.map((item, index) => ({
+      label: item.label.trim(),
+      fee_type: item.fee_type,
+      value: item.value,
+      sort_order: index,
+    }));
+    const existingIds = new Set((existing?.fees ?? []).map((item) => item.id));
+    const retainedIds = new Set(fees.flatMap((item) => item.id ? [item.id] : []));
+    const removedIds = [...existingIds].filter((feeId) => !retainedIds.has(feeId));
+    if (removedIds.length) {
+      const { error } = await supabase.from("project_fees").delete().eq("project_id", projectId).in("id", removedIds);
       if (error) throw error;
+    }
+    for (const [index, item] of fees.entries()) {
+      if (item.id) {
+        const { error } = await supabase.from("project_fees").update(rows[index]).eq("id", item.id).eq("project_id", projectId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("project_fees").insert({ ...rows[index], project_id: projectId, tenant_id: projectTenantId });
+        if (error) throw error;
+      }
     }
   };
 
@@ -933,6 +1085,46 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
     for (const [index, item] of paymentPlans.entries()) {
       if (!item.label.trim()) {
         toast.error(`Payment plan ${index + 1}: name is required`);
+        return;
+      }
+      if (!item.installments.length) {
+        toast.error(`Payment plan ${index + 1}: add at least one installment`);
+        return;
+      }
+      const installmentValidation = validatePaymentPlanTotal(item.installments);
+      if (!installmentValidation.valid) {
+        const difference = Math.abs(installmentValidation.difference);
+        toast.error(
+          `Payment plan ${index + 1}: total must equal 100% (${difference.toLocaleString()}% ${installmentValidation.difference > 0 ? "remaining" : "over"})`,
+        );
+        return;
+      }
+      for (const [installmentIndex, installment] of item.installments.entries()) {
+        if (!installment.label.trim()) {
+          toast.error(`Payment plan ${index + 1}, installment ${installmentIndex + 1}: label is required`);
+          return;
+        }
+        if (!Number.isFinite(installment.percentage) || installment.percentage < 0) {
+          toast.error(`Payment plan ${index + 1}, installment ${installmentIndex + 1}: percentage is invalid`);
+          return;
+        }
+        if (installment.months != null && (!Number.isInteger(installment.months) || installment.months <= 0)) {
+          toast.error(`Payment plan ${index + 1}, installment ${installmentIndex + 1}: months must be positive`);
+          return;
+        }
+      }
+    }
+    for (const [index, fee] of fees.entries()) {
+      if (!fee.label.trim()) {
+        toast.error(`Fee ${index + 1}: label is required`);
+        return;
+      }
+      if (!Number.isFinite(fee.value) || fee.value < 0) {
+        toast.error(`Fee ${index + 1}: value must be zero or positive`);
+        return;
+      }
+      if (fee.fee_type !== "percentage" && fee.fee_type !== "fixed") {
+        toast.error(`Fee ${index + 1}: choose percentage or fixed amount`);
         return;
       }
     }
@@ -982,6 +1174,7 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
 
       await persistUnitTypes(projectId);
       await persistPaymentPlans(projectId);
+      await persistFees(projectId);
 
       toast.success(isEditing ? "Project updated" : "Project created");
       onClose();
@@ -1115,7 +1308,7 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
             className="glass gold-hairline text-cream"
             onClick={() => setUnitTypes((current) => [
               ...current,
-              { label: "", price_aed: null, area_sqm_min: null, area_sqm_max: null, sort_order: current.length },
+              { label: "", price_aed: null, area_sqm_min: null, area_sqm_max: null, floor_plan_url: null, sort_order: current.length },
             ])}
           >
             <Plus className="mr-1 h-4 w-4" /> Add unit type
@@ -1187,6 +1380,40 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </div>
+                <div className="space-y-1 sm:col-span-5">
+                  <span className="block text-xs text-muted-foreground">Unit layout / floor plan image</span>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Input
+                      type="url"
+                      value={item.floor_plan_url ?? ""}
+                      placeholder="Paste image URL or upload a file"
+                      onChange={(e) => setUnitTypes((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, floor_plan_url: e.target.value || null, imageFile: undefined } : row))}
+                    />
+                    <label className="flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md border border-gold/30 px-3 py-2 text-xs text-cream hover:border-gold/70 hover:bg-gold/5">
+                      <Upload className="h-3.5 w-3.5 text-gold" /> Upload layout
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/avif"
+                        className="sr-only"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          e.target.value = "";
+                          if (!file) return;
+                          const invalid = imageFileError(file);
+                          if (invalid) return toast.error(invalid);
+                          void hasAllowedImageSignature(file).then((allowed) => {
+                            if (!allowed) return toast.error(`${file.name}: file contents do not match its image type`);
+                            setUnitTypes((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, imageFile: file } : row));
+                          });
+                        }}
+                      />
+                    </label>
+                  </div>
+                  <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                    {mediaSrc(item.floor_plan_src, item.floor_plan_url) && <img src={mediaSrc(item.floor_plan_src, item.floor_plan_url)} alt="" className="h-9 w-14 rounded object-cover" />}
+                    <span>{item.imageFile?.name ?? (item.floor_plan_url ? "Saved layout image" : "Optional — shown in the sales offer PDF")}</span>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
@@ -1198,8 +1425,8 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
       <div className="space-y-3 rounded-2xl border border-gold/20 bg-black/10 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <Label className="text-xs uppercase tracking-widest text-muted-foreground">Payment plans</Label>
-            <p className="mt-1 text-xs text-muted-foreground">Add every plan on offer. Each shows its name; the optional breakdown appears when a buyer expands it on the project page.</p>
+            <Label className="text-xs uppercase tracking-widest text-muted-foreground">Payment plans &amp; installments</Label>
+            <p className="mt-1 text-xs text-muted-foreground">Configure each installment once. Sales offers read these saved rows automatically.</p>
           </div>
           <Button
             type="button"
@@ -1208,7 +1435,7 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
             className="glass gold-hairline text-cream"
             onClick={() => setPaymentPlans((current) => [
               ...current,
-              { label: "", details: null, sort_order: current.length },
+              { label: "", details: null, is_default: current.length === 0, sort_order: current.length, installments: [] },
             ])}
           >
             <Plus className="mr-1 h-4 w-4" /> Add payment plan
@@ -1216,55 +1443,146 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
         </div>
         {paymentPlans.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border/60 p-3 text-sm text-muted-foreground">
-            No payment plans yet. Existing projects keep their previous single plan until you add rows here.
+            No payment plans yet. The offer button will stay unavailable until a plan has saved installments.
           </div>
         ) : (
-          <div className="space-y-2">
-            {paymentPlans.map((item, index) => (
-              <div key={item.id ?? `new-plan-${index}`} className="grid gap-2 rounded-xl border border-border/60 bg-black/20 p-3 sm:grid-cols-[1fr_2fr_auto] sm:items-end">
-                <label className="space-y-1 text-xs text-muted-foreground">
-                  <span>Plan name</span>
-                  <Input
-                    list="payment-plan-quick-picks"
-                    value={item.label}
-                    placeholder="60/40 Plan"
-                    onChange={(e) => setPaymentPlans((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, label: e.target.value } : row))}
-                  />
-                </label>
-                <label className="space-y-1 text-xs text-muted-foreground">
-                  <span>Details (optional)</span>
-                  <Input
-                    value={item.details ?? ""}
-                    placeholder="10% booking · 50% during construction · 40% on handover"
-                    onChange={(e) => setPaymentPlans((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, details: e.target.value === "" ? null : e.target.value } : row))}
-                  />
-                </label>
-                <div className="flex items-center justify-end gap-1">
-                  <Button type="button" size="icon" variant="ghost" disabled={index === 0} onClick={() => setPaymentPlans((current) => {
-                    const next = [...current];
-                    [next[index - 1], next[index]] = [next[index], next[index - 1]];
-                    return next;
-                  })} aria-label="Move payment plan up">
-                    <ArrowUp className="h-4 w-4" />
-                  </Button>
-                  <Button type="button" size="icon" variant="ghost" disabled={index === paymentPlans.length - 1} onClick={() => setPaymentPlans((current) => {
-                    const next = [...current];
-                    [next[index], next[index + 1]] = [next[index + 1], next[index]];
-                    return next;
-                  })} aria-label="Move payment plan down">
-                    <ArrowDown className="h-4 w-4" />
-                  </Button>
-                  <Button type="button" size="icon" variant="ghost" onClick={() => setPaymentPlans((current) => current.filter((_, rowIndex) => rowIndex !== index))} aria-label="Remove payment plan">
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
+          <div className="space-y-3">
+            {paymentPlans.map((item, index) => {
+              const total = validatePaymentPlanTotal(item.installments);
+              return (
+                <div key={item.id ?? `new-plan-${index}`} className="space-y-3 rounded-xl border border-border/60 bg-black/20 p-3">
+                  <div className="grid gap-2 sm:grid-cols-[1fr_1.4fr_auto] sm:items-end">
+                    <label className="space-y-1 text-xs text-muted-foreground">
+                      <span>Plan name</span>
+                      <Input
+                        list="payment-plan-quick-picks"
+                        value={item.label}
+                        placeholder="e.g. Flexible plan"
+                        onChange={(e) => setPaymentPlans((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, label: e.target.value } : row))}
+                      />
+                    </label>
+                    <label className="space-y-1 text-xs text-muted-foreground">
+                      <span>Notes (optional, not used for calculations)</span>
+                      <Input
+                        value={item.details ?? ""}
+                        placeholder="Internal or public notes"
+                        onChange={(e) => setPaymentPlans((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, details: e.target.value === "" ? null : e.target.value } : row))}
+                      />
+                    </label>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={item.is_default ? "default" : "ghost"}
+                        className={item.is_default ? "h-9 bg-gold text-gold-foreground" : "h-9 text-muted-foreground"}
+                        onClick={() => setPaymentPlans((current) => current.map((row, rowIndex) => ({ ...row, is_default: rowIndex === index })))}
+                        title="Set default plan"
+                      >
+                        <Check className="mr-1 h-4 w-4" /> Default
+                      </Button>
+                      <Button type="button" size="icon" variant="ghost" onClick={() => setPaymentPlans((current) => [
+                        ...current,
+                        {
+                          ...item,
+                          id: undefined,
+                          label: item.label ? `${item.label} Copy` : "",
+                          is_default: false,
+                          sort_order: current.length,
+                          installments: item.installments.map((installment, installmentIndex) => ({ ...installment, id: undefined, sort_order: installmentIndex })),
+                        },
+                      ])} aria-label="Duplicate payment plan" title="Duplicate payment plan">
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                      <Button type="button" size="icon" variant="ghost" disabled={index === 0} onClick={() => setPaymentPlans((current) => {
+                        const next = [...current];
+                        [next[index - 1], next[index]] = [next[index], next[index - 1]];
+                        return next;
+                      })} aria-label="Move payment plan up">
+                        <ArrowUp className="h-4 w-4" />
+                      </Button>
+                      <Button type="button" size="icon" variant="ghost" disabled={index === paymentPlans.length - 1} onClick={() => setPaymentPlans((current) => {
+                        const next = [...current];
+                        [next[index], next[index + 1]] = [next[index + 1], next[index]];
+                        return next;
+                      })} aria-label="Move payment plan down">
+                        <ArrowDown className="h-4 w-4" />
+                      </Button>
+                      <Button type="button" size="icon" variant="ghost" onClick={() => setPaymentPlans((current) => current.filter((_, rowIndex) => rowIndex !== index))} aria-label="Remove payment plan">
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-gold/15 bg-black/15 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-xs font-medium uppercase tracking-widest text-muted-foreground">Installments</span>
+                      <div className={`text-xs font-medium ${total.valid ? "text-emerald-400" : "text-amber-300"}`}>
+                        Total: {total.total.toLocaleString()}%{total.valid ? "" : ` · ${Math.abs(total.difference).toLocaleString()}% ${total.difference > 0 ? "remaining" : "over"}`}
+                      </div>
+                      <Button type="button" size="sm" variant="ghost" className="h-8 text-cream" onClick={() => setPaymentPlans((current) => current.map((row, rowIndex) => rowIndex === index ? {
+                        ...row,
+                        installments: [...row.installments, { label: "", stage: null, percentage: 0, due_type: null, due_label: null, months: null, sort_order: row.installments.length }],
+                      } : row))}>
+                        <Plus className="mr-1 h-3.5 w-3.5" /> Add installment
+                      </Button>
+                    </div>
+                    {item.installments.length === 0 ? (
+                      <div className="mt-2 rounded-lg border border-dashed border-border/60 p-3 text-xs text-muted-foreground">No installment rows yet. Add the stages that actually belong to this plan.</div>
+                    ) : (
+                      <div className="mt-2 space-y-2">
+                        {item.installments.map((installment, installmentIndex) => (
+                          <div key={installment.id ?? `new-installment-${installmentIndex}`} className="grid gap-2 rounded-lg border border-border/50 p-2 sm:grid-cols-[1.2fr_1fr_0.65fr_1fr_0.65fr_auto] sm:items-end">
+                            <label className="space-y-1 text-xs text-muted-foreground"><span>Display label</span><Input value={installment.label} placeholder="Exact stage label" onChange={(e) => setPaymentPlans((current) => current.map((row, rowIndex) => rowIndex !== index ? row : { ...row, installments: row.installments.map((child, childIndex) => childIndex === installmentIndex ? { ...child, label: e.target.value } : child) }))} /></label>
+                            <label className="space-y-1 text-xs text-muted-foreground"><span>Classification (optional)</span><Input value={installment.stage ?? ""} placeholder="Optional" onChange={(e) => setPaymentPlans((current) => current.map((row, rowIndex) => rowIndex !== index ? row : { ...row, installments: row.installments.map((child, childIndex) => childIndex === installmentIndex ? { ...child, stage: e.target.value || null } : child) }))} /></label>
+                            <label className="space-y-1 text-xs text-muted-foreground"><span>Percent</span><Input type="number" min="0" max="100" step="0.01" value={installment.percentage} onChange={(e) => setPaymentPlans((current) => current.map((row, rowIndex) => rowIndex !== index ? row : { ...row, installments: row.installments.map((child, childIndex) => childIndex === installmentIndex ? { ...child, percentage: Number(e.target.value) } : child) }))} /></label>
+                            <label className="space-y-1 text-xs text-muted-foreground"><span>Due / period</span><Input value={installment.due_label ?? ""} placeholder="Exact due label" onChange={(e) => setPaymentPlans((current) => current.map((row, rowIndex) => rowIndex !== index ? row : { ...row, installments: row.installments.map((child, childIndex) => childIndex === installmentIndex ? { ...child, due_label: e.target.value || null } : child) }))} /></label>
+                            <label className="space-y-1 text-xs text-muted-foreground"><span>Months</span><Input type="number" min="1" step="1" value={installment.months ?? ""} placeholder="Optional" onChange={(e) => setPaymentPlans((current) => current.map((row, rowIndex) => rowIndex !== index ? row : { ...row, installments: row.installments.map((child, childIndex) => childIndex === installmentIndex ? { ...child, months: e.target.value === "" ? null : Number(e.target.value) } : child) }))} /></label>
+                            <div className="flex items-center justify-end gap-1">
+                              <Button type="button" size="icon" variant="ghost" disabled={installmentIndex === 0} onClick={() => setPaymentPlans((current) => current.map((row, rowIndex) => {
+                                if (rowIndex !== index) return row;
+                                const next = [...row.installments];
+                                [next[installmentIndex - 1], next[installmentIndex]] = [next[installmentIndex], next[installmentIndex - 1]];
+                                return { ...row, installments: next };
+                              }))} aria-label="Move installment up"><ArrowUp className="h-4 w-4" /></Button>
+                              <Button type="button" size="icon" variant="ghost" disabled={installmentIndex === item.installments.length - 1} onClick={() => setPaymentPlans((current) => current.map((row, rowIndex) => {
+                                if (rowIndex !== index) return row;
+                                const next = [...row.installments];
+                                [next[installmentIndex], next[installmentIndex + 1]] = [next[installmentIndex + 1], next[installmentIndex]];
+                                return { ...row, installments: next };
+                              }))} aria-label="Move installment down"><ArrowDown className="h-4 w-4" /></Button>
+                              <Button type="button" size="icon" variant="ghost" onClick={() => setPaymentPlans((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, installments: row.installments.filter((_, childIndex) => childIndex !== installmentIndex) } : row))} aria-label="Remove installment"><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
         <datalist id="payment-plan-quick-picks">
           {PAYMENT_PLAN_QUICK_PICKS.map((label) => <option key={label} value={label} />)}
         </datalist>
+      </div>
+      <div className="space-y-3 rounded-2xl border border-gold/20 bg-black/10 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <Label className="text-xs uppercase tracking-widest text-muted-foreground">Project fees</Label>
+            <p className="mt-1 text-xs text-muted-foreground">Optional fees are included only when configured; no fee rows are assumed.</p>
+          </div>
+          <Button type="button" size="sm" variant="outline" className="glass gold-hairline text-cream" onClick={() => setFees((current) => [...current, { label: "", fee_type: "fixed", value: 0, sort_order: current.length }])}>
+            <Plus className="mr-1 h-4 w-4" /> Add fee
+          </Button>
+        </div>
+        {fees.map((fee, index) => (
+          <div key={fee.id ?? `new-fee-${index}`} className="grid gap-2 rounded-xl border border-border/60 bg-black/20 p-3 sm:grid-cols-[1.5fr_1fr_1fr_auto] sm:items-end">
+            <label className="space-y-1 text-xs text-muted-foreground"><span>Fee name</span><Input value={fee.label} placeholder="Registration fee" onChange={(e) => setFees((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, label: e.target.value } : row))} /></label>
+            <label className="space-y-1 text-xs text-muted-foreground"><span>Type</span><select value={fee.fee_type} onChange={(e) => setFees((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, fee_type: e.target.value } : row))} className="glass gold-hairline w-full rounded-md p-2 text-cream"><option value="fixed">Fixed amount</option><option value="percentage">Percentage</option></select></label>
+            <label className="space-y-1 text-xs text-muted-foreground"><span>{fee.fee_type === "percentage" ? "Percent" : "Amount (AED)"}</span><Input type="number" min="0" step="0.01" value={fee.value} onChange={(e) => setFees((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, value: Number(e.target.value) } : row))} /></label>
+            <div className="flex items-center justify-end gap-1"><Button type="button" size="icon" variant="ghost" disabled={index === 0} onClick={() => setFees((current) => { const next = [...current]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; })} aria-label="Move fee up"><ArrowUp className="h-4 w-4" /></Button><Button type="button" size="icon" variant="ghost" disabled={index === fees.length - 1} onClick={() => setFees((current) => { const next = [...current]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; return next; })} aria-label="Move fee down"><ArrowDown className="h-4 w-4" /></Button><Button type="button" size="icon" variant="ghost" onClick={() => setFees((current) => current.filter((_, rowIndex) => rowIndex !== index))} aria-label="Remove fee"><Trash2 className="h-4 w-4 text-destructive" /></Button></div>
+          </div>
+        ))}
       </div>
       <div>
         <Label className="text-xs uppercase tracking-widest text-muted-foreground">Project images from device</Label>

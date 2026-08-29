@@ -6,14 +6,17 @@ export type CommunityRow = Database["public"]["Tables"]["communities"]["Row"];
 export type ProjectImageRow = Database["public"]["Tables"]["project_images"]["Row"];
 export type ProjectUnitTypeRow = Database["public"]["Tables"]["project_unit_types"]["Row"];
 export type ProjectPaymentPlanRow = Database["public"]["Tables"]["project_payment_plans"]["Row"];
+export type ProjectPaymentPlanInstallmentRow = Database["public"]["Tables"]["project_payment_plan_installments"]["Row"];
+export type ProjectFeeRow = Database["public"]["Tables"]["project_fees"]["Row"];
 export type ProjectAmenityRow = Database["public"]["Tables"]["project_amenities"]["Row"];
 
 export type ProjectWithRelations = ProjectRow & {
-  developer: Pick<DeveloperRow, "id" | "name" | "slug"> | null;
+  developer: Pick<DeveloperRow, "id" | "name" | "slug" | "logo_url" | "website"> | null;
   community: Pick<CommunityRow, "id" | "name" | "slug"> | null;
   images: Array<ProjectImageRow & { src?: string; thumb_src?: string }>;
-  unit_types: ProjectUnitTypeRow[];
-  payment_plans: ProjectPaymentPlanRow[];
+  unit_types: Array<ProjectUnitTypeRow & { floor_plan_src?: string | null }>;
+  payment_plans: ProjectPaymentPlanWithInstallments[];
+  fees: ProjectFeeRow[];
   amenities: ProjectAmenityRow[];
   // Renderable signed URL for the private media bucket, added on read by
   // withSignedProjectMedia. `main_image_url` stays the canonical stored value —
@@ -22,6 +25,10 @@ export type ProjectWithRelations = ProjectRow & {
   // Small generated object used by map/list cards. Legacy images fall back to
   // the normal signed URL when no thumbnail object exists.
   main_image_thumb_src?: string | null;
+};
+
+export type ProjectPaymentPlanWithInstallments = ProjectPaymentPlanRow & {
+  installments: ProjectPaymentPlanInstallmentRow[];
 };
 
 export type ProjectFilters = {

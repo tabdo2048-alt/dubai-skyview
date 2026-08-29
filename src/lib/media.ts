@@ -140,7 +140,11 @@ async function resolveStorageUrls(
  * Render with `mediaSrc(...)`; persist and delete using the original field.
  */
 export async function withSignedProjectMedia<
-  T extends { main_image_url?: string | null; images?: Array<{ url: string }> | null },
+  T extends {
+    main_image_url?: string | null;
+    images?: Array<{ url: string }> | null;
+    unit_types?: Array<{ floor_plan_url?: string | null }> | null;
+  },
 >(
   projects: T[],
   options: { includeGallery?: boolean; thumbnailsOnly?: boolean } = {},
@@ -151,11 +155,16 @@ export async function withSignedProjectMedia<
   const galleryValues: Array<string | null | undefined> = includeGallery
     ? projects.flatMap((project) => (project.images ?? []).map((image) => image.url))
     : [];
+  const unitPlanValues: Array<string | null | undefined> = projects.flatMap((project) =>
+    (project.unit_types ?? []).map((unit) => unit.floor_plan_url),
+  );
   const fullValues = thumbnailsOnly ? [] : [...mainValues, ...galleryValues];
   const thumbValues = thumbnailsOnly ? mainValues : [...mainValues, ...galleryValues];
 
   const [resolved, thumbnails] = await Promise.all([
-    fullValues.some(Boolean) ? resolveMediaUrls(fullValues) : Promise.resolve(new Map<string, string>()),
+    [...fullValues, ...unitPlanValues].some(Boolean)
+      ? resolveMediaUrls([...fullValues, ...unitPlanValues])
+      : Promise.resolve(new Map<string, string>()),
     thumbValues.some(Boolean) ? resolveMediaThumbnailUrls(thumbValues) : Promise.resolve(new Map<string, string>()),
   ]);
   const pick = (map: Map<string, string>, value: string | null | undefined) =>
@@ -172,6 +181,10 @@ export async function withSignedProjectMedia<
           thumb_src: pick(thumbnails, img.url) ?? img.url,
         }))
       : [],
+    unit_types: (p.unit_types ?? []).map((unit) => ({
+      ...unit,
+      floor_plan_src: pick(resolved, unit.floor_plan_url),
+    })),
   })) as Array<T & SignedMedia>;
 }
 

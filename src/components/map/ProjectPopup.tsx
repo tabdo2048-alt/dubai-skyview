@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, MapPin, Bed, Calendar, Wallet, Building2, ArrowRight, MessageCircle, CalendarCheck, Ruler } from "lucide-react";
+import { X, MapPin, Bed, Calendar, Wallet, Building2, ArrowRight, MessageCircle, CalendarCheck, Ruler, FileDown } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import type { ProjectWithRelations } from "@/lib/types";
 import { formatAed, bedroomsLabel } from "@/lib/dubai";
@@ -8,7 +8,9 @@ import { whatsappUrl, viewingMailto } from "@/lib/contact";
 import { track } from "@/lib/analytics";
 import { mediaSrc } from "@/lib/media";
 import { areaLabel, displayUnitTypes, pricedUnitTypes } from "@/lib/unit-types";
+import { displayPaymentPlans, paymentPlanSummary } from "@/lib/payment-plans";
 import { Button } from "@/components/ui/button";
+import { UnitOfferDialog } from "@/components/offers/UnitOfferDialog";
 
 export function ProjectPopup({ project, onClose }: { project: ProjectWithRelations | null; onClose: () => void }) {
   // Hero + gallery images (hero first, deduped) for the click-to-swap viewer.
@@ -32,9 +34,11 @@ export function ProjectPopup({ project, onClose }: { project: ProjectWithRelatio
   const unitTypes = useMemo(() => displayUnitTypes(project?.unit_types, project?.starting_price_aed), [project]);
   const priceRows = pricedUnitTypes(unitTypes);
   const areaRows = unitTypes.filter((item) => areaLabel(item));
+  const paymentPlans = useMemo(() => displayPaymentPlans(project?.payment_plans, project?.payment_plan), [project]);
   const bedrooms = project ? bedroomsLabel(project) : null;
   const whatsapp = project ? whatsappUrl(project.name) : null;
   const mailto = project ? viewingMailto(project.name) : null;
+  const [offerOpen, setOfferOpen] = useState(false);
   // Reset the hero when a different project is selected.
   useEffect(() => setActiveImage(images[0]?.full ?? null), [project?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   // Close on Escape.
@@ -163,7 +167,7 @@ export function ProjectPopup({ project, onClose }: { project: ProjectWithRelatio
                 <div className="grid grid-cols-[repeat(auto-fit,minmax(0,1fr))] gap-2 text-xs">
                   {bedrooms && <Stat icon={<Bed className="h-3.5 w-3.5" />} label="Bedrooms" value={bedrooms} />}
                   <Stat icon={<Calendar className="h-3.5 w-3.5" />} label="Handover" value={project.completion_date ?? "TBA"} />
-                  <Stat icon={<Wallet className="h-3.5 w-3.5" />} label="Payment" value={project.payment_plan ?? "Flexible"} />
+                  <Stat icon={<Wallet className="h-3.5 w-3.5" />} label="Payment" value={paymentPlanSummary(paymentPlans)} />
                 </div>
 
                 {/* Always expanded — the size is a headline number buyers compare
@@ -200,6 +204,11 @@ export function ProjectPopup({ project, onClose }: { project: ProjectWithRelatio
                       View details <ArrowRight className="ml-1 h-3.5 w-3.5" />
                     </Link>
                   </Button>
+                  {priceRows.length > 0 && (
+                    <Button type="button" size="sm" variant="outline" className="glass gold-hairline text-cream" onClick={() => setOfferOpen(true)}>
+                      <FileDown className="mr-1 h-3.5 w-3.5" /> Sales offer
+                    </Button>
+                  )}
                   {/* Both CTAs render only when configured, and both now report the
                       conversion — these two were the only lead buttons in the app
                       firing no analytics at all, so demand from the map popup was
@@ -227,6 +236,7 @@ export function ProjectPopup({ project, onClose }: { project: ProjectWithRelatio
           </div>
         </>
       )}
+      {project && <UnitOfferDialog project={project} open={offerOpen} onOpenChange={setOfferOpen} />}
     </AnimatePresence>
   );
 }

@@ -182,6 +182,7 @@ export type Database = {
           created_at: string
           details: string | null
           id: string
+          is_default: boolean
           label: string
           project_id: string
           sort_order: number
@@ -192,6 +193,7 @@ export type Database = {
           created_at?: string
           details?: string | null
           id?: string
+          is_default?: boolean
           label: string
           project_id: string
           sort_order?: number
@@ -202,6 +204,7 @@ export type Database = {
           created_at?: string
           details?: string | null
           id?: string
+          is_default?: boolean
           label?: string
           project_id?: string
           sort_order?: number
@@ -225,11 +228,123 @@ export type Database = {
           },
         ]
       }
+      project_payment_plan_installments: {
+        Row: {
+          created_at: string
+          due_label: string | null
+          due_type: string | null
+          id: string
+          label: string
+          months: number | null
+          payment_plan_id: string
+          percentage: number
+          sort_order: number
+          stage: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          due_label?: string | null
+          due_type?: string | null
+          id?: string
+          label: string
+          months?: number | null
+          payment_plan_id: string
+          percentage: number
+          sort_order?: number
+          stage?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          due_label?: string | null
+          due_type?: string | null
+          id?: string
+          label?: string
+          months?: number | null
+          payment_plan_id?: string
+          percentage?: number
+          sort_order?: number
+          stage?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_payment_plan_installments_payment_plan_id_fkey"
+            columns: ["payment_plan_id"]
+            isOneToOne: false
+            referencedRelation: "project_payment_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_payment_plan_installments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_fees: {
+        Row: {
+          created_at: string
+          fee_type: string
+          id: string
+          label: string
+          project_id: string
+          sort_order: number
+          tenant_id: string
+          updated_at: string
+          value: number
+        }
+        Insert: {
+          created_at?: string
+          fee_type: string
+          id?: string
+          label: string
+          project_id: string
+          sort_order?: number
+          tenant_id: string
+          updated_at?: string
+          value: number
+        }
+        Update: {
+          created_at?: string
+          fee_type?: string
+          id?: string
+          label?: string
+          project_id?: string
+          sort_order?: number
+          tenant_id?: string
+          updated_at?: string
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_fees_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_fees_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_unit_types: {
         Row: {
           area_sqm_max: number | null
           area_sqm_min: number | null
           created_at: string
+          floor_plan_url: string | null
           id: string
           label: string
           price_aed: number | null
@@ -242,6 +357,7 @@ export type Database = {
           area_sqm_max?: number | null
           area_sqm_min?: number | null
           created_at?: string
+          floor_plan_url?: string | null
           id?: string
           label: string
           price_aed?: number | null
@@ -254,6 +370,7 @@ export type Database = {
           area_sqm_max?: number | null
           area_sqm_min?: number | null
           created_at?: string
+          floor_plan_url?: string | null
           id?: string
           label?: string
           price_aed?: number | null
