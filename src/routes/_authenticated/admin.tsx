@@ -30,10 +30,11 @@ import { parseLatLngFromGoogleMapsUrl } from "@/lib/googleMapsLink";
 import { setUserBlocked } from "@/lib/user-security.functions";
 import { optimizeProjectImage, thumbnailPathFromStoragePath } from "@/lib/image-optimization";
 import { formatSubscriptionPeriod } from "@/lib/subscription-period";
-import type { ProjectFeeRow, ProjectPaymentPlanInstallmentRow, ProjectPaymentPlanRow, ProjectUnitTypeRow } from "@/lib/types";
+import type { ProjectFeeRow, ProjectPaymentPlanInstallmentRow, ProjectPaymentPlanRow, ProjectUnitTypeImageRow, ProjectUnitTypeRow } from "@/lib/types";
 import { lowestUnitPrice } from "@/lib/unit-types";
 import { legacyPaymentPlanValue } from "@/lib/payment-plans";
 import { validatePaymentPlanTotal } from "@/lib/offer-calculations";
+import { DEFAULT_OFFER_ACCENT_COLOR, DEFAULT_OFFER_PRIMARY_COLOR } from "@/lib/offer-branding";
 
 const PROJECT_MEDIA_BUCKET = "project-media";
 const MAX_PROJECT_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -49,10 +50,16 @@ const UNIT_TYPE_QUICK_PICKS = ["Studio", "1BHK", "2BHK", "3BHK", "4BHK"];
 type UnitTypeDraft = Omit<ProjectUnitTypeRow, "id" | "project_id" | "tenant_id" | "created_at" | "updated_at"> & {
   id?: string;
   floor_plan_src?: string | null;
-  imageFile?: File;
+  images: Array<ProjectUnitTypeImageRow & { src?: string; thumb_src?: string }>;
+  imageFiles: Array<{ key: string; file: File }>;
+  floorPlanImageKey: string | null;
 };
 
 function unitTypeDraft(row: ProjectUnitTypeRow): UnitTypeDraft {
+  const source = row as ProjectUnitTypeRow & {
+    images?: Array<ProjectUnitTypeImageRow & { src?: string; thumb_src?: string }>;
+  };
+  const images = source.images ?? [];
   return {
     id: row.id,
     label: row.label,
@@ -62,6 +69,9 @@ function unitTypeDraft(row: ProjectUnitTypeRow): UnitTypeDraft {
     floor_plan_url: row.floor_plan_url,
     floor_plan_src: (row as ProjectUnitTypeRow & { floor_plan_src?: string | null }).floor_plan_src ?? null,
     sort_order: row.sort_order,
+    images,
+    imageFiles: [],
+    floorPlanImageKey: images.find((image) => image.url === row.floor_plan_url)?.id ?? null,
   };
 }
 
@@ -709,6 +719,9 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
     category: existing?.category ?? "apartment",
     description: existing?.description ?? "",
     main_image_url: existing?.main_image_url ?? "",
+    offer_primary_color: existing?.offer_primary_color ?? "",
+    offer_accent_color: existing?.offer_accent_color ?? "",
+    offer_header_image_url: existing?.offer_header_image_url ?? "",
     brochure_url: existing?.brochure_url ?? "",
     video_url: existing?.video_url ?? "",
     tour_360_url: existing?.tour_360_url ?? "",
@@ -743,6 +756,16 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
   useEffect(() => {
     setGallery(existing?.images ?? []);
   }, [existing?.id, existing?.images]);
+
+  useEffect(() => {
+    if (!existing) return;
+    setF((current) => ({
+      ...current,
+      offer_primary_color: existing.offer_primary_color ?? "",
+      offer_accent_color: existing.offer_accent_color ?? "",
+      offer_header_image_url: existing.offer_header_image_url ?? "",
+    }));
+  }, [existing?.id, existing?.offer_primary_color, existing?.offer_accent_color, existing?.offer_header_image_url]);
 
   useEffect(() => {
     setUnitTypes((existing?.unit_types ?? []).map(unitTypeDraft));
@@ -857,40 +880,20 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
       setF((current) => ({ ...current, main_image_url: nextMain }));
       if (id) await supabase.from("projects").update({ main_image_url: nextMain || null }).eq("id", id);
     }
+    if (f.offer_header_image_url === url) {
+      setF((current) => ({ ...current, offer_header_image_url: "" }));
+      if (id) await supabase.from("projects").update({ offer_header_image_url: null }).eq("id", id);
+    }
     toast.success("Image removed");
   };
 
   const persistUnitTypes = async (projectId: string) => {
-    const floorPlanUrls = await Promise.all(unitTypes.map(async (item, index) => {
-      if (!item.imageFile) return item.floor_plan_url?.trim() || null;
-
-      const optimized = await optimizeProjectImage(item.imageFile);
-      const extension = IMAGE_EXTENSIONS[optimized.full.type] ?? (optimized.full.type === "image/jpeg" ? "jpg" : "webp");
-      const safeName = item.imageFile.name
-        .replace(/\.[^/.]+$/, "")
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "")
-        .slice(0, 42);
-      const path = `${projectTenantId}/${projectId}/unit-plans/${Date.now()}-${index}-${safeName || "unit-layout"}.${extension}`;
-      const { error: uploadError } = await supabase.storage
-        .from(PROJECT_MEDIA_BUCKET)
-        .upload(path, optimized.full, {
-          cacheControl: "31536000",
-          contentType: optimized.full.type,
-          upsert: false,
-        });
-      if (uploadError) throw uploadError;
-      const { data } = supabase.storage.from(PROJECT_MEDIA_BUCKET).getPublicUrl(path);
-      return data.publicUrl;
-    }));
-
     const rows = unitTypes.map((item, index) => ({
       label: item.label.trim(),
       price_aed: item.price_aed,
       area_sqm_min: item.area_sqm_min,
       area_sqm_max: item.area_sqm_max,
-      floor_plan_url: floorPlanUrls[index],
+      floor_plan_url: item.floor_plan_url?.trim() || null,
       sort_order: index,
     }));
     const existingIds = new Set((existing?.unit_types ?? []).map((item) => item.id));
@@ -906,30 +909,131 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
       if (error) throw error;
     }
 
-    const updates = unitTypes.flatMap((item, index) => {
-      if (!item.id) return [];
-      return [{
-        id: item.id,
-        values: rows[index],
-      }];
-    });
-    await Promise.all(updates.map(async ({ id: unitTypeId, values }) => {
-      const { error } = await supabase
+    const unitTypeIds: string[] = [];
+    for (const [index, item] of unitTypes.entries()) {
+      if (item.id) {
+        const { error } = await supabase
+          .from("project_unit_types")
+          .update(rows[index])
+          .eq("id", item.id)
+          .eq("project_id", projectId);
+        if (error) throw error;
+        unitTypeIds[index] = item.id;
+      } else {
+        const { data, error } = await supabase
+          .from("project_unit_types")
+          .insert({ ...rows[index], project_id: projectId, tenant_id: projectTenantId })
+          .select("id")
+          .single();
+        if (error) throw error;
+        unitTypeIds[index] = data.id;
+      }
+    }
+
+    // Upload and synchronize photos after the unit row exists, so every photo
+    // is tied to the exact unit type and can be opened on its detail page.
+    for (const [index, item] of unitTypes.entries()) {
+      const unitTypeId = unitTypeIds[index];
+      const oldItem = (existing?.unit_types ?? []).find((unit) => unit.id === item.id) as
+        | (ProjectUnitTypeRow & { images?: ProjectUnitTypeImageRow[] })
+        | undefined;
+      const oldImages = oldItem?.images ?? [];
+      const retainedIds = new Set(item.images.map((image) => image.id));
+      const removedImages = oldImages.filter((image) => !retainedIds.has(image.id));
+      if (removedImages.length) {
+        const { error } = await supabase
+          .from("project_unit_type_images")
+          .delete()
+          .eq("unit_type_id", unitTypeId)
+          .in("id", removedImages.map((image) => image.id));
+        if (error) throw error;
+        await Promise.all(removedImages.map(async (image) => {
+          const path = getProjectMediaPath(image.url);
+          if (path) await supabase.storage.from(PROJECT_MEDIA_BUCKET).remove([path, thumbnailPathFromStoragePath(path)]);
+        }));
+      }
+
+      const uploaded = await Promise.all(item.imageFiles.map(async ({ key, file }, imageIndex) => {
+        const optimized = await optimizeProjectImage(file);
+        const extension = IMAGE_EXTENSIONS[optimized.full.type] ?? (optimized.full.type === "image/jpeg" ? "jpg" : "webp");
+        const safeName = file.name
+          .replace(/\.[^/.]+$/, "")
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "")
+          .slice(0, 42);
+        const path = `${projectTenantId}/${projectId}/unit-types/${unitTypeId}/${Date.now()}-${imageIndex}-${safeName || "unit-image"}.${extension}`;
+        const { error: uploadError } = await supabase.storage
+          .from(PROJECT_MEDIA_BUCKET)
+          .upload(path, optimized.full, {
+            cacheControl: "31536000",
+            contentType: optimized.full.type,
+            upsert: false,
+          });
+        if (uploadError) throw uploadError;
+        if (optimized.thumbnail) {
+          const { error: thumbnailError } = await supabase.storage
+            .from(PROJECT_MEDIA_BUCKET)
+            .upload(thumbnailPathFromStoragePath(path), optimized.thumbnail, {
+              cacheControl: "31536000",
+              contentType: optimized.thumbnail.type,
+              upsert: false,
+            });
+          if (thumbnailError) throw thumbnailError;
+        }
+        const { data } = supabase.storage.from(PROJECT_MEDIA_BUCKET).getPublicUrl(path);
+        return { key, url: data.publicUrl };
+      }));
+
+      const existingEntries: Array<{ key: string; id?: string; url: string }> = item.images.map((image) => ({ key: image.id, id: image.id, url: image.url }));
+      const allImages: Array<{ key: string; id?: string; url: string }> = [...existingEntries, ...uploaded];
+      const selected = allImages.find((image) => image.key === item.floorPlanImageKey);
+      const selectedUrl = selected?.url ?? item.floor_plan_url?.trim() ?? null;
+
+      // Clear the partial unique-index winner before assigning the selected
+      // image. This also handles changing the floor plan from one photo to
+      // another in the same save operation.
+      if (oldImages.length) {
+        const { error } = await supabase
+          .from("project_unit_type_images")
+          .update({ is_floor_plan: false })
+          .eq("unit_type_id", unitTypeId);
+        if (error) throw error;
+      }
+      for (const [imageIndex, image] of allImages.entries()) {
+        if (image.id) {
+          const { error } = await supabase
+            .from("project_unit_type_images")
+            .update({ sort_order: imageIndex, is_floor_plan: false })
+            .eq("id", image.id)
+            .eq("unit_type_id", unitTypeId);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.from("project_unit_type_images").insert({
+            unit_type_id: unitTypeId,
+            project_id: projectId,
+            tenant_id: projectTenantId,
+            url: image.url,
+            sort_order: imageIndex,
+            is_floor_plan: image.key === item.floorPlanImageKey,
+          });
+          if (error) throw error;
+        }
+      }
+      if (selected?.id) {
+        const { error } = await supabase
+          .from("project_unit_type_images")
+          .update({ is_floor_plan: true })
+          .eq("id", selected.id)
+          .eq("unit_type_id", unitTypeId);
+        if (error) throw error;
+      }
+      const { error: floorPlanError } = await supabase
         .from("project_unit_types")
-        .update(values)
+        .update({ floor_plan_url: selectedUrl })
         .eq("id", unitTypeId)
         .eq("project_id", projectId);
-      if (error) throw error;
-    }));
-
-    const inserts = unitTypes.flatMap((item, index) => item.id ? [] : [{
-      ...rows[index],
-      project_id: projectId,
-      tenant_id: projectTenantId,
-    }]);
-    if (inserts.length) {
-      const { error } = await supabase.from("project_unit_types").insert(inserts);
-      if (error) throw error;
+      if (floorPlanError) throw floorPlanError;
     }
   };
 
@@ -1137,6 +1241,9 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
         developer_id: f.developer_id || null,
         community_id: f.community_id || null,
         main_image_url: f.main_image_url || null,
+        offer_primary_color: f.offer_primary_color || null,
+        offer_accent_color: f.offer_accent_color || null,
+        offer_header_image_url: f.offer_header_image_url || null,
         brochure_url: f.brochure_url || null,
         video_url: f.video_url || null,
         tour_360_url: f.tour_360_url || null,
@@ -1290,6 +1397,59 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
             project can have several). The legacy payment_plan column is no longer
             edited here — it is written from those rows on save. */}
         <Field label="Main image URL"><Input value={f.main_image_url} onChange={(e) => setF({ ...f, main_image_url: e.target.value })} /></Field>
+        <Field label="PDF header image">
+          <select
+            value={f.offer_header_image_url}
+            onChange={(e) => setF({ ...f, offer_header_image_url: e.target.value })}
+            className="glass gold-hairline w-full rounded-md p-2 text-cream"
+          >
+            <option value="">Use the project main image</option>
+            {f.main_image_url && !gallery.some((image) => image.url === f.main_image_url) && (
+              <option value={f.main_image_url}>Current main image URL</option>
+            )}
+            {f.offer_header_image_url && !gallery.some((image) => image.url === f.offer_header_image_url) && f.offer_header_image_url !== f.main_image_url && (
+              <option value={f.offer_header_image_url}>Saved header image</option>
+            )}
+            {gallery.map((image, index) => (
+              <option key={image.id} value={image.url}>Project image {index + 1}{f.main_image_url === image.url ? " (main)" : ""}</option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-muted-foreground">This image fills the PDF header. The project main image remains available in the unit details section.</p>
+        </Field>
+        <div className="space-y-2 sm:col-span-2">
+          <Label className="text-xs uppercase tracking-widest text-muted-foreground">PDF visual identity</Label>
+          <div className="grid gap-3 rounded-xl border border-gold/20 bg-black/15 p-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <span className="block text-xs text-muted-foreground">Primary colour</span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={f.offer_primary_color || DEFAULT_OFFER_PRIMARY_COLOR}
+                  onChange={(e) => setF({ ...f, offer_primary_color: e.target.value })}
+                  aria-label="PDF primary colour"
+                  className="h-9 w-12 cursor-pointer rounded border border-gold/30 bg-transparent p-0.5"
+                />
+                <span className="font-mono text-xs text-cream">{f.offer_primary_color || "Default navy"}</span>
+                {f.offer_primary_color && <Button type="button" size="sm" variant="ghost" className="h-8 text-xs text-muted-foreground" onClick={() => setF({ ...f, offer_primary_color: "" })}>Default</Button>}
+              </div>
+            </div>
+            <div className="space-y-1">
+              <span className="block text-xs text-muted-foreground">Accent colour</span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={f.offer_accent_color || DEFAULT_OFFER_ACCENT_COLOR}
+                  onChange={(e) => setF({ ...f, offer_accent_color: e.target.value })}
+                  aria-label="PDF accent colour"
+                  className="h-9 w-12 cursor-pointer rounded border border-gold/30 bg-transparent p-0.5"
+                />
+                <span className="font-mono text-xs text-cream">{f.offer_accent_color || "Default gold"}</span>
+                {f.offer_accent_color && <Button type="button" size="sm" variant="ghost" className="h-8 text-xs text-muted-foreground" onClick={() => setF({ ...f, offer_accent_color: "" })}>Default</Button>}
+              </div>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">These colours are used in the sales offer only. Leave them at default to keep the standard navy and gold identity.</p>
+        </div>
         <Field label="Brochure URL"><Input value={f.brochure_url} onChange={(e) => setF({ ...f, brochure_url: e.target.value })} /></Field>
         <Field label="Video URL"><Input value={f.video_url} onChange={(e) => setF({ ...f, video_url: e.target.value })} /></Field>
         <Field label="360 tour URL"><Input value={f.tour_360_url} onChange={(e) => setF({ ...f, tour_360_url: e.target.value })} /></Field>
@@ -1308,7 +1468,7 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
             className="glass gold-hairline text-cream"
             onClick={() => setUnitTypes((current) => [
               ...current,
-              { label: "", price_aed: null, area_sqm_min: null, area_sqm_max: null, floor_plan_url: null, sort_order: current.length },
+              { label: "", price_aed: null, area_sqm_min: null, area_sqm_max: null, floor_plan_url: null, sort_order: current.length, images: [], imageFiles: [], floorPlanImageKey: null },
             ])}
           >
             <Plus className="mr-1 h-4 w-4" /> Add unit type
@@ -1380,39 +1540,91 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </div>
-                <div className="space-y-1 sm:col-span-5">
-                  <span className="block text-xs text-muted-foreground">Unit layout / floor plan image</span>
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <Input
-                      type="url"
-                      value={item.floor_plan_url ?? ""}
-                      placeholder="Paste image URL or upload a file"
-                      onChange={(e) => setUnitTypes((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, floor_plan_url: e.target.value || null, imageFile: undefined } : row))}
-                    />
+                <div className="space-y-2 sm:col-span-5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <span className="block text-xs font-medium text-cream">Unit photos &amp; floor plan</span>
+                      <span className="block text-[11px] text-muted-foreground">Upload multiple images, then choose exactly one as the floor plan.</span>
+                    </div>
                     <label className="flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md border border-gold/30 px-3 py-2 text-xs text-cream hover:border-gold/70 hover:bg-gold/5">
-                      <Upload className="h-3.5 w-3.5 text-gold" /> Upload layout
+                      <Upload className="h-3.5 w-3.5 text-gold" /> Upload unit photos
                       <input
                         type="file"
                         accept="image/jpeg,image/png,image/webp,image/avif"
+                        multiple
                         className="sr-only"
                         onChange={(e) => {
-                          const file = e.target.files?.[0];
+                          const files = Array.from(e.target.files ?? []);
                           e.target.value = "";
-                          if (!file) return;
-                          const invalid = imageFileError(file);
+                          if (!files.length) return;
+                          const invalid = files.map(imageFileError).find(Boolean);
                           if (invalid) return toast.error(invalid);
-                          void hasAllowedImageSignature(file).then((allowed) => {
-                            if (!allowed) return toast.error(`${file.name}: file contents do not match its image type`);
-                            setUnitTypes((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, imageFile: file } : row));
-                          });
+                          const keys = files.map((_, fileIndex) => `new-${Date.now()}-${index}-${fileIndex}`);
+                          void (async () => {
+                            for (const file of files) {
+                              if (!(await hasAllowedImageSignature(file))) {
+                                toast.error(`${file.name}: file contents do not match its image type`);
+                                return;
+                              }
+                            }
+                            setUnitTypes((current) => current.map((row, rowIndex) => rowIndex === index ? {
+                              ...row,
+                              imageFiles: [...row.imageFiles, ...files.map((file, fileIndex) => ({ key: keys[fileIndex], file }))],
+                              floorPlanImageKey: row.floorPlanImageKey ?? keys[0],
+                            } : row));
+                          })();
                         }}
                       />
                     </label>
                   </div>
-                  <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                    {mediaSrc(item.floor_plan_src, item.floor_plan_url) && <img src={mediaSrc(item.floor_plan_src, item.floor_plan_url)} alt="" className="h-9 w-14 rounded object-cover" />}
-                    <span>{item.imageFile?.name ?? (item.floor_plan_url ? "Saved layout image" : "Optional — shown in the sales offer PDF")}</span>
-                  </div>
+                  {(item.images.length > 0 || item.imageFiles.length > 0) && (
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      {item.images.map((image) => (
+                        <div key={image.id} className="overflow-hidden rounded-lg border border-border/50 bg-black/20">
+                          <img src={mediaSrc(image.thumb_src, image.src ?? image.url)} alt="" className="aspect-video w-full object-cover" loading="lazy" />
+                          <div className="flex items-center gap-2 p-2">
+                            <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 text-[11px] text-cream">
+                              <input
+                                type="radio"
+                                name={`floor-plan-${item.id ?? index}`}
+                                checked={item.floorPlanImageKey === image.id}
+                                onChange={() => setUnitTypes((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, floorPlanImageKey: image.id, floor_plan_url: image.url } : row))}
+                              />
+                              <span className="truncate">Floor plan</span>
+                            </label>
+                            <Button type="button" size="icon" variant="ghost" className="h-6 w-6" onClick={() => setUnitTypes((current) => current.map((row, rowIndex) => rowIndex === index ? {
+                              ...row,
+                              images: row.images.filter((child) => child.id !== image.id),
+                              floorPlanImageKey: row.floorPlanImageKey === image.id ? null : row.floorPlanImageKey,
+                              floor_plan_url: row.floorPlanImageKey === image.id ? null : row.floor_plan_url,
+                            } : row))} aria-label="Remove unit photo">
+                              <X className="h-3.5 w-3.5 text-destructive" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                      {item.imageFiles.map(({ key, file }) => (
+                        <div key={key} className="flex min-h-20 flex-col justify-between rounded-lg border border-dashed border-gold/30 bg-gold/5 p-2">
+                          <span className="truncate text-[11px] text-cream" title={file.name}>{file.name}</span>
+                          <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-gold">
+                            <input
+                              type="radio"
+                              name={`floor-plan-${item.id ?? index}`}
+                              checked={item.floorPlanImageKey === key}
+                              onChange={() => setUnitTypes((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, floorPlanImageKey: key, floor_plan_url: null } : row))}
+                            />
+                            Use as floor plan
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <Input
+                    type="url"
+                    value={item.floor_plan_url ?? ""}
+                    placeholder="Optional external floor plan URL (when it is not one of the uploaded photos)"
+                    onChange={(e) => setUnitTypes((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, floor_plan_url: e.target.value || null, floorPlanImageKey: null } : row))}
+                  />
                 </div>
               </div>
             ))}

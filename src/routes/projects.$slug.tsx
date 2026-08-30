@@ -26,7 +26,7 @@ import { track } from "@/lib/analytics";
 import { safeHttpUrl } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import type { ProjectWithRelations } from "@/lib/types";
-import { areaLabel, displayUnitTypes, highestUnitPrice, lowestUnitPrice, pricedUnitTypes } from "@/lib/unit-types";
+import { areaLabel, displayUnitTypes, highestUnitPrice, lowestUnitPrice, pricedUnitTypes, unitDetailSlug } from "@/lib/unit-types";
 import { displayPaymentPlans, paymentPlanSummary } from "@/lib/payment-plans";
 import { UnitOfferDialog } from "@/components/offers/UnitOfferDialog";
 
@@ -201,7 +201,17 @@ function ProjectDetail() {
                   <div className="mt-3 space-y-2">
                     {priceRows.map((item) => (
                       <div key={item.id} className="flex items-center justify-between gap-4 rounded-xl bg-black/15 px-3 py-2">
-                        <span className="font-medium text-cream">{item.label}</span>
+                        {item.id === "legacy-starting-price" ? (
+                          <span className="font-medium text-cream">{item.label}</span>
+                        ) : (
+                          <Link
+                            to="/projects/$slug/units/$unitTypeId"
+                            params={{ slug: p.slug, unitTypeId: unitDetailSlug({ projectName: p.name, projectSlug: p.slug, developerName: p.developer?.name, developerSlug: p.developer?.slug, unitLabel: item.label }) }}
+                            className="font-medium text-cream underline-offset-4 hover:text-gold hover:underline"
+                          >
+                            {item.label}
+                          </Link>
+                        )}
                         <span className="text-gold-gradient">{formatAed(item.price_aed)}</span>
                       </div>
                     ))}

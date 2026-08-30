@@ -3,9 +3,9 @@ import { Check, FileDown, Loader2, Ruler, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import type { ProjectWithRelations } from "@/lib/types";
 import { fetchProjectById } from "@/hooks/use-projects";
-import { areaLabel, displayUnitTypes, pricedUnitTypes, type DisplayUnitType } from "@/lib/unit-types";
-import { mediaSrc } from "@/lib/media";
-import { preparePdfImage, projectOfferImage, unitOfferImage } from "@/lib/pdf-media";
+import { areaLabel, displayUnitTypes, pricedUnitTypes, type DisplayUnitType, unitDetailSlug } from "@/lib/unit-types";
+import { preparePdfImage, projectMainImage, projectOfferImage, unitFloorPlanImage, unitPhotoImage } from "@/lib/pdf-media";
+import { DEFAULT_OFFER_ACCENT_COLOR, DEFAULT_OFFER_PRIMARY_COLOR, safeOfferColor } from "@/lib/offer-branding";
 import { safeHttpUrl } from "@/lib/utils";
 import { displayPaymentPlans, type DisplayPaymentPlan } from "@/lib/payment-plans";
 import { whatsappUrl, CONTACT_WHATSAPP } from "@/lib/contact";
@@ -26,10 +26,12 @@ import {
 
 export function UnitOfferDialog({
   project,
+  initialUnitId,
   open,
   onOpenChange,
 }: {
   project: ProjectWithRelations;
+  initialUnitId?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -69,8 +71,8 @@ export function UnitOfferDialog({
   }, [open, project]);
 
   useEffect(() => {
-    setSelectedUnitId(units[0]?.id ?? "");
-  }, [offerProject.id, units]);
+    setSelectedUnitId(units.find((unit) => unit.id === initialUnitId)?.id ?? units[0]?.id ?? "");
+  }, [initialUnitId, offerProject.id, units]);
 
   useEffect(() => {
     const defaultPlan = plans.find((plan) => plan.is_default) ?? plans[0];
@@ -83,6 +85,9 @@ export function UnitOfferDialog({
     if (!selectedUnit || !selectedPlan || selectedUnit.price_aed == null) return null;
     return calculatePaymentPlan(selectedUnit.price_aed, selectedPlan, offerProject.fees);
   }, [offerProject.fees, selectedPlan, selectedUnit]);
+  const headerPreviewImage = projectOfferImage(offerProject);
+  const primaryPreviewColor = safeOfferColor(offerProject.offer_primary_color, DEFAULT_OFFER_PRIMARY_COLOR);
+  const accentPreviewColor = safeOfferColor(offerProject.offer_accent_color, DEFAULT_OFFER_ACCENT_COLOR);
   const canGenerate = Boolean(!loadingProject && calculation?.installments.length && calculation.validation.valid);
 
   async function generateOffer() {
@@ -126,16 +131,25 @@ export function UnitOfferDialog({
       const baseUrl = (import.meta.env.VITE_PUBLIC_APP_URL as string | undefined)?.trim() ||
         (import.meta.env.VITE_APP_URL as string | undefined)?.trim() ||
         window.location.origin;
-      const shareUrl = `${baseUrl.replace(/\/$/, "")}/projects/${encodeURIComponent(offerProject.slug)}?unitType=${encodeURIComponent(selectedUnit.id)}&offer=${encodeURIComponent(offerId)}`;
+      const unitPath = unitDetailSlug({
+        projectName: offerProject.name,
+        projectSlug: offerProject.slug,
+        developerName: offerProject.developer?.name,
+        developerSlug: offerProject.developer?.slug,
+        unitLabel: selectedUnit.label,
+      });
+      const shareUrl = `${baseUrl.replace(/\/$/, "")}/projects/${encodeURIComponent(offerProject.slug)}/units/${encodeURIComponent(unitPath)}?offer=${encodeURIComponent(offerId)}`;
       // The QR is a sales contact action, not a project-page shortcut. Never
       // silently replace it with shareUrl when WhatsApp is not configured.
       const whatsappLink = whatsappUrl(offerProject.name);
       const qrCodeDataUrl = whatsappLink
         ? await QRCode.toDataURL(whatsappLink, { errorCorrectionLevel: "M", margin: 1, width: 256 })
         : undefined;
-      const [projectImageSrc, unitPlanImageSrc, developerLogoSrc] = await Promise.all([
+      const [projectImageSrc, projectMainImageSrc, unitPhotoImageSrc, unitPlanImageSrc, developerLogoSrc] = await Promise.all([
         preparePdfImage(projectOfferImage(offerProject)),
-        preparePdfImage(unitOfferImage(selectedUnit)),
+        preparePdfImage(projectMainImage(offerProject)),
+        preparePdfImage(unitPhotoImage(selectedUnit)),
+        preparePdfImage(unitFloorPlanImage(selectedUnit)),
         preparePdfImage(safeHttpUrl(offerProject.developer?.logo_url)),
       ]);
       const blob = await pdf(
@@ -151,6 +165,8 @@ export function UnitOfferDialog({
           whatsappNumber={CONTACT_WHATSAPP ?? undefined}
           shareUrl={shareUrl}
           projectImageSrc={projectImageSrc || undefined}
+          projectMainImageSrc={projectMainImageSrc || undefined}
+          unitPhotoImageSrc={unitPhotoImageSrc || undefined}
           unitPlanImageSrc={unitPlanImageSrc || undefined}
           developerLogoSrc={developerLogoSrc || undefined}
         />,
@@ -225,8 +241,33 @@ export function UnitOfferDialog({
 
           <div className="glass-strong gold-hairline rounded-2xl p-4">
             <div className="text-xs uppercase tracking-widest text-muted-foreground">Live preview</div>
+            {!loadingProject && (
+              <div className="mt-3 overflow-hidden rounded-xl border border-gold/20 bg-black/20">
+                <div className="relative h-36 overflow-hidden" style={{ backgroundColor: primaryPreviewColor }}>
+                  {headerPreviewImage ? (
+                    <img src={headerPreviewImage} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="h-full w-full" style={{ backgroundColor: primaryPreviewColor }} />
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/35 to-black/10" />
+                  <div className="absolute inset-x-4 bottom-3">
+                    <div className="text-[10px] uppercase tracking-[0.22em]" style={{ color: accentPreviewColor }}>Sales offer</div>
+                    <div className="font-display text-xl text-white">{offerProject.name}</div>
+                    <div className="text-[10px] text-white/75">PDF header preview</div>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-3 p-3 text-xs">
+                  <span className="text-muted-foreground">{offerProject.offer_header_image_url ? "Selected project image" : "Project main image"} is used in the header</span>
+                  <span className="flex items-center gap-2 text-muted-foreground">
+                    Brand
+                    <span className="h-4 w-4 rounded-full border border-white/20" style={{ backgroundColor: primaryPreviewColor }} title={primaryPreviewColor} />
+                    <span className="h-4 w-4 rounded-full border border-white/20" style={{ backgroundColor: accentPreviewColor }} title={accentPreviewColor} />
+                  </span>
+                </div>
+              </div>
+            )}
             {loadingProject && <div className="mt-3 rounded-xl border border-gold/20 bg-gold/5 p-3 text-sm text-gold">Loading the original project images and saved payment plans…</div>}
-            {selectedUnit && <div className="mt-2 flex items-end justify-between gap-3"><div className="flex min-w-0 items-center gap-3">{mediaSrc(selectedUnit.floor_plan_src, selectedUnit.floor_plan_url) && <img src={mediaSrc(selectedUnit.floor_plan_src, selectedUnit.floor_plan_url)} alt="" className="h-14 w-20 rounded-lg bg-white object-contain" />}<div><div className="font-display text-xl text-cream">{selectedUnit.label}</div><div className="text-sm text-muted-foreground">{offerProject.name}</div></div></div><div className="text-right"><div className="text-[10px] uppercase tracking-widest text-muted-foreground">Original unit price</div><div className="text-lg text-gold-gradient">{formatCurrency(selectedUnit.price_aed)}</div></div></div>}
+            {selectedUnit && <SelectedUnitPreview unit={selectedUnit} projectName={offerProject.name} price={formatCurrency(selectedUnit.price_aed)} />}
             {!selectedPlan ? (
               <EmptyState>Select a saved payment plan to preview its installments.</EmptyState>
             ) : !calculation?.installments.length ? (
@@ -243,8 +284,9 @@ export function UnitOfferDialog({
               </>
             )}
             <Button type="button" disabled={!canGenerate || generating} onClick={() => void generateOffer()} className="mt-5 w-full bg-gold text-gold-foreground hover:bg-gold/90">
-              {generating ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Preparing PDF…</> : <><FileDown className="mr-2 h-4 w-4" /> Generate sales offer PDF</>}
+              {generating ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Preparing PDF…</> : <><FileDown className="mr-2 h-4 w-4" /> Open PDF preview</>}
             </Button>
+            <p className="mt-2 text-center text-xs text-muted-foreground">The PDF opens in a new browser tab. Use the browser PDF viewer&apos;s download button to save it.</p>
             {selectedPlan && !canGenerate && <p className="mt-2 text-center text-xs text-muted-foreground">Generation requires at least one saved installment and a total of exactly 100%.</p>}
           </div>
         </div>
@@ -255,6 +297,44 @@ export function UnitOfferDialog({
 
 function SelectionGroup({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
   return <section><div className="mb-2 flex items-center gap-2 text-sm font-medium text-cream">{icon}{title}</div>{children}</section>;
+}
+
+function SelectedUnitPreview({ unit, projectName, price }: { unit: DisplayUnitType; projectName: string; price: string }) {
+  const photo = unitPhotoImage(unit);
+  const floorPlan = unitFloorPlanImage(unit);
+
+  return (
+    <div className="mt-3 overflow-hidden rounded-xl border border-gold/20 bg-black/15">
+      <div className="grid grid-cols-2 gap-2 p-2">
+        {photo ? (
+          <div className="overflow-hidden rounded-lg border border-white/10 bg-black/20">
+            <img src={photo} alt={`${unit.label} unit`} className="h-20 w-full object-cover" loading="lazy" decoding="async" />
+            <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-muted-foreground">Unit photo</div>
+          </div>
+        ) : (
+          <div className="grid min-h-20 place-items-center rounded-lg border border-dashed border-white/10 px-2 text-center text-[10px] text-muted-foreground">No unit photo uploaded</div>
+        )}
+        {floorPlan ? (
+          <div className="overflow-hidden rounded-lg border border-white/10 bg-white">
+            <img src={floorPlan} alt={`${unit.label} floor plan`} className="h-20 w-full object-cover" loading="lazy" decoding="async" />
+            <div className="bg-black/5 px-2 py-1 text-[10px] uppercase tracking-wider text-slate-500">Floor plan</div>
+          </div>
+        ) : (
+          <div className="grid min-h-20 place-items-center rounded-lg border border-dashed border-white/10 px-2 text-center text-[10px] text-muted-foreground">No floor plan selected</div>
+        )}
+      </div>
+      <div className="flex items-end justify-between gap-3 border-t border-border/50 px-3 py-2">
+        <div className="min-w-0">
+          <div className="font-display text-xl text-cream">{unit.label}</div>
+          <div className="text-sm text-muted-foreground">{projectName}</div>
+        </div>
+        <div className="text-right">
+          <div className="text-[10px] uppercase tracking-widest text-muted-foreground">Original unit price</div>
+          <div className="text-lg text-gold-gradient">{price}</div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function ChoiceButton({ selected, onClick, children }: { selected: boolean; onClick: () => void; children: React.ReactNode }) {

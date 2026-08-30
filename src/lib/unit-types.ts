@@ -1,9 +1,12 @@
-import type { ProjectUnitTypeRow } from "@/lib/types";
+import type { ProjectUnitTypeImageRow, ProjectUnitTypeRow } from "@/lib/types";
 
 export type DisplayUnitType = Pick<
   ProjectUnitTypeRow,
   "id" | "label" | "price_aed" | "area_sqm_min" | "area_sqm_max" | "floor_plan_url" | "sort_order"
-> & { floor_plan_src?: string | null };
+> & {
+  floor_plan_src?: string | null;
+  images?: Array<ProjectUnitTypeImageRow & { src?: string; thumb_src?: string }>;
+};
 
 export function sortUnitTypes(items: DisplayUnitType[]): DisplayUnitType[] {
   return [...items].sort((a, b) => {
@@ -35,6 +38,28 @@ export function displayUnitTypes(
 
 export function pricedUnitTypes(items: DisplayUnitType[]): DisplayUnitType[] {
   return sortUnitTypes(items).filter((item) => Number.isFinite(item.price_aed) && (item.price_aed ?? 0) > 0);
+}
+
+/**
+ * Build a readable, stable unit URL segment. The UUID remains accepted by the
+ * detail loader for backwards compatibility, but new links use project,
+ * developer, and unit names instead.
+ */
+export function unitDetailSlug(parts: {
+  projectName?: string | null;
+  projectSlug?: string | null;
+  developerName?: string | null;
+  developerSlug?: string | null;
+  unitLabel: string;
+}): string {
+  const project = slugPart(parts.projectName) || slugPart(parts.projectSlug);
+  const developer = slugPart(parts.developerName) || slugPart(parts.developerSlug);
+  const unit = slugPart(parts.unitLabel);
+  return [project, developer, unit].filter(Boolean).join("-") || "unit";
+}
+
+function slugPart(value: string | null | undefined): string {
+  return value?.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") ?? "";
 }
 
 export function lowestUnitPrice(

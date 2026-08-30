@@ -17,6 +17,19 @@ export function projectsQueryKey() {
 const PROJECT_LIST_SELECT = `
   id,slug,name,developer_id,community_id,lat,lng,address,starting_price_aed,
   bedrooms_min,bedrooms_max,bathrooms,completion_date,payment_plan,status,category,
+  tags,description,main_image_url,offer_primary_color,offer_accent_color,offer_header_image_url,
+  video_url,tour_360_url,brochure_url,featured,
+  created_at,updated_at,plot_geometry,plot_color,is_public,tenant_id,
+  developer:developers(*),
+  community:communities(id,name,slug),
+  unit_types:project_unit_types(*)
+`;
+
+// The offer-branding columns are optional until their migration is applied.
+// Retry without them so an older database can still list and edit projects.
+const PROJECT_LIST_SELECT_LEGACY_BRANDING = `
+  id,slug,name,developer_id,community_id,lat,lng,address,starting_price_aed,
+  bedrooms_min,bedrooms_max,bathrooms,completion_date,payment_plan,status,category,
   tags,description,main_image_url,video_url,tour_360_url,brochure_url,featured,
   created_at,updated_at,plot_geometry,plot_color,is_public,tenant_id,
   developer:developers(*),
@@ -36,7 +49,7 @@ const PROJECT_DETAIL_SELECT_BASE = `
   developer:developers(*),
   community:communities(id,name,slug),
   images:project_images(*),
-  unit_types:project_unit_types(*),
+  unit_types:project_unit_types(*, images:project_unit_type_images(*)),
   amenities:project_amenities(*)
 `;
 
@@ -46,6 +59,26 @@ const PROJECT_DETAIL_SELECT_WITH_PLANS = `${PROJECT_DETAIL_SELECT_BASE},
 `;
 
 const PROJECT_DETAIL_SELECT_PLANS = `${PROJECT_DETAIL_SELECT_BASE},
+  payment_plans:project_payment_plans(*)
+`;
+
+// Same detail query without the optional unit-photo relation. This is used for
+// databases that have payment plans but not the unit type images migration yet.
+const PROJECT_DETAIL_SELECT_BASE_LEGACY_UNIT_IMAGES = `
+  *,
+  developer:developers(*),
+  community:communities(id,name,slug),
+  images:project_images(*),
+  unit_types:project_unit_types(*),
+  amenities:project_amenities(*)
+`;
+
+const PROJECT_DETAIL_SELECT_WITH_PLANS_LEGACY_UNIT_IMAGES = `${PROJECT_DETAIL_SELECT_BASE_LEGACY_UNIT_IMAGES},
+  payment_plans:project_payment_plans(*, installments:project_payment_plan_installments(*)),
+  fees:project_fees(*)
+`;
+
+const PROJECT_DETAIL_SELECT_PLANS_LEGACY_UNIT_IMAGES = `${PROJECT_DETAIL_SELECT_BASE_LEGACY_UNIT_IMAGES},
   payment_plans:project_payment_plans(*)
 `;
 
@@ -61,6 +94,11 @@ function isMissingRelation(error: { code?: string; message?: string } | null): b
   );
 }
 
+function isMissingColumn(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  return error.code === "42703" || /column .* does not exist/i.test(error.message ?? "");
+}
+
 async function fetchAllProjects(): Promise<ProjectWithRelations[]> {
   const { data, error } = await supabase
     .from("projects")
@@ -73,6 +111,14 @@ async function fetchAllProjects(): Promise<ProjectWithRelations[]> {
   // payload and image downloads small while preserving external/legacy URLs.
   if (!error) return withSignedProjectMedia(normalizeProjects(data ?? []), { includeGallery: false, thumbnailsOnly: true });
 
+  if (isMissingColumn(error)) {
+    const retry = await supabase
+      .from("projects")
+      .select(PROJECT_LIST_SELECT_LEGACY_BRANDING)
+      .order("featured", { ascending: false })
+      .order("created_at", { ascending: false });
+    if (!retry.error) return withSignedProjectMedia(normalizeProjects(retry.data ?? []), { includeGallery: false, thumbnailsOnly: true });
+  }
   console.warn("[Projects] full query failed; falling back to legacy schema", error.message);
   return fetchLegacyProjects();
 }
@@ -105,12 +151,29 @@ export async function fetchProjectBySlug(slug: string): Promise<ProjectWithRelat
       .maybeSingle();
     if (!retry.error) return signOne(normalizeProject(retry.data));
 
+    // The payment-plan relation may exist while the optional unit-photo
+    // relation is not installed yet. Drop only that relation before falling
+    // back to the older plan query.
+    const plansWithoutUnitImages = await supabase
+      .from("projects")
+      .select(PROJECT_DETAIL_SELECT_WITH_PLANS_LEGACY_UNIT_IMAGES)
+      .eq("slug", slug)
+      .maybeSingle();
+    if (!plansWithoutUnitImages.error) return signOne(normalizeProject(plansWithoutUnitImages.data));
+
     const baseRetry = await supabase
       .from("projects")
       .select(PROJECT_DETAIL_SELECT_BASE)
       .eq("slug", slug)
       .maybeSingle();
     if (!baseRetry.error) return signOne(normalizeProject(baseRetry.data));
+
+    const baseWithoutUnitImages = await supabase
+      .from("projects")
+      .select(PROJECT_DETAIL_SELECT_BASE_LEGACY_UNIT_IMAGES)
+      .eq("slug", slug)
+      .maybeSingle();
+    if (!baseWithoutUnitImages.error) return signOne(normalizeProject(baseWithoutUnitImages.data));
   }
 
   console.warn("[Projects] full project query failed; falling back to legacy schema", error.message);
@@ -142,12 +205,26 @@ export async function fetchProjectById(id: string): Promise<ProjectWithRelations
       .maybeSingle();
     if (!retry.error) return signOne(normalizeProject(retry.data));
 
+    const plansWithoutUnitImages = await supabase
+      .from("projects")
+      .select(PROJECT_DETAIL_SELECT_WITH_PLANS_LEGACY_UNIT_IMAGES)
+      .eq("id", id)
+      .maybeSingle();
+    if (!plansWithoutUnitImages.error) return signOne(normalizeProject(plansWithoutUnitImages.data));
+
     const baseRetry = await supabase
       .from("projects")
       .select(PROJECT_DETAIL_SELECT_BASE)
       .eq("id", id)
       .maybeSingle();
     if (!baseRetry.error) return signOne(normalizeProject(baseRetry.data));
+
+    const baseWithoutUnitImages = await supabase
+      .from("projects")
+      .select(PROJECT_DETAIL_SELECT_BASE_LEGACY_UNIT_IMAGES)
+      .eq("id", id)
+      .maybeSingle();
+    if (!baseWithoutUnitImages.error) return signOne(normalizeProject(baseWithoutUnitImages.data));
   }
 
   throw error;

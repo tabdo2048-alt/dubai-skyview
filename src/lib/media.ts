@@ -142,8 +142,9 @@ async function resolveStorageUrls(
 export async function withSignedProjectMedia<
   T extends {
     main_image_url?: string | null;
+    offer_header_image_url?: string | null;
     images?: Array<{ url: string }> | null;
-    unit_types?: Array<{ floor_plan_url?: string | null }> | null;
+    unit_types?: Array<{ floor_plan_url?: string | null; images?: Array<{ url: string }> }> | null;
   },
 >(
   projects: T[],
@@ -152,18 +153,22 @@ export async function withSignedProjectMedia<
   const includeGallery = options.includeGallery ?? true;
   const thumbnailsOnly = options.thumbnailsOnly ?? false;
   const mainValues: Array<string | null | undefined> = projects.map((project) => project.main_image_url);
+  const headerValues: Array<string | null | undefined> = projects.map((project) => project.offer_header_image_url);
   const galleryValues: Array<string | null | undefined> = includeGallery
     ? projects.flatMap((project) => (project.images ?? []).map((image) => image.url))
     : [];
   const unitPlanValues: Array<string | null | undefined> = projects.flatMap((project) =>
     (project.unit_types ?? []).map((unit) => unit.floor_plan_url),
   );
-  const fullValues = thumbnailsOnly ? [] : [...mainValues, ...galleryValues];
+  const unitImageValues: Array<string | null | undefined> = projects.flatMap((project) =>
+    (project.unit_types ?? []).flatMap((unit) => (unit.images ?? []).map((image) => image.url)),
+  );
+  const fullValues = thumbnailsOnly ? [] : [...mainValues, ...galleryValues, ...headerValues];
   const thumbValues = thumbnailsOnly ? mainValues : [...mainValues, ...galleryValues];
 
   const [resolved, thumbnails] = await Promise.all([
-    [...fullValues, ...unitPlanValues].some(Boolean)
-      ? resolveMediaUrls([...fullValues, ...unitPlanValues])
+    [...fullValues, ...unitPlanValues, ...unitImageValues].some(Boolean)
+      ? resolveMediaUrls([...fullValues, ...unitPlanValues, ...unitImageValues])
       : Promise.resolve(new Map<string, string>()),
     thumbValues.some(Boolean) ? resolveMediaThumbnailUrls(thumbValues) : Promise.resolve(new Map<string, string>()),
   ]);
@@ -174,6 +179,7 @@ export async function withSignedProjectMedia<
     ...p,
     main_image_src: thumbnailsOnly ? null : pick(resolved, p.main_image_url),
     main_image_thumb_src: pick(thumbnails, p.main_image_url),
+    offer_header_image_src: thumbnailsOnly ? null : pick(resolved, p.offer_header_image_url),
     images: includeGallery
       ? (p.images ?? []).map((img) => ({
           ...img,
@@ -184,6 +190,11 @@ export async function withSignedProjectMedia<
     unit_types: (p.unit_types ?? []).map((unit) => ({
       ...unit,
       floor_plan_src: pick(resolved, unit.floor_plan_url),
+      images: (unit.images ?? []).map((image) => ({
+        ...image,
+        src: pick(resolved, image.url) ?? image.url,
+        thumb_src: pick(thumbnails, image.url) ?? image.url,
+      })),
     })),
   })) as Array<T & SignedMedia>;
 }
@@ -191,6 +202,7 @@ export async function withSignedProjectMedia<
 export type SignedMedia = {
   main_image_src: string | null;
   main_image_thumb_src: string | null;
+  offer_header_image_src: string | null;
   images: Array<{ url: string; src: string; thumb_src: string } & Record<string, unknown>>;
 };
 

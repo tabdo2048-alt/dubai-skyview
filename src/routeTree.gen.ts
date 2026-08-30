@@ -21,6 +21,7 @@ import { Route as BillingSuccessRouteImport } from './routes/billing.success'
 import { Route as BillingCancelRouteImport } from './routes/billing.cancel'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as AuthenticatedAdminPlatformRouteImport } from './routes/_authenticated/admin_.platform'
+import { Route as ProjectsSlugUnitsUnitTypeIdRouteImport } from './routes/projects.$slug.units.$unitTypeId'
 import { Route as AuthenticatedAdminProjectsIdRouteImport } from './routes/_authenticated/admin_.projects.$id'
 
 const SignupRoute = SignupRouteImport.update({
@@ -83,6 +84,12 @@ const AuthenticatedAdminPlatformRoute =
     path: '/admin/platform',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const ProjectsSlugUnitsUnitTypeIdRoute =
+  ProjectsSlugUnitsUnitTypeIdRouteImport.update({
+    id: '/units/$unitTypeId',
+    path: '/units/$unitTypeId',
+    getParentRoute: () => ProjectsSlugRoute,
+  } as any)
 const AuthenticatedAdminProjectsIdRoute =
   AuthenticatedAdminProjectsIdRouteImport.update({
     id: '/admin_/projects/$id',
@@ -97,12 +104,13 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AuthenticatedAdminRoute
   '/billing/cancel': typeof BillingCancelRoute
   '/billing/success': typeof BillingSuccessRoute
-  '/projects/$slug': typeof ProjectsSlugRoute
+  '/projects/$slug': typeof ProjectsSlugRouteWithChildren
   '/billing/': typeof BillingIndexRoute
   '/communities/': typeof CommunitiesIndexRoute
   '/developers/': typeof DevelopersIndexRoute
   '/admin/platform': typeof AuthenticatedAdminPlatformRoute
   '/admin/projects/$id': typeof AuthenticatedAdminProjectsIdRoute
+  '/projects/$slug/units/$unitTypeId': typeof ProjectsSlugUnitsUnitTypeIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -111,12 +119,13 @@ export interface FileRoutesByTo {
   '/admin': typeof AuthenticatedAdminRoute
   '/billing/cancel': typeof BillingCancelRoute
   '/billing/success': typeof BillingSuccessRoute
-  '/projects/$slug': typeof ProjectsSlugRoute
+  '/projects/$slug': typeof ProjectsSlugRouteWithChildren
   '/billing': typeof BillingIndexRoute
   '/communities': typeof CommunitiesIndexRoute
   '/developers': typeof DevelopersIndexRoute
   '/admin/platform': typeof AuthenticatedAdminPlatformRoute
   '/admin/projects/$id': typeof AuthenticatedAdminProjectsIdRoute
+  '/projects/$slug/units/$unitTypeId': typeof ProjectsSlugUnitsUnitTypeIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -127,12 +136,13 @@ export interface FileRoutesById {
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
   '/billing/cancel': typeof BillingCancelRoute
   '/billing/success': typeof BillingSuccessRoute
-  '/projects/$slug': typeof ProjectsSlugRoute
+  '/projects/$slug': typeof ProjectsSlugRouteWithChildren
   '/billing/': typeof BillingIndexRoute
   '/communities/': typeof CommunitiesIndexRoute
   '/developers/': typeof DevelopersIndexRoute
   '/_authenticated/admin_/platform': typeof AuthenticatedAdminPlatformRoute
   '/_authenticated/admin_/projects/$id': typeof AuthenticatedAdminProjectsIdRoute
+  '/projects/$slug/units/$unitTypeId': typeof ProjectsSlugUnitsUnitTypeIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -149,6 +159,7 @@ export interface FileRouteTypes {
     | '/developers/'
     | '/admin/platform'
     | '/admin/projects/$id'
+    | '/projects/$slug/units/$unitTypeId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -163,6 +174,7 @@ export interface FileRouteTypes {
     | '/developers'
     | '/admin/platform'
     | '/admin/projects/$id'
+    | '/projects/$slug/units/$unitTypeId'
   id:
     | '__root__'
     | '/'
@@ -178,6 +190,7 @@ export interface FileRouteTypes {
     | '/developers/'
     | '/_authenticated/admin_/platform'
     | '/_authenticated/admin_/projects/$id'
+    | '/projects/$slug/units/$unitTypeId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -187,7 +200,7 @@ export interface RootRouteChildren {
   SignupRoute: typeof SignupRoute
   BillingCancelRoute: typeof BillingCancelRoute
   BillingSuccessRoute: typeof BillingSuccessRoute
-  ProjectsSlugRoute: typeof ProjectsSlugRoute
+  ProjectsSlugRoute: typeof ProjectsSlugRouteWithChildren
   BillingIndexRoute: typeof BillingIndexRoute
   CommunitiesIndexRoute: typeof CommunitiesIndexRoute
   DevelopersIndexRoute: typeof DevelopersIndexRoute
@@ -279,6 +292,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminPlatformRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/projects/$slug/units/$unitTypeId': {
+      id: '/projects/$slug/units/$unitTypeId'
+      path: '/units/$unitTypeId'
+      fullPath: '/projects/$slug/units/$unitTypeId'
+      preLoaderRoute: typeof ProjectsSlugUnitsUnitTypeIdRouteImport
+      parentRoute: typeof ProjectsSlugRoute
+    }
     '/_authenticated/admin_/projects/$id': {
       id: '/_authenticated/admin_/projects/$id'
       path: '/admin/projects/$id'
@@ -304,6 +324,18 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
 const AuthenticatedRouteRouteWithChildren =
   AuthenticatedRouteRoute._addFileChildren(AuthenticatedRouteRouteChildren)
 
+interface ProjectsSlugRouteChildren {
+  ProjectsSlugUnitsUnitTypeIdRoute: typeof ProjectsSlugUnitsUnitTypeIdRoute
+}
+
+const ProjectsSlugRouteChildren: ProjectsSlugRouteChildren = {
+  ProjectsSlugUnitsUnitTypeIdRoute: ProjectsSlugUnitsUnitTypeIdRoute,
+}
+
+const ProjectsSlugRouteWithChildren = ProjectsSlugRoute._addFileChildren(
+  ProjectsSlugRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
@@ -311,7 +343,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignupRoute: SignupRoute,
   BillingCancelRoute: BillingCancelRoute,
   BillingSuccessRoute: BillingSuccessRoute,
-  ProjectsSlugRoute: ProjectsSlugRoute,
+  ProjectsSlugRoute: ProjectsSlugRouteWithChildren,
   BillingIndexRoute: BillingIndexRoute,
   CommunitiesIndexRoute: CommunitiesIndexRoute,
   DevelopersIndexRoute: DevelopersIndexRoute,

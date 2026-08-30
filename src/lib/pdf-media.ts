@@ -3,8 +3,8 @@ import type { DisplayUnitType } from "@/lib/unit-types";
 import { mediaSrc } from "@/lib/media";
 import { safeHttpUrl } from "@/lib/utils";
 
-/** Select the project's main image, with the signed list thumbnail as a safe fallback. */
-export function projectOfferImage(project: ProjectWithRelations): string {
+/** Select the project's original/main image, with a gallery fallback. */
+export function projectMainImage(project: ProjectWithRelations): string {
   const galleryImage = mediaSrc(project.images?.[0]?.src, project.images?.[0]?.url);
   return (
     mediaSrc(project.main_image_src, null) ||
@@ -14,9 +14,37 @@ export function projectOfferImage(project: ProjectWithRelations): string {
   );
 }
 
-/** Select the image configured for the chosen unit type. */
+/** Select the configured PDF header image, falling back to the project main image. */
+export function projectOfferImage(project: ProjectWithRelations): string {
+  return mediaSrc(project.offer_header_image_src, project.offer_header_image_url) || projectMainImage(project);
+}
+
+/** Select the unit-specific image marked as the floor plan. */
+export function unitFloorPlanImage(unit: DisplayUnitType): string {
+  const selectedImage = (unit.images ?? [])
+    .slice()
+    .sort((a, b) => a.sort_order - b.sort_order)
+    .find((image) => image.is_floor_plan);
+
+  return mediaSrc(
+    selectedImage?.src ?? unit.floor_plan_src,
+    selectedImage?.url ?? unit.floor_plan_url,
+  );
+}
+
+/** Select a normal unit photo, never the image marked as the floor plan. */
+export function unitPhotoImage(unit: DisplayUnitType): string {
+  const photo = (unit.images ?? [])
+    .slice()
+    .sort((a, b) => a.sort_order - b.sort_order)
+    .find((image) => !image.is_floor_plan);
+
+  return mediaSrc(photo?.src, photo?.url);
+}
+
+/** @deprecated Use unitFloorPlanImage for clarity. */
 export function unitOfferImage(unit: DisplayUnitType): string {
-  return mediaSrc(unit.floor_plan_src, unit.floor_plan_url);
+  return unitFloorPlanImage(unit);
 }
 
 /**

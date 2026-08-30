@@ -396,6 +396,64 @@ export type Database = {
           },
         ]
       }
+      project_unit_type_images: {
+        Row: {
+          created_at: string
+          id: string
+          is_floor_plan: boolean
+          project_id: string
+          sort_order: number
+          tenant_id: string
+          unit_type_id: string
+          updated_at: string
+          url: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_floor_plan?: boolean
+          project_id: string
+          sort_order?: number
+          tenant_id: string
+          unit_type_id: string
+          updated_at?: string
+          url: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_floor_plan?: boolean
+          project_id?: string
+          sort_order?: number
+          tenant_id?: string
+          unit_type_id?: string
+          updated_at?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_unit_type_images_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_unit_type_images_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_unit_type_images_unit_type_id_fkey"
+            columns: ["unit_type_id"]
+            isOneToOne: false
+            referencedRelation: "project_unit_types"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       projects: {
         Row: {
           address: string | null
@@ -415,6 +473,9 @@ export type Database = {
           lng: number
           main_image_url: string | null
           name: string
+          offer_accent_color: string | null
+          offer_header_image_url: string | null
+          offer_primary_color: string | null
           payment_plan: string | null
           plot_color: string | null
           plot_geometry: Json | null
@@ -444,6 +505,9 @@ export type Database = {
           lng: number
           main_image_url?: string | null
           name: string
+          offer_accent_color?: string | null
+          offer_header_image_url?: string | null
+          offer_primary_color?: string | null
           payment_plan?: string | null
           plot_color?: string | null
           plot_geometry?: Json | null
@@ -473,6 +537,9 @@ export type Database = {
           lng?: number
           main_image_url?: string | null
           name?: string
+          offer_accent_color?: string | null
+          offer_header_image_url?: string | null
+          offer_primary_color?: string | null
           payment_plan?: string | null
           plot_color?: string | null
           plot_geometry?: Json | null

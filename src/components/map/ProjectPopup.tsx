@@ -7,7 +7,7 @@ import { formatAed, bedroomsLabel } from "@/lib/dubai";
 import { whatsappUrl, viewingMailto } from "@/lib/contact";
 import { track } from "@/lib/analytics";
 import { mediaSrc } from "@/lib/media";
-import { areaLabel, displayUnitTypes, pricedUnitTypes } from "@/lib/unit-types";
+import { areaLabel, displayUnitTypes, pricedUnitTypes, unitDetailSlug } from "@/lib/unit-types";
 import { displayPaymentPlans, paymentPlanSummary } from "@/lib/payment-plans";
 import { Button } from "@/components/ui/button";
 import { UnitOfferDialog } from "@/components/offers/UnitOfferDialog";
@@ -129,7 +129,13 @@ export function ProjectPopup({ project, onClose }: { project: ProjectWithRelatio
                     <div className="space-y-1.5 text-sm">
                       {priceRows.slice(0, 4).map((item) => (
                         <div key={item.id} className="flex items-center justify-between gap-3">
-                          <span className="font-medium text-cream">{item.label}</span>
+                          {item.id === "legacy-starting-price" ? (
+                            <span className="font-medium text-cream">{item.label}</span>
+                          ) : (
+                            <Link to="/projects/$slug/units/$unitTypeId" params={{ slug: project.slug, unitTypeId: unitDetailSlug({ projectName: project.name, projectSlug: project.slug, developerName: project.developer?.name, developerSlug: project.developer?.slug, unitLabel: item.label }) }} className="font-medium text-cream underline-offset-4 hover:text-gold hover:underline">
+                              {item.label}
+                            </Link>
+                          )}
                           <span className="text-right text-gold-gradient">{formatAed(item.price_aed)}</span>
                         </div>
                       ))}
