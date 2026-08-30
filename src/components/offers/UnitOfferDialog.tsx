@@ -317,7 +317,7 @@ function SelectedUnitPreview({ unit, projectName, price }: { unit: DisplayUnitTy
         )}
         {floorPlan ? (
           <div className="overflow-hidden rounded-lg border border-white/10 bg-white">
-            <img src={floorPlan} alt={`${unit.label} floor plan`} className="h-20 w-full object-cover" loading="lazy" decoding="async" />
+            <img src={floorPlan} alt={`${unit.label} floor plan`} className="h-20 w-full bg-white object-contain" loading="lazy" decoding="async" />
             <div className="bg-black/5 px-2 py-1 text-[10px] uppercase tracking-wider text-slate-500">Floor plan</div>
           </div>
         ) : (

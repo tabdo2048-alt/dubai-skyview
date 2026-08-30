@@ -66,6 +66,7 @@ function unitTypeDraft(row: ProjectUnitTypeRow): UnitTypeDraft {
     price_aed: row.price_aed,
     area_sqm_min: row.area_sqm_min,
     area_sqm_max: row.area_sqm_max,
+    floor: row.floor,
     floor_plan_url: row.floor_plan_url,
     floor_plan_src: (row as ProjectUnitTypeRow & { floor_plan_src?: string | null }).floor_plan_src ?? null,
     sort_order: row.sort_order,
@@ -893,6 +894,7 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
       price_aed: item.price_aed,
       area_sqm_min: item.area_sqm_min,
       area_sqm_max: item.area_sqm_max,
+      floor: item.floor?.trim() || null,
       floor_plan_url: item.floor_plan_url?.trim() || null,
       sort_order: index,
     }));
@@ -1468,7 +1470,7 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
             className="glass gold-hairline text-cream"
             onClick={() => setUnitTypes((current) => [
               ...current,
-              { label: "", price_aed: null, area_sqm_min: null, area_sqm_max: null, floor_plan_url: null, sort_order: current.length, images: [], imageFiles: [], floorPlanImageKey: null },
+              { label: "", price_aed: null, area_sqm_min: null, area_sqm_max: null, floor: null, floor_plan_url: null, sort_order: current.length, images: [], imageFiles: [], floorPlanImageKey: null },
             ])}
           >
             <Plus className="mr-1 h-4 w-4" /> Add unit type
@@ -1481,7 +1483,7 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
         ) : (
           <div className="space-y-2">
             {unitTypes.map((item, index) => (
-              <div key={item.id ?? `new-unit-${index}`} className="grid gap-2 rounded-xl border border-border/60 bg-black/20 p-3 sm:grid-cols-[1.1fr_1fr_1fr_1fr_auto] sm:items-end">
+              <div key={item.id ?? `new-unit-${index}`} className="grid gap-2 rounded-xl border border-border/60 bg-black/20 p-3 sm:grid-cols-[1.1fr_1fr_1fr_1fr_1fr_auto] sm:items-end">
                 <label className="space-y-1 text-xs text-muted-foreground">
                   <span>Type</span>
                   <Input
@@ -1521,6 +1523,14 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
                     onChange={(e) => setUnitTypes((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, area_sqm_max: e.target.value === "" ? null : Number(e.target.value) } : row))}
                   />
                 </label>
+                <label className="space-y-1 text-xs text-muted-foreground">
+                  <span>Floor</span>
+                  <Input
+                    value={item.floor ?? ""}
+                    placeholder="Optional"
+                    onChange={(e) => setUnitTypes((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, floor: e.target.value || null } : row))}
+                  />
+                </label>
                 <div className="flex items-center justify-end gap-1">
                   <Button type="button" size="icon" variant="ghost" disabled={index === 0} onClick={() => setUnitTypes((current) => {
                     const next = [...current];
@@ -1540,7 +1550,7 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </div>
-                <div className="space-y-2 sm:col-span-5">
+                <div className="space-y-2 sm:col-span-6">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <span className="block text-xs font-medium text-cream">Unit photos &amp; floor plan</span>

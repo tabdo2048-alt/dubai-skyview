@@ -344,6 +344,7 @@ export type Database = {
           area_sqm_max: number | null
           area_sqm_min: number | null
           created_at: string
+          floor: string | null
           floor_plan_url: string | null
           id: string
           label: string
@@ -357,6 +358,7 @@ export type Database = {
           area_sqm_max?: number | null
           area_sqm_min?: number | null
           created_at?: string
+          floor?: string | null
           floor_plan_url?: string | null
           id?: string
           label: string
@@ -370,6 +372,7 @@ export type Database = {
           area_sqm_max?: number | null
           area_sqm_min?: number | null
           created_at?: string
+          floor?: string | null
           floor_plan_url?: string | null
           id?: string
           label?: string

@@ -2,7 +2,7 @@ import type { ProjectUnitTypeImageRow, ProjectUnitTypeRow } from "@/lib/types";
 
 export type DisplayUnitType = Pick<
   ProjectUnitTypeRow,
-  "id" | "label" | "price_aed" | "area_sqm_min" | "area_sqm_max" | "floor_plan_url" | "sort_order"
+  "id" | "label" | "price_aed" | "area_sqm_min" | "area_sqm_max" | "floor" | "floor_plan_url" | "sort_order"
 > & {
   floor_plan_src?: string | null;
   images?: Array<ProjectUnitTypeImageRow & { src?: string; thumb_src?: string }>;
@@ -31,6 +31,7 @@ export function displayUnitTypes(
     price_aed: legacyPrice,
     area_sqm_min: null,
     area_sqm_max: null,
+    floor: null,
     floor_plan_url: null,
     sort_order: 0,
   }];

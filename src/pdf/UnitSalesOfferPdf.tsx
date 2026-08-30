@@ -56,6 +56,7 @@ function LegacyUnitSalesOfferPdf({
   const detailRows = [
     ["Project", project.name],
     ["Unit type", unit.label],
+    ["Floor", unit.floor],
     ["Size", unitArea],
     ["Bedrooms", project.bedrooms_min != null ? `${project.bedrooms_min}${project.bedrooms_max && project.bedrooms_max !== project.bedrooms_min ? `-${project.bedrooms_max}` : ""}` : null],
     ["Bathrooms", project.bathrooms != null && project.bathrooms > 0 ? String(project.bathrooms) : null],
@@ -85,9 +86,9 @@ function LegacyUnitSalesOfferPdf({
                 {projectDetailImage && <Image src={projectDetailImage} style={offerStyles.projectDetailImage} />}
                 {projectDetailImage && <Text style={offerStyles.imageCaption}>Project image</Text>}
                 {detailRows.map(([label, value]) => (
-                  <View style={offerStyles.detailRow} key={label}>
-                    <Text style={offerStyles.detailLabel}>{label}</Text>
-                    <Text style={offerStyles.detailValue}>{value}</Text>
+                  <View style={label === "Floor" ? [offerStyles.detailRow, { backgroundColor: primaryColor, borderRadius: 3, paddingHorizontal: 4 }] : offerStyles.detailRow} key={label}>
+                    <Text style={label === "Floor" ? [offerStyles.detailLabel, { color: offerColors.gold }] : offerStyles.detailLabel}>{label}</Text>
+                    <Text style={label === "Floor" ? [offerStyles.detailValue, { color: "#ffffff" }] : offerStyles.detailValue}>{value}</Text>
                   </View>
                 ))}
               </View>
@@ -250,6 +251,7 @@ function OnePageSalesOffer({
   const detailRows = [
     ["Project", project.name],
     ["Unit type", unit.label],
+    ["Floor", unit.floor],
     ["Size", unitArea],
     ["Bedrooms", project.bedrooms_min != null ? `${project.bedrooms_min}${project.bedrooms_max && project.bedrooms_max !== project.bedrooms_min ? `-${project.bedrooms_max}` : ""}` : null],
     ["Bathrooms", project.bathrooms != null && project.bathrooms > 0 ? String(project.bathrooms) : null],
@@ -277,9 +279,9 @@ function OnePageSalesOffer({
               <View style={[offerStyles.sectionRule, { borderBottomColor: accentColor }]} />
               <View style={offerStyles.oneDetailCard}>
                 {detailRows.map(([label, value]) => (
-                  <View style={offerStyles.oneDetailRow} key={label}>
-                    <Text style={offerStyles.oneDetailLabel}>{label}</Text>
-                    <Text style={offerStyles.oneDetailValue}>{value}</Text>
+                  <View style={label === "Floor" ? [offerStyles.oneDetailRow, { backgroundColor: primaryColor, borderRadius: 3, paddingHorizontal: 4 }] : offerStyles.oneDetailRow} key={label}>
+                    <Text style={label === "Floor" ? [offerStyles.oneDetailLabel, { color: offerColors.gold }] : offerStyles.oneDetailLabel}>{label}</Text>
+                    <Text style={label === "Floor" ? [offerStyles.oneDetailValue, { color: "#ffffff" }] : offerStyles.oneDetailValue}>{value}</Text>
                   </View>
                 ))}
               </View>
@@ -456,11 +458,11 @@ function OfferHeader({
       <View style={[offerStyles.headerShade, { backgroundColor: primaryColor }]} />
       <View style={offerStyles.headerContent}>
         {developerLogo && <Image src={developerLogo} style={offerStyles.logo} />}
-        {project.developer?.name && <Text style={[offerStyles.developer, { color: accentColor }]}>{project.developer.name}</Text>}
-        <Text style={[offerStyles.eyebrow, { color: accentColor }]}>Sales offer</Text>
+        {project.developer?.name && <Text style={offerStyles.developer}>{project.developer.name}</Text>}
+        <Text style={[offerStyles.eyebrow, { color: offerColors.gold }]}>Sales offer</Text>
         <Text style={offerStyles.title}>INVESTMENT</Text>
-        <Text style={[offerStyles.subtitle, { color: accentColor }]}>Proposal</Text>
-        <Text style={[offerStyles.projectName, { color: accentColor }]}>{project.name}</Text>
+        <Text style={[offerStyles.subtitle, { color: offerColors.gold }]}>Proposal</Text>
+        <Text style={[offerStyles.projectName, { color: offerColors.gold }]}>{project.name}</Text>
         {(project.community?.name ?? project.address) && <Text style={offerStyles.location}>{project.community?.name ?? project.address}</Text>}
       </View>
       <View style={[offerStyles.offerMeta, { borderColor: accentColor, backgroundColor: primaryColor }]}>

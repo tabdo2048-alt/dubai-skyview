@@ -56,7 +56,7 @@ export const offerStyles = StyleSheet.create({
     marginBottom: 4,
   },
   developer: {
-    color: offerColors.gold,
+    color: "#ffffff",
     fontSize: 8,
     letterSpacing: 1.5,
     textTransform: "uppercase",
@@ -90,7 +90,7 @@ export const offerStyles = StyleSheet.create({
     maxWidth: "94%",
   },
   location: {
-    color: "#dce6f2",
+    color: "#ffffff",
     fontSize: 8,
     marginTop: 3,
   },
@@ -217,7 +217,7 @@ export const offerStyles = StyleSheet.create({
   oneFinancialTotal: { paddingTop: 4, marginTop: 1 },
   oneFinancialTotalLabel: { fontSize: 5.5, fontFamily: "Helvetica-Bold", textTransform: "uppercase" },
   oneFinancialTotalValue: { color: offerColors.cream, fontSize: 7.5, fontFamily: "Helvetica-Bold" },
-  oneUnitPlanImage: { width: "100%", height: 69, objectFit: "cover", backgroundColor: "#ffffff", borderRadius: 3 },
+  oneUnitPlanImage: { width: "100%", height: 69, objectFit: "contain", backgroundColor: "#ffffff", borderRadius: 3 },
   oneUnitPhotoImage: { width: "100%", height: 69, objectFit: "cover", backgroundColor: "#e9edf2", borderRadius: 3 },
   oneUnitPlanHeading: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", marginBottom: 3 },
   oneUnitPlanMeta: { color: offerColors.muted, fontSize: 5, textTransform: "uppercase", letterSpacing: 0.25 },
@@ -300,7 +300,7 @@ export const offerStyles = StyleSheet.create({
   unitPlanImage: {
     width: "100%",
     height: 70,
-    objectFit: "cover",
+    objectFit: "contain",
     backgroundColor: "#ffffff",
     borderRadius: 4,
   },

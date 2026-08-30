@@ -64,6 +64,7 @@ function UnitTypeDetail() {
   const gallery = [...unitPhotos, ...(selectedFloorPlan ? [selectedFloorPlan] : [])];
   const [activeImage, setActiveImage] = useState(mainUnitImage?.full ?? null);
   const [offerOpen, setOfferOpen] = useState(false);
+  const activeIsFloorPlan = gallery.find((image) => image.full === activeImage)?.isFloorPlan ?? false;
   useEffect(() => setActiveImage(mainUnitImage?.full ?? null), [unit.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const beds = bedroomsLabel(project);
   const baths = positiveCount(project.bathrooms);
@@ -80,7 +81,7 @@ function UnitTypeDetail() {
           <div className="space-y-3">
             <div className="glass gold-hairline overflow-hidden rounded-3xl bg-white">
               {activeImage ? (
-                <img src={activeImage} alt={`${unit.label} in ${project.name}`} className="h-[480px] w-full object-cover" loading="eager" decoding="async" />
+                <img src={activeImage} alt={`${unit.label} in ${project.name}`} className={`h-[480px] w-full ${activeIsFloorPlan ? "bg-white object-contain" : "object-cover"}`} loading="eager" decoding="async" />
               ) : (
                 <div className="grid h-[480px] place-items-center bg-muted text-muted-foreground">No unit image</div>
               )}
@@ -94,7 +95,7 @@ function UnitTypeDetail() {
                 <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
                   {gallery.map((image, index) => (
                     <button key={image.id} type="button" onClick={() => setActiveImage(image.full)} className={`group relative glass aspect-[4/3] overflow-hidden rounded-2xl ${activeImage === image.full ? "ring-2 ring-gold" : "gold-hairline"}`} aria-label={`Show ${image.isFloorPlan ? "floor plan" : "unit photo"}`}>
-                      <img src={image.thumb} alt="" className="h-full w-full object-cover transition-transform group-hover:scale-105" loading="lazy" decoding="async" />
+                      <img src={image.thumb} alt="" className={`h-full w-full ${image.isFloorPlan ? "bg-white object-contain" : "object-cover transition-transform group-hover:scale-105"}`} loading="lazy" decoding="async" />
                       <span className="absolute inset-x-1 bottom-1 rounded bg-black/65 px-1.5 py-1 text-left text-[9px] uppercase tracking-wider text-white">
                         {image.isFloorPlan ? "Floor plan" : index === 0 ? "Main photo" : "Unit photo"}
                       </span>
@@ -114,6 +115,7 @@ function UnitTypeDetail() {
               <div className="text-xs uppercase tracking-widest text-muted-foreground">Unit details</div>
               <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
                 <DetailStat icon={<Ruler className="h-4 w-4" />} label="Area" value={areaLabel(unit) ?? "Not specified"} />
+                {unit.floor && <DetailStat emphasis icon={<Building2 className="h-4 w-4" />} label="Floor" value={unit.floor} />}
                 {beds && <DetailStat icon={<Bed className="h-4 w-4" />} label="Bedrooms" value={beds} />}
                 {baths != null && <DetailStat icon={<Bath className="h-4 w-4" />} label="Bathrooms" value={String(baths)} />}
                 <DetailStat icon={<Building2 className="h-4 w-4" />} label="Status" value={project.status.replace(/_/g, " ")} />
@@ -141,6 +143,6 @@ function UnitTypeDetail() {
   );
 }
 
-function DetailStat({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return <div className="glass rounded-xl p-3"><div className="flex items-center gap-1 text-[10px] uppercase tracking-widest text-muted-foreground">{icon} {label}</div><div className="mt-1 truncate text-cream">{value}</div></div>;
+function DetailStat({ icon, label, value, emphasis = false }: { icon: React.ReactNode; label: string; value: string; emphasis?: boolean }) {
+  return <div className="glass rounded-xl p-3"><div className={`flex items-center gap-1 text-[10px] uppercase tracking-widest ${emphasis ? "text-gold" : "text-muted-foreground"}`}>{icon} {label}</div><div className={`mt-1 truncate ${emphasis ? "font-semibold text-white" : "text-cream"}`}>{value}</div></div>;
 }
