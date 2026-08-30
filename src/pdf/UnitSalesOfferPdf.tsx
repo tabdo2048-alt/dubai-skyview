@@ -3,6 +3,7 @@ import type { ProjectWithRelations } from "@/lib/types";
 import type { DisplayPaymentPlan } from "@/lib/payment-plans";
 import type { DisplayUnitType } from "@/lib/unit-types";
 import { formatCurrency, formatPercentage, type OfferCalculation } from "@/lib/offer-calculations";
+import { bedroomsLabel, positiveCount } from "@/lib/dubai";
 import { areaLabel } from "@/lib/unit-types";
 import { projectMainImage, projectOfferImage, unitFloorPlanImage, unitPhotoImage } from "@/lib/pdf-media";
 import { safeOfferColor } from "@/lib/offer-branding";
@@ -58,9 +59,9 @@ function LegacyUnitSalesOfferPdf({
     ["Unit type", unit.label],
     ["Floor", unit.floor],
     ["Size", unitArea],
-    ["Bedrooms", project.bedrooms_min != null ? `${project.bedrooms_min}${project.bedrooms_max && project.bedrooms_max !== project.bedrooms_min ? `-${project.bedrooms_max}` : ""}` : null],
-    ["Bathrooms", project.bathrooms != null && project.bathrooms > 0 ? String(project.bathrooms) : null],
-    ["Location", project.community?.name ?? project.address],
+    ["Bedrooms", bedroomsLabel(project)],
+    ["Bathrooms", positiveCount(project.bathrooms)?.toString() ?? null],
+    ["Developer", project.developer?.name],
     ["Status", project.status],
     ["Completion", project.completion_date],
   ].filter((row): row is [string, string] => Boolean(row[1]));
@@ -253,9 +254,9 @@ function OnePageSalesOffer({
     ["Unit type", unit.label],
     ["Floor", unit.floor],
     ["Size", unitArea],
-    ["Bedrooms", project.bedrooms_min != null ? `${project.bedrooms_min}${project.bedrooms_max && project.bedrooms_max !== project.bedrooms_min ? `-${project.bedrooms_max}` : ""}` : null],
-    ["Bathrooms", project.bathrooms != null && project.bathrooms > 0 ? String(project.bathrooms) : null],
-    ["Location", project.community?.name ?? project.address],
+    ["Bedrooms", bedroomsLabel(project)],
+    ["Bathrooms", positiveCount(project.bathrooms)?.toString() ?? null],
+    ["Developer", project.developer?.name],
     ["Status", project.status],
     ["Completion", project.completion_date],
   ].filter((row): row is [string, string] => Boolean(row[1]));
@@ -465,12 +466,12 @@ function OfferHeader({
         <Text style={[offerStyles.projectName, { color: offerColors.gold }]}>{project.name}</Text>
         {(project.community?.name ?? project.address) && <Text style={offerStyles.location}>{project.community?.name ?? project.address}</Text>}
       </View>
-      <View style={[offerStyles.offerMeta, { borderColor: accentColor, backgroundColor: primaryColor }]}>
-        <Text style={[offerStyles.metaLabel, { color: accentColor }]}>Offer ID</Text>
+      <View style={[offerStyles.offerMeta, { borderColor: offerColors.gold, backgroundColor: primaryColor }]}>
+        <Text style={[offerStyles.metaLabel, { color: offerColors.gold }]}>Offer ID</Text>
         <Text style={offerStyles.metaValue}>{offerId}</Text>
-        <Text style={[offerStyles.metaLabel, { color: accentColor }]}>Date</Text>
+        <Text style={[offerStyles.metaLabel, { color: offerColors.gold }]}>Date</Text>
         <Text style={offerStyles.metaValue}>{offerDate}</Text>
-        <Text style={[offerStyles.metaLabel, { color: accentColor }]}>Valid until</Text>
+        <Text style={[offerStyles.metaLabel, { color: offerColors.gold }]}>Valid until</Text>
         <Text style={offerStyles.metaValue}>{validUntil}</Text>
       </View>
     </View>

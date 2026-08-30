@@ -1,5 +1,5 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
-import { ArrowLeft, Bath, Bed, Building2, FileDown, MapPin, Ruler } from "lucide-react";
+import { ArrowLeft, Bath, Bed, Building2, FileDown, Ruler } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { fetchProjectBySlug } from "@/hooks/use-projects";
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { mediaSrc } from "@/lib/media";
 import { formatAed, bedroomsLabel, positiveCount } from "@/lib/dubai";
 import { areaLabel, unitDetailSlug } from "@/lib/unit-types";
+import { displayPaymentPlans } from "@/lib/payment-plans";
 
 export const Route = createFileRoute("/projects/$slug/units/$unitTypeId")({
   loader: async ({ params }) => {
@@ -65,6 +66,7 @@ function UnitTypeDetail() {
   const [activeImage, setActiveImage] = useState(mainUnitImage?.full ?? null);
   const [offerOpen, setOfferOpen] = useState(false);
   const activeIsFloorPlan = gallery.find((image) => image.full === activeImage)?.isFloorPlan ?? false;
+  const paymentPlans = useMemo(() => displayPaymentPlans(project.payment_plans, project.payment_plan), [project.payment_plan, project.payment_plans]);
   useEffect(() => setActiveImage(mainUnitImage?.full ?? null), [unit.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const beds = bedroomsLabel(project);
   const baths = positiveCount(project.bathrooms);
@@ -104,12 +106,42 @@ function UnitTypeDetail() {
                 </div>
               </div>
             )}
+            {selectedFloorPlan && (
+              <div className="glass gold-hairline overflow-hidden rounded-3xl bg-white">
+                <div className="flex items-center justify-between gap-3 border-b border-border/60 bg-white px-4 py-3">
+                  <div className="text-xs font-semibold uppercase tracking-widest text-ink">Floor plan</div>
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Selected unit layout</div>
+                </div>
+                <img
+                  src={selectedFloorPlan.full}
+                  alt={`${unit.label} floor plan`}
+                  className="h-[300px] w-full object-contain p-2"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </div>
+            )}
           </div>
 
           <div className="space-y-4">
-            <div className="flex items-center gap-1 text-xs uppercase tracking-widest text-muted-foreground"><Building2 className="h-3.5 w-3.5" /> Unit type inside {project.developer?.name ?? "Independent"}</div>
+            <div className="flex items-center gap-1 text-xs uppercase tracking-widest text-muted-foreground"><Building2 className="h-3.5 w-3.5" /> Unit details</div>
             <h1 className="font-display text-5xl leading-none text-cream">{unit.label}</h1>
-            <p className="flex items-center gap-1.5 text-sm text-muted-foreground"><MapPin className="h-4 w-4" /> {project.name} · {project.community?.name ?? project.address ?? "Dubai"}</p>
+            <p className="flex items-center gap-1.5 text-sm text-muted-foreground"><Building2 className="h-4 w-4" /> {project.developer?.name ?? "Independent developer"}</p>
+
+            <div className="glass gold-hairline rounded-3xl p-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <div className="text-[10px] uppercase tracking-widest text-gold">Developer</div>
+                  <div className="mt-1 text-sm font-semibold text-white">{project.developer?.name ?? "Independent"}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-widest text-gold">Main project</div>
+                  <Link to="/projects/$slug" params={{ slug: project.slug }} className="mt-1 block truncate text-sm font-semibold text-white underline-offset-4 hover:text-gold hover:underline">
+                    {project.name}
+                  </Link>
+                </div>
+              </div>
+            </div>
 
             <div className="glass-strong gold-hairline rounded-3xl p-5">
               <div className="text-xs uppercase tracking-widest text-muted-foreground">Unit details</div>
@@ -130,6 +162,8 @@ function UnitTypeDetail() {
               </div>
             </div>
 
+            <PaymentPlans plans={paymentPlans} />
+
             {unitImages.some((image) => image.isFloorPlan) && (
               <div className="rounded-2xl border border-gold/20 bg-gold/5 p-4 text-sm text-cream">
                 The selected floor plan is marked in the unit gallery and is the image used in the sales offer PDF.
@@ -139,6 +173,45 @@ function UnitTypeDetail() {
         </div>
       </div>
       <UnitOfferDialog project={project} initialUnitId={unit.id} open={offerOpen} onOpenChange={setOfferOpen} />
+    </div>
+  );
+}
+
+function PaymentPlans({ plans }: { plans: ReturnType<typeof displayPaymentPlans> }) {
+  return (
+    <div className="glass-strong gold-hairline rounded-3xl p-5">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-xs uppercase tracking-widest text-gold">Available payment plans</div>
+          <div className="mt-1 text-sm text-muted-foreground">Plans configured for this project</div>
+        </div>
+        <div className="rounded-full border border-gold/30 px-2.5 py-1 text-[10px] uppercase tracking-wider text-gold">{plans.length} {plans.length === 1 ? "plan" : "plans"}</div>
+      </div>
+      {plans.length === 0 ? (
+        <div className="mt-4 rounded-xl border border-dashed border-border/60 p-3 text-sm text-muted-foreground">No payment plan configured.</div>
+      ) : (
+        <div className="mt-4 space-y-3">
+          {plans.map((plan) => (
+            <div key={plan.id} className="rounded-2xl bg-black/15 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="font-medium text-white">{plan.label}</div>
+                {plan.is_default && <span className="rounded-full bg-gold/15 px-2 py-0.5 text-[10px] uppercase tracking-wider text-gold">Default</span>}
+              </div>
+              {plan.details && <div className="mt-1 whitespace-pre-line text-sm text-muted-foreground">{plan.details}</div>}
+              {plan.installments.length > 0 && (
+                <div className="mt-3 space-y-1.5 border-t border-border/40 pt-3">
+                  {plan.installments.map((installment) => (
+                    <div key={installment.id} className="flex items-center justify-between gap-3 text-sm">
+                      <span className="min-w-0 truncate text-cream">{installment.label}</span>
+                      <span className="shrink-0 text-gold">{installment.percentage}%{installment.due_label ? ` · ${installment.due_label}` : ""}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

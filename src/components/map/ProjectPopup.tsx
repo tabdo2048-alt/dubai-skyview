@@ -32,6 +32,7 @@ export function ProjectPopup({ project, onClose }: { project: ProjectWithRelatio
   }, [project]);
   const [activeImage, setActiveImage] = useState<string | null>(images[0]?.full ?? null);
   const unitTypes = useMemo(() => displayUnitTypes(project?.unit_types, project?.starting_price_aed), [project]);
+  const unitRows = unitTypes.filter((item) => item.id !== "legacy-starting-price");
   const priceRows = pricedUnitTypes(unitTypes);
   const areaRows = unitTypes.filter((item) => areaLabel(item));
   const paymentPlans = useMemo(() => displayPaymentPlans(project?.payment_plans, project?.payment_plan), [project]);
@@ -123,11 +124,11 @@ export function ProjectPopup({ project, onClose }: { project: ProjectWithRelatio
                 </div>
 
                 {/* Thumbnail strip — click to swap the hero (mirrors the detail page). */}
-                {priceRows.length > 0 && (
+                {(unitRows.length > 0 || priceRows.length > 0) && (
                   <div className="glass gold-hairline rounded-2xl p-3">
                     <div className="mb-2 text-[10px] uppercase tracking-widest text-muted-foreground">Prices by unit type</div>
                     <div className="space-y-1.5 text-sm">
-                      {priceRows.slice(0, 4).map((item) => (
+                  {(unitRows.length > 0 ? unitRows : priceRows).slice(0, 4).map((item) => (
                         <div key={item.id} className="flex items-center justify-between gap-3">
                           {item.id === "legacy-starting-price" ? (
                             <span className="font-medium text-cream">{item.label}</span>
@@ -136,11 +137,11 @@ export function ProjectPopup({ project, onClose }: { project: ProjectWithRelatio
                               {item.label}
                             </Link>
                           )}
-                          <span className="text-right text-gold-gradient">{formatAed(item.price_aed)}</span>
+                          <span className="text-right text-gold-gradient">{item.price_aed != null && item.price_aed > 0 ? formatAed(item.price_aed) : "Price on request"}</span>
                         </div>
                       ))}
                     </div>
-                    {priceRows.length > 4 && <div className="mt-2 text-[11px] text-muted-foreground">+{priceRows.length - 4} more unit types</div>}
+                    {(unitRows.length > 4 || priceRows.length > 4) && <div className="mt-2 text-[11px] text-muted-foreground">+{(unitRows.length > 0 ? unitRows.length : priceRows.length) - 4} more unit types</div>}
                   </div>
                 )}
 

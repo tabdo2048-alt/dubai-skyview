@@ -106,6 +106,7 @@ function ProjectDetail() {
   const [plansOpen, setPlansOpen] = useState(false);
   const [offerOpen, setOfferOpen] = useState(false);
   const unitTypes = useMemo(() => displayUnitTypes(p?.unit_types, p?.starting_price_aed), [p]);
+  const unitRows = unitTypes.filter((item) => item.id !== "legacy-starting-price");
   const priceRows = pricedUnitTypes(unitTypes);
   const areaRows = unitTypes.filter((item) => areaLabel(item));
   const paymentPlans = useMemo(() => displayPaymentPlans(p?.payment_plans, p?.payment_plan), [p]);
@@ -195,24 +196,20 @@ function ProjectDetail() {
             </div>
 
             <div className="glass-strong gold-hairline rounded-3xl p-5">
-              {priceRows.length > 0 && (
+              {(unitRows.length > 0 || priceRows.length > 0) && (
                 <div>
                   <div className="text-xs uppercase tracking-widest text-muted-foreground">Prices by unit type</div>
                   <div className="mt-3 space-y-2">
-                    {priceRows.map((item) => (
+                    {(unitRows.length > 0 ? unitRows : priceRows).map((item) => (
                       <div key={item.id} className="flex items-center justify-between gap-4 rounded-xl bg-black/15 px-3 py-2">
-                        {item.id === "legacy-starting-price" ? (
-                          <span className="font-medium text-cream">{item.label}</span>
-                        ) : (
-                          <Link
-                            to="/projects/$slug/units/$unitTypeId"
-                            params={{ slug: p.slug, unitTypeId: unitDetailSlug({ projectName: p.name, projectSlug: p.slug, developerName: p.developer?.name, developerSlug: p.developer?.slug, unitLabel: item.label }) }}
-                            className="font-medium text-cream underline-offset-4 hover:text-gold hover:underline"
-                          >
-                            {item.label}
-                          </Link>
-                        )}
-                        <span className="text-gold-gradient">{formatAed(item.price_aed)}</span>
+                        {item.id === "legacy-starting-price" ? <span className="font-medium text-cream">{item.label}</span> : <Link
+                          to="/projects/$slug/units/$unitTypeId"
+                          params={{ slug: p.slug, unitTypeId: unitDetailSlug({ projectName: p.name, projectSlug: p.slug, developerName: p.developer?.name, developerSlug: p.developer?.slug, unitLabel: item.label }) }}
+                          className="font-medium text-cream underline-offset-4 hover:text-gold hover:underline"
+                        >
+                          {item.label}
+                        </Link>}
+                        <span className="text-gold-gradient">{item.price_aed != null && item.price_aed > 0 ? formatAed(item.price_aed) : "Price on request"}</span>
                       </div>
                     ))}
                   </div>
