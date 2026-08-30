@@ -44,12 +44,23 @@ export const offerStyles = StyleSheet.create({
     backgroundColor: offerColors.navy,
     opacity: 1,
   },
-  headerContent: {
-    position: "absolute",
-    left: 16,
-    top: 14,
+  // Keep the copy on a real opaque surface. React-PDF can paint positioned
+  // siblings in a different order than the browser, which made the header
+  // image bleed through the text even when opacity was set to 1.
+  headerTextPanel: {
+    position: "relative",
+    width: "33.333%",
+    height: 122,
+    paddingLeft: 16,
+    paddingTop: 14,
+    paddingRight: 8,
+    backgroundColor: offerColors.navy,
     zIndex: 3,
-    width: "30%",
+  },
+  headerContent: {
+    position: "relative",
+    width: "100%",
+    zIndex: 1,
   },
   logo: {
     width: 29,

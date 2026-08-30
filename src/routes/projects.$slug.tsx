@@ -1,4 +1,4 @@
-import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   ArrowLeft,
   MapPin,
@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AppNavbar } from "@/components/layout/AppNavbar";
-import { fetchProjectBySlug } from "@/hooks/use-projects";
+import { fetchProjectBySlug, useProject } from "@/hooks/use-projects";
 import { formatAed, bedroomsLabel, positiveCount } from "@/lib/dubai";
 import { whatsappUrl, viewingMailto } from "@/lib/contact";
 import { mediaSrc } from "@/lib/media";
@@ -26,7 +26,7 @@ import { track } from "@/lib/analytics";
 import { safeHttpUrl } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import type { ProjectWithRelations } from "@/lib/types";
-import { areaLabel, displayUnitTypes, highestUnitPrice, lowestUnitPrice, pricedUnitTypes, unitDetailSlug } from "@/lib/unit-types";
+import { areaLabel, displayUnitTypes, highestUnitPrice, lowestUnitPrice, pricedUnitTypes, projectDetailSlug, unitDetailSlug } from "@/lib/unit-types";
 import { displayPaymentPlans, paymentPlanSummary } from "@/lib/payment-plans";
 import { UnitOfferDialog } from "@/components/offers/UnitOfferDialog";
 
@@ -85,7 +85,10 @@ export const Route = createFileRoute("/projects/$slug")({
 });
 
 function ProjectDetail() {
-  const { project: p } = Route.useLoaderData();
+  const loaderData = Route.useLoaderData();
+  const { slug } = Route.useParams();
+  const clientProject = useProject(slug);
+  const p = clientProject.data ?? loaderData.project;
   useEffect(() => {
     if (p) track("view_project", { slug: p.slug, name: p.name, price: lowestUnitPrice(p.unit_types, p.starting_price_aed) });
   }, [p]);
@@ -121,7 +124,19 @@ function ProjectDetail() {
   useEffect(() => setActiveImage(images[0]?.full ?? null), [p?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   // Collapse the plan breakdown when switching projects.
   useEffect(() => setPlansOpen(false), [p?.id]);
-  if (!p) throw notFound();
+  if (!p) {
+    return (
+      <div className="min-h-screen">
+        <AppNavbar />
+        <div className="grid min-h-[60vh] place-items-center px-4 text-center">
+          <div>
+            <div className="text-sm text-muted-foreground">{clientProject.isLoading ? "Loading project…" : "Project not found."}</div>
+            {!clientProject.isLoading && <Link to="/" className="mt-3 inline-block text-sm text-gold underline-offset-4 hover:underline">Back to projects</Link>}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen">
@@ -204,7 +219,7 @@ function ProjectDetail() {
                       <div key={item.id} className="flex items-center justify-between gap-4 rounded-xl bg-black/15 px-3 py-2">
                         {item.id === "legacy-starting-price" ? <span className="font-medium text-cream">{item.label}</span> : <Link
                           to="/projects/$slug/units/$unitTypeId"
-                          params={{ slug: p.slug, unitTypeId: unitDetailSlug({ projectName: p.name, projectSlug: p.slug, developerName: p.developer?.name, developerSlug: p.developer?.slug, unitLabel: item.label }) }}
+                          params={{ slug: projectDetailSlug({ name: p.name, slug: p.slug }), unitTypeId: unitDetailSlug({ projectName: p.name, projectSlug: p.slug, developerName: p.developer?.name, developerSlug: p.developer?.slug, unitLabel: item.label }) }}
                           className="font-medium text-cream underline-offset-4 hover:text-gold hover:underline"
                         >
                           {item.label}

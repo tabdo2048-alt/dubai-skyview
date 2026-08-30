@@ -53,10 +53,16 @@ export function unitDetailSlug(parts: {
   developerSlug?: string | null;
   unitLabel: string;
 }): string {
-  const project = slugPart(parts.projectName) || slugPart(parts.projectSlug);
+  const project = projectDetailSlug({ name: parts.projectName, slug: parts.projectSlug });
   const developer = slugPart(parts.developerName) || slugPart(parts.developerSlug);
   const unit = slugPart(parts.unitLabel);
   return [project, developer, unit].filter(Boolean).join("-") || "unit";
+}
+
+/** Canonical project URL segment. Project links intentionally use the project
+ * name only; developer names belong to unit detail URLs, not project URLs. */
+export function projectDetailSlug(project: { name?: string | null; slug?: string | null }): string {
+  return slugPart(project.name) || slugPart(project.slug) || "project";
 }
 
 function slugPart(value: string | null | undefined): string {

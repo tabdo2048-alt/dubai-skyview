@@ -1,14 +1,26 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft, Bath, Bed, Building2, FileDown, Ruler } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import type { ProjectWithRelations } from "@/lib/types";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { fetchProjectBySlug, useProject } from "@/hooks/use-projects";
 import { UnitOfferDialog } from "@/components/offers/UnitOfferDialog";
 import { Button } from "@/components/ui/button";
 import { mediaSrc } from "@/lib/media";
 import { formatAed, bedroomsLabel, positiveCount } from "@/lib/dubai";
-import { areaLabel, unitDetailSlug } from "@/lib/unit-types";
+import { areaLabel, projectDetailSlug, unitDetailSlug } from "@/lib/unit-types";
 import { displayPaymentPlans } from "@/lib/payment-plans";
+
+function findUnitForRoute(project: ProjectWithRelations | null | undefined, unitTypeId: string) {
+  if (!project) return null;
+  return project.unit_types.find((item) => item.id === unitTypeId || unitDetailSlug({
+    projectName: project.name,
+    projectSlug: project.slug,
+    developerName: project.developer?.name,
+    developerSlug: project.developer?.slug,
+    unitLabel: item.label,
+  }) === unitTypeId) ?? null;
+}
 
 export const Route = createFileRoute("/projects/$slug/units/$unitTypeId")({
   loader: async ({ params }) => {
@@ -19,7 +31,7 @@ export const Route = createFileRoute("/projects/$slug/units/$unitTypeId")({
   },
   head: ({ loaderData, params }) => {
     const project = loaderData?.project;
-    const unit = loaderData?.unit;
+    const unit = findUnitForRoute(project, params.unitTypeId);
     if (!project || !unit) return { meta: [{ title: `${params.unitTypeId} — Unit details` }] };
     const unitImage = mediaSrc(
       unit.images?.find((image) => !image.is_floor_plan)?.src ?? unit.images?.find((image) => image.is_floor_plan)?.src ?? unit.floor_plan_src,
@@ -43,16 +55,38 @@ function UnitTypeDetail() {
   const { slug, unitTypeId } = Route.useParams();
   const clientProject = useProject(slug);
   const project = clientProject.data ?? loaderData.project;
-  const unit = useMemo(() => {
-    if (!project) return null;
-    return project.unit_types.find((item) => item.id === unitTypeId || unitDetailSlug({
-      projectName: project.name,
-      projectSlug: project.slug,
-      developerName: project.developer?.name,
-      developerSlug: project.developer?.slug,
-      unitLabel: item.label,
-    }) === unitTypeId) ?? null;
-  }, [project, unitTypeId]);
+  const unit = useMemo(() => findUnitForRoute(project, unitTypeId), [project, unitTypeId]);
+
+  // Keep every hook above the loading/not-found return. The project can be
+  // unavailable during the first client render while the authenticated query
+  // is being retried, so conditional hooks here would break the route exactly
+  // when it is recovering from that state.
+  const unitImages = useMemo(() => {
+    if (!unit) return [];
+    const rows = (unit.images ?? []).slice().sort((a, b) => a.sort_order - b.sort_order);
+    const images = rows.map((image) => ({
+      id: image.id,
+      full: mediaSrc(image.src, image.url),
+      thumb: mediaSrc(image.thumb_src, image.src ?? image.url),
+      isFloorPlan: image.is_floor_plan,
+    })).filter((image) => image.full);
+    const fallbackFloorPlan = mediaSrc(unit.floor_plan_src, unit.floor_plan_url);
+    if (fallbackFloorPlan && !images.some((image) => image.isFloorPlan)) {
+      images.push({ id: "legacy-floor-plan", full: fallbackFloorPlan, thumb: fallbackFloorPlan, isFloorPlan: true });
+    }
+    return images;
+  }, [unit]);
+  // The first normal unit photo is the unit page hero. The project image is
+  // deliberately never included here; it belongs to the parent project page.
+  const unitPhotos = unitImages.filter((image) => !image.isFloorPlan);
+  const selectedFloorPlan = unitImages.find((image) => image.isFloorPlan) ?? null;
+  const mainUnitImage = unitPhotos[0] ?? null;
+  const gallery = [...unitPhotos, ...(selectedFloorPlan ? [selectedFloorPlan] : [])];
+  const [activeImage, setActiveImage] = useState(mainUnitImage?.full ?? null);
+  const [offerOpen, setOfferOpen] = useState(false);
+  const activeIsFloorPlan = gallery.find((image) => image.full === activeImage)?.isFloorPlan ?? false;
+  const paymentPlans = useMemo(() => displayPaymentPlans(project?.payment_plans, project?.payment_plan), [project?.payment_plan, project?.payment_plans]);
+  useEffect(() => setActiveImage(mainUnitImage?.full ?? null), [unit?.id, mainUnitImage?.full]);
 
   if (!project || !unit) {
     return (
@@ -67,27 +101,6 @@ function UnitTypeDetail() {
       </div>
     );
   }
-  const unitImages = useMemo(() => {
-    const rows = (unit.images ?? []).slice().sort((a, b) => a.sort_order - b.sort_order);
-    return rows.map((image) => ({
-      id: image.id,
-      full: mediaSrc(image.src, image.url),
-      thumb: mediaSrc(image.thumb_src, image.src ?? image.url),
-      isFloorPlan: image.is_floor_plan,
-    })).filter((image) => image.full);
-  }, [unit.images]);
-  const fallbackFloorPlan = mediaSrc(unit.floor_plan_src, unit.floor_plan_url);
-  // The first normal unit photo is the unit page hero. The project image is
-  // deliberately never included here; it belongs to the parent project page.
-  const unitPhotos = unitImages.filter((image) => !image.isFloorPlan);
-  const selectedFloorPlan = unitImages.find((image) => image.isFloorPlan) ?? (fallbackFloorPlan ? { id: "legacy-floor-plan", full: fallbackFloorPlan, thumb: fallbackFloorPlan, isFloorPlan: true } : null);
-  const mainUnitImage = unitPhotos[0] ?? selectedFloorPlan;
-  const gallery = [...unitPhotos, ...(selectedFloorPlan ? [selectedFloorPlan] : [])];
-  const [activeImage, setActiveImage] = useState(mainUnitImage?.full ?? null);
-  const [offerOpen, setOfferOpen] = useState(false);
-  const activeIsFloorPlan = gallery.find((image) => image.full === activeImage)?.isFloorPlan ?? false;
-  const paymentPlans = useMemo(() => displayPaymentPlans(project.payment_plans, project.payment_plan), [project.payment_plan, project.payment_plans]);
-  useEffect(() => setActiveImage(mainUnitImage?.full ?? null), [unit.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const beds = bedroomsLabel(project);
   const baths = positiveCount(project.bathrooms);
 
@@ -96,7 +109,7 @@ function UnitTypeDetail() {
       <AppNavbar />
       <div className="mx-auto max-w-6xl px-4 py-8">
         <Button asChild variant="ghost" size="sm" className="text-muted-foreground hover:text-cream">
-          <Link to="/projects/$slug" params={{ slug: project.slug }}><ArrowLeft className="mr-1 h-4 w-4" /> Back to project</Link>
+          <Link to="/projects/$slug" params={{ slug: projectDetailSlug({ name: project.name, slug: project.slug }) }}><ArrowLeft className="mr-1 h-4 w-4" /> Back to project</Link>
         </Button>
 
         <div className="mt-6 grid gap-8 lg:grid-cols-[1.3fr_1fr]">
@@ -156,7 +169,7 @@ function UnitTypeDetail() {
                 </div>
                 <div>
                   <div className="text-[10px] uppercase tracking-widest text-gold">Main project</div>
-                  <Link to="/projects/$slug" params={{ slug: project.slug }} className="mt-1 block truncate text-sm font-semibold text-white underline-offset-4 hover:text-gold hover:underline">
+                  <Link to="/projects/$slug" params={{ slug: projectDetailSlug({ name: project.name, slug: project.slug }) }} className="mt-1 block truncate text-sm font-semibold text-white underline-offset-4 hover:text-gold hover:underline">
                     {project.name}
                   </Link>
                 </div>
@@ -178,7 +191,7 @@ function UnitTypeDetail() {
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 <Button type="button" onClick={() => setOfferOpen(true)} className="bg-gold text-gold-foreground hover:bg-gold/90"><FileDown className="mr-1 h-4 w-4" /> Sales offer PDF</Button>
-                <Button asChild variant="outline" className="glass gold-hairline text-cream"><Link to="/projects/$slug" params={{ slug: project.slug }}>View full project</Link></Button>
+                <Button asChild variant="outline" className="glass gold-hairline text-cream"><Link to="/projects/$slug" params={{ slug: projectDetailSlug({ name: project.name, slug: project.slug }) }}>View full project</Link></Button>
               </div>
             </div>
 

@@ -69,7 +69,7 @@ function LegacyUnitSalesOfferPdf({
   return (
     <Document title={`${project.name} - Sales Offer`} author={project.developer?.name ?? project.name}>
       <Page size="A4" orientation="landscape" style={offerStyles.page} wrap={false}>
-        <OfferHeader project={project} heroImage={heroImage} developerLogo={developerLogo} offerId={offerId} offerDate={offerDate} validUntil={validUntil} primaryColor={primaryColor} accentColor={accentColor} />
+        <OfferHeader project={project} heroImage={heroImage} developerLogo={developerLogo} offerId={offerId} offerDate={offerDate} validUntil={validUntil} />
 
         <View style={offerStyles.body}>
           <View style={offerStyles.cardRow}>
@@ -264,7 +264,7 @@ function OnePageSalesOffer({
   return (
     <Document title={`${project.name} - Sales Offer`} author={project.developer?.name ?? project.name}>
       <Page size="A4" orientation="landscape" style={offerStyles.page} wrap={false}>
-        <OfferHeader project={project} heroImage={headerImage} developerLogo={developerLogo} offerId={offerId} offerDate={offerDate} validUntil={validUntil} primaryColor={primaryColor} accentColor={accentColor} />
+        <OfferHeader project={project} heroImage={headerImage} developerLogo={developerLogo} offerId={offerId} offerDate={offerDate} validUntil={validUntil} />
 
         <View style={offerStyles.oneBody}>
           <View style={offerStyles.cardRow}>
@@ -441,8 +441,6 @@ function OfferHeader({
   offerId,
   offerDate,
   validUntil,
-  primaryColor,
-  accentColor,
 }: {
   project: ProjectWithRelations;
   heroImage: string;
@@ -450,23 +448,22 @@ function OfferHeader({
   offerId: string;
   offerDate: string;
   validUntil: string;
-  primaryColor: string;
-  accentColor: string;
 }) {
   return (
-    <View style={[offerStyles.header, { backgroundColor: primaryColor }]}>
+    <View style={[offerStyles.header, { backgroundColor: offerColors.navy }]}>
       {heroImage && <Image src={heroImage} style={offerStyles.headerImage} />}
-      <View style={[offerStyles.headerShade, { backgroundColor: primaryColor }]} />
-      <View style={offerStyles.headerContent}>
-        {developerLogo && <Image src={developerLogo} style={offerStyles.logo} />}
-        {project.developer?.name && <Text style={offerStyles.developer}>{project.developer.name}</Text>}
-        <Text style={[offerStyles.eyebrow, { color: offerColors.gold, opacity: 1 }]}>Sales offer</Text>
-        <Text style={[offerStyles.title, { color: "#f8fafc", opacity: 1 }]}>INVESTMENT</Text>
-        <Text style={[offerStyles.subtitle, { color: offerColors.gold, opacity: 1 }]}>Proposal</Text>
-        <Text style={[offerStyles.projectName, { color: offerColors.gold, opacity: 1 }]}>{project.name}</Text>
-        {(project.community?.name ?? project.address) && <Text style={offerStyles.location}>{project.community?.name ?? project.address}</Text>}
+      <View style={offerStyles.headerTextPanel}>
+        <View style={offerStyles.headerContent}>
+          {developerLogo && <Image src={developerLogo} style={offerStyles.logo} />}
+          {project.developer?.name && <Text style={[offerStyles.developer, { color: "#ffffff", opacity: 1 }]}>{project.developer.name}</Text>}
+          <Text style={[offerStyles.eyebrow, { color: offerColors.gold, opacity: 1 }]}>Sales offer</Text>
+          <Text style={[offerStyles.title, { color: "#ffffff", opacity: 1 }]}>INVESTMENT</Text>
+          <Text style={[offerStyles.subtitle, { color: offerColors.gold, opacity: 1 }]}>Proposal</Text>
+          <Text style={[offerStyles.projectName, { color: offerColors.gold, opacity: 1 }]}>{project.name}</Text>
+          {(project.community?.name ?? project.address) && <Text style={[offerStyles.location, { color: "#ffffff", opacity: 1 }]}>{project.community?.name ?? project.address}</Text>}
+        </View>
       </View>
-      <View style={[offerStyles.offerMeta, { borderColor: offerColors.gold, backgroundColor: primaryColor }]}>
+      <View style={[offerStyles.offerMeta, { borderColor: offerColors.gold, backgroundColor: offerColors.navy }]}>
         <Text style={[offerStyles.metaLabel, { color: offerColors.gold }]}>Offer ID</Text>
         <Text style={offerStyles.metaValue}>{offerId}</Text>
         <Text style={[offerStyles.metaLabel, { color: offerColors.gold }]}>Date</Text>

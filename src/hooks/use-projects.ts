@@ -139,7 +139,8 @@ export async function fetchProjectBySlug(slug: string): Promise<ProjectWithRelat
     .select(PROJECT_DETAIL_SELECT_WITH_PLANS)
     .eq("slug", slug)
     .maybeSingle();
-  if (!error) return signOne(normalizeProject(data));
+  if (!error && data) return signOne(normalizeProject(data));
+  if (!error) return fetchProjectByReadableSlug(slug);
 
   // Payment plans not migrated yet: retry without them rather than dropping all
   // the way to the legacy select, which would also lose images and unit types.
@@ -149,7 +150,8 @@ export async function fetchProjectBySlug(slug: string): Promise<ProjectWithRelat
       .select(PROJECT_DETAIL_SELECT_PLANS)
       .eq("slug", slug)
       .maybeSingle();
-    if (!retry.error) return signOne(normalizeProject(retry.data));
+    if (!retry.error && retry.data) return signOne(normalizeProject(retry.data));
+    if (!retry.error) return fetchProjectByReadableSlug(slug);
 
     // The payment-plan relation may exist while the optional unit-photo
     // relation is not installed yet. Drop only that relation before falling
@@ -159,21 +161,24 @@ export async function fetchProjectBySlug(slug: string): Promise<ProjectWithRelat
       .select(PROJECT_DETAIL_SELECT_WITH_PLANS_LEGACY_UNIT_IMAGES)
       .eq("slug", slug)
       .maybeSingle();
-    if (!plansWithoutUnitImages.error) return signOne(normalizeProject(plansWithoutUnitImages.data));
+    if (!plansWithoutUnitImages.error && plansWithoutUnitImages.data) return signOne(normalizeProject(plansWithoutUnitImages.data));
+    if (!plansWithoutUnitImages.error) return fetchProjectByReadableSlug(slug);
 
     const baseRetry = await supabase
       .from("projects")
       .select(PROJECT_DETAIL_SELECT_BASE)
       .eq("slug", slug)
       .maybeSingle();
-    if (!baseRetry.error) return signOne(normalizeProject(baseRetry.data));
+    if (!baseRetry.error && baseRetry.data) return signOne(normalizeProject(baseRetry.data));
+    if (!baseRetry.error) return fetchProjectByReadableSlug(slug);
 
     const baseWithoutUnitImages = await supabase
       .from("projects")
       .select(PROJECT_DETAIL_SELECT_BASE_LEGACY_UNIT_IMAGES)
       .eq("slug", slug)
       .maybeSingle();
-    if (!baseWithoutUnitImages.error) return signOne(normalizeProject(baseWithoutUnitImages.data));
+    if (!baseWithoutUnitImages.error && baseWithoutUnitImages.data) return signOne(normalizeProject(baseWithoutUnitImages.data));
+    if (!baseWithoutUnitImages.error) return fetchProjectByReadableSlug(slug);
   }
 
   console.warn("[Projects] full project query failed; falling back to legacy schema", error.message);
@@ -183,7 +188,37 @@ export async function fetchProjectBySlug(slug: string): Promise<ProjectWithRelat
     .eq("slug", slug)
     .maybeSingle();
   if (legacyError) throw legacyError;
-  return signOne(normalizeProject(legacyData));
+  if (legacyData) return signOne(normalizeProject(legacyData));
+  return fetchProjectByReadableSlug(slug);
+}
+
+/** Resolve old/custom project URLs without changing the database slug. */
+async function fetchProjectByReadableSlug(input: string): Promise<ProjectWithRelations | null> {
+  const requested = slugify(input);
+  if (!requested) return null;
+
+  const { data, error } = await supabase
+    .from("projects")
+    .select("id,slug,name,developer:developers(name,slug)")
+    .limit(500);
+  if (error || !data) return null;
+
+  const candidate = (data as Array<{
+    id: string;
+    slug: string;
+    name: string;
+    developer: { name?: string | null; slug?: string | null } | null;
+  }>).find((project) => {
+    const projectName = slugify(project.name);
+    const developerName = slugify(project.developer?.name ?? project.developer?.slug ?? "");
+    return [
+      slugify(project.slug),
+      projectName,
+      developerName ? `${projectName}-${developerName}` : "",
+    ].includes(requested);
+  });
+
+  return candidate ? fetchProjectById(candidate.id) : null;
 }
 
 /** Full project fetch used by the admin editor without loading every project. */

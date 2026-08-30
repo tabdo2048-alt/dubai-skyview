@@ -3,7 +3,7 @@ import { Check, FileDown, Loader2, Ruler, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import type { ProjectWithRelations } from "@/lib/types";
 import { fetchProjectById } from "@/hooks/use-projects";
-import { areaLabel, displayUnitTypes, pricedUnitTypes, type DisplayUnitType, unitDetailSlug } from "@/lib/unit-types";
+import { areaLabel, displayUnitTypes, pricedUnitTypes, projectDetailSlug, type DisplayUnitType, unitDetailSlug } from "@/lib/unit-types";
 import { preparePdfImage, projectMainImage, projectOfferImage, unitFloorPlanImage, unitPhotoImage } from "@/lib/pdf-media";
 import { DEFAULT_OFFER_ACCENT_COLOR, DEFAULT_OFFER_PRIMARY_COLOR, safeOfferColor } from "@/lib/offer-branding";
 import { safeHttpUrl } from "@/lib/utils";
@@ -138,7 +138,7 @@ export function UnitOfferDialog({
         developerSlug: offerProject.developer?.slug,
         unitLabel: selectedUnit.label,
       });
-      const shareUrl = `${baseUrl.replace(/\/$/, "")}/projects/${encodeURIComponent(offerProject.slug)}/units/${encodeURIComponent(unitPath)}?offer=${encodeURIComponent(offerId)}`;
+      const shareUrl = `${baseUrl.replace(/\/$/, "")}/projects/${encodeURIComponent(projectDetailSlug({ name: offerProject.name, slug: offerProject.slug }))}/units/${encodeURIComponent(unitPath)}?offer=${encodeURIComponent(offerId)}`;
       // VITE_OFFER_QR_URL can point the PDF QR to any URL. Keep the WhatsApp
       // contact link as the fallback for existing environments.
       const configuredQrUrl = (import.meta.env.VITE_OFFER_QR_URL as string | undefined)?.trim();
