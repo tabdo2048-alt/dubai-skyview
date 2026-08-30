@@ -139,11 +139,12 @@ export function UnitOfferDialog({
         unitLabel: selectedUnit.label,
       });
       const shareUrl = `${baseUrl.replace(/\/$/, "")}/projects/${encodeURIComponent(offerProject.slug)}/units/${encodeURIComponent(unitPath)}?offer=${encodeURIComponent(offerId)}`;
-      // The QR is a sales contact action, not a project-page shortcut. Never
-      // silently replace it with shareUrl when WhatsApp is not configured.
-      const whatsappLink = whatsappUrl(offerProject.name);
-      const qrCodeDataUrl = whatsappLink
-        ? await QRCode.toDataURL(whatsappLink, { errorCorrectionLevel: "M", margin: 1, width: 256 })
+      // VITE_OFFER_QR_URL can point the PDF QR to any URL. Keep the WhatsApp
+      // contact link as the fallback for existing environments.
+      const configuredQrUrl = (import.meta.env.VITE_OFFER_QR_URL as string | undefined)?.trim();
+      const qrTarget = configuredQrUrl || whatsappUrl(offerProject.name);
+      const qrCodeDataUrl = qrTarget
+        ? await QRCode.toDataURL(qrTarget, { errorCorrectionLevel: "M", margin: 1, width: 256 })
         : undefined;
       const [projectImageSrc, projectMainImageSrc, unitPhotoImageSrc, unitPlanImageSrc, developerLogoSrc] = await Promise.all([
         preparePdfImage(projectOfferImage(offerProject)),
