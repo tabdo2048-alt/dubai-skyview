@@ -1,8 +1,8 @@
-import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft, Bath, Bed, Building2, FileDown, Ruler } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { AppNavbar } from "@/components/layout/AppNavbar";
-import { fetchProjectBySlug } from "@/hooks/use-projects";
+import { fetchProjectBySlug, useProject } from "@/hooks/use-projects";
 import { UnitOfferDialog } from "@/components/offers/UnitOfferDialog";
 import { Button } from "@/components/ui/button";
 import { mediaSrc } from "@/lib/media";
@@ -13,16 +13,9 @@ import { displayPaymentPlans } from "@/lib/payment-plans";
 export const Route = createFileRoute("/projects/$slug/units/$unitTypeId")({
   loader: async ({ params }) => {
     const project = await fetchProjectBySlug(params.slug);
-    if (!project) throw notFound();
-    const unit = project.unit_types.find((item) => item.id === params.unitTypeId || unitDetailSlug({
-      projectName: project.name,
-      projectSlug: project.slug,
-      developerName: project.developer?.name,
-      developerSlug: project.developer?.slug,
-      unitLabel: item.label,
-    }) === params.unitTypeId);
-    if (!unit) throw notFound();
-    return { project, unit };
+    // A server render may not have the browser's Supabase session yet. Keep the
+    // route alive so the client can retry with the logged-in user's session.
+    return { project };
   },
   head: ({ loaderData, params }) => {
     const project = loaderData?.project;
@@ -46,7 +39,34 @@ export const Route = createFileRoute("/projects/$slug/units/$unitTypeId")({
 });
 
 function UnitTypeDetail() {
-  const { project, unit } = Route.useLoaderData();
+  const loaderData = Route.useLoaderData();
+  const { slug, unitTypeId } = Route.useParams();
+  const clientProject = useProject(slug);
+  const project = clientProject.data ?? loaderData.project;
+  const unit = useMemo(() => {
+    if (!project) return null;
+    return project.unit_types.find((item) => item.id === unitTypeId || unitDetailSlug({
+      projectName: project.name,
+      projectSlug: project.slug,
+      developerName: project.developer?.name,
+      developerSlug: project.developer?.slug,
+      unitLabel: item.label,
+    }) === unitTypeId) ?? null;
+  }, [project, unitTypeId]);
+
+  if (!project || !unit) {
+    return (
+      <div className="min-h-screen">
+        <AppNavbar />
+        <div className="grid min-h-[60vh] place-items-center px-4 text-center">
+          <div>
+            <div className="text-sm text-muted-foreground">{clientProject.isLoading ? "Loading unit details…" : "Unit not found."}</div>
+            {!clientProject.isLoading && <Link to="/" className="mt-3 inline-block text-sm text-gold underline-offset-4 hover:underline">Back to projects</Link>}
+          </div>
+        </div>
+      </div>
+    );
+  }
   const unitImages = useMemo(() => {
     const rows = (unit.images ?? []).slice().sort((a, b) => a.sort_order - b.sort_order);
     return rows.map((image) => ({

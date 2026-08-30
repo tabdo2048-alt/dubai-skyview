@@ -460,10 +460,10 @@ function OfferHeader({
       <View style={offerStyles.headerContent}>
         {developerLogo && <Image src={developerLogo} style={offerStyles.logo} />}
         {project.developer?.name && <Text style={offerStyles.developer}>{project.developer.name}</Text>}
-        <Text style={[offerStyles.eyebrow, { color: offerColors.gold }]}>Sales offer</Text>
-        <Text style={offerStyles.title}>INVESTMENT</Text>
-        <Text style={[offerStyles.subtitle, { color: offerColors.gold }]}>Proposal</Text>
-        <Text style={[offerStyles.projectName, { color: offerColors.gold }]}>{project.name}</Text>
+        <Text style={[offerStyles.eyebrow, { color: offerColors.gold, opacity: 1 }]}>Sales offer</Text>
+        <Text style={[offerStyles.title, { color: "#f8fafc", opacity: 1 }]}>INVESTMENT</Text>
+        <Text style={[offerStyles.subtitle, { color: offerColors.gold, opacity: 1 }]}>Proposal</Text>
+        <Text style={[offerStyles.projectName, { color: offerColors.gold, opacity: 1 }]}>{project.name}</Text>
         {(project.community?.name ?? project.address) && <Text style={offerStyles.location}>{project.community?.name ?? project.address}</Text>}
       </View>
       <View style={[offerStyles.offerMeta, { borderColor: offerColors.gold, backgroundColor: primaryColor }]}>
