@@ -1,0 +1,144 @@
+# Dubai Skyview
+
+An interactive 3D real-estate map of Dubai. Browse off-plan and ready projects on a Mapbox-powered 3D city view with custom water, cloud, and metro layers, filter by community, developer, price, and bedrooms, and drill into project detail pages backed by Supabase.
+
+![Dubai Skyview](skyview-desktop.png)
+
+## Tech Stack
+
+| Area | Technology |
+|---|---|
+| Framework | [TanStack Start](https://tanstack.com/start) (React 19, SSR via Nitro) + Vite |
+| Routing / data | TanStack Router (file-based routes) + TanStack Query |
+| Map | Mapbox GL JS v3 with custom Three.js layers (3D models, animated water, clouds) |
+| State | Zustand (`src/store/filters.ts`) |
+| Backend | Supabase (PostgreSQL, Auth, RLS, migrations in `supabase/`) |
+| Auth | Supabase Auth (`@supabase/supabase-js`) |
+| UI | Tailwind CSS v4, shadcn/ui (Radix primitives), Framer Motion, Lucide icons |
+| Forms / validation | react-hook-form + Zod |
+| Deployment | Vercel (`vercel.json`) |
+
+## Features
+
+- **Interactive 3D map** — Mapbox Standard style with camera animations, project markers clustered via Supercluster, and rich popups (`src/components/map/`).
+- **Custom map layers** — animated water surfaces (`WaterLayer.ts`, `waterWaveModel.ts`), drifting cloud sprites (`CloudLayer.tsx`), and glTF 3D models rendered through a shared Three.js renderer (`src/lib/mapbox/`).
+- **Dubai geodata** — metro network (generated from real route data), shorelines, marine/navigation routes, and community boundaries (`src/lib/`).
+- **Project browsing** — filterable listings by category, status, community, price range, and bedrooms; detail pages at `/projects/$slug`; communities and developers indexes.
+- **Admin tools** — protected `/admin` route with a location picker for placing projects on the map, plus a live water-styling debug editor.
+- **Auth-gated routes** — `src/routes/_authenticated/` is protected via Supabase auth with row-level security behind it.
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js 22+ (or [Bun](https://bun.sh) — a `bun.lock` is included)
+- A [Mapbox](https://www.mapbox.com/) access token
+- A [Supabase](https://supabase.com/) project
+
+### Setup
+
+```bash
+# Install dependencies
+npm install        # or: bun install
+
+# Configure environment (see below)
+cp .env.example .env   # create .env if it doesn't exist
+
+# Start the dev server (http://localhost:5174)
+npm run dev
+```
+
+### Environment Variables
+
+Create a `.env` file in the project root:
+
+| Variable | Scope | Description |
+|---|---|---|
+| `VITE_SUPABASE_URL` | client | Supabase project URL |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | client | Supabase anon/publishable key |
+| `MAPBOX_ACCESS_TOKEN` | server | Mapbox GL access token |
+| `SUPABASE_URL` | server | Supabase URL for server functions |
+| `SUPABASE_PUBLISHABLE_KEY` | server | Supabase publishable key for server functions |
+| `SUPABASE_SERVICE_ROLE_KEY` | server | Service-role key (admin operations only — never expose to the client) |
+| `STRIPE_SECRET_KEY` | server | Stripe secret key (server/Edge Functions only) |
+| `STRIPE_WEBHOOK_SECRET` | server/Edge Function | Stripe webhook signing secret |
+| `STRIPE_MONTHLY_PRICE_ID` | server/Edge Function | Optional verified Stripe Price ID for 100 AED/month |
+| `STRIPE_YEARLY_PRICE_ID` | server/Edge Function | Optional verified Stripe Price ID for 1,000 AED/year |
+| `APP_URL` | server | Canonical HTTPS application URL for Stripe redirects |
+| `GOOGLE_MAPS_API_KEY` | server | Optional, for Google geodata lookups |
+| `VITE_WATER_DEBUG` | client | Optional: `true` enables the water debug editor |
+| `VITE_NAVIGATION_DEBUG_OVERLAY` | client | Optional: `true` shows the marine-navigation debug overlay |
+
+### Database
+
+Migrations and seed data live in `supabase/`:
+
+```bash
+supabase db push                                  # apply migrations
+psql < supabase/seed_dubai_sample_projects.sql    # optional sample data
+```
+
+## Scripts
+
+| Command | Description |
+|---|---|
+| `npm run dev` | Start Vite dev server with HMR |
+| `npm run build` | Production build |
+| `npm run build:dev` | Build in development mode |
+| `npm run preview` | Preview the production build locally |
+| `npm run lint` | Run ESLint |
+| `npm run format` | Format with Prettier |
+| `npm run generate:water` | Rebuild the sea geometry from OpenStreetMap |
+| `npm run generate:roads` | Rebuild the main-road network from Overpass |
+| `npm run generate:rail` | Rebuild the metro/rail alignments |
+| `npm run validate:water` | Check the water mask covers the map with no gaps |
+| `npm run validate:metro` | Check metro/rail line + station integrity |
+| `npm run verify:earcut` | Verify the water triangulation |
+
+## Project Structure
+
+```
+dubai-skyview/
+├── public/
+│   ├── models/               # glTF 3D models rendered on the map
+│   └── cloud*.webp           # Cloud layer sprites
+├── src/
+│   ├── routes/               # TanStack Router file-based routes
+│   │   ├── index.tsx         # Home — full-screen map
+│   │   ├── projects.$slug.tsx# Project detail page
+│   │   ├── communities.index.tsx
+│   │   ├── developers.index.tsx
+│   │   ├── auth.tsx          # Sign-in
+│   │   └── _authenticated/   # Protected routes (admin)
+│   ├── components/
+│   │   ├── map/              # MapContainer, MapboxView, water/cloud layers, popups
+│   │   ├── layout/           # AppNavbar, AppSidebar
+│   │   └── ui/               # shadcn/ui components
+│   ├── lib/
+│   │   ├── mapbox/           # Three.js model layer, water wave model, debug overlays
+│   │   ├── dubai.ts          # Dubai constants & landmarks
+│   │   ├── metro*.ts         # Metro network data
+│   │   ├── shorelines.ts     # Coastline geometry
+│   │   ├── marineRoutes.ts   # Marine navigation routes
+│   │   └── water.ts          # Water feature data
+│   ├── hooks/                # use-auth, use-projects, use-map-config, use-mobile
+│   ├── store/                # Zustand filter store
+│   └── integrations/         # Supabase client
+├── supabase/                 # Config, migrations, seed SQL
+├── scripts/                  # Data conversion & validation scripts
+└── vercel.json               # Vercel deployment config
+```
+
+## Documentation
+
+- [arcteture.md](arcteture.md) — complete application architecture and data flow
+- [futures.md](futures.md) — implemented feature inventory and extension guide
+- [docs/ENGINEERING_BUILD.md](docs/ENGINEERING_BUILD.md) — system architecture, data model, security, and release guide
+- [docs/SALES_OFFER_PDF_ENGINEERING_BUILD.md](docs/SALES_OFFER_PDF_ENGINEERING_BUILD.md) — sales-offer PDF data contract, dynamic rules, media, and QA checklist
+- [docs/map-performance.md](docs/map-performance.md) — how the map is loaded and kept fast
+- [docs/water-layer.md](docs/water-layer.md) — water layer styling and geometry
+- [docs/geodata.md](docs/geodata.md) — regenerating metro/road/water data
+
+## Deployment
+
+Deploys to Vercel — push to the connected branch and Vercel builds via `npm run build` (config in `vercel.json`).

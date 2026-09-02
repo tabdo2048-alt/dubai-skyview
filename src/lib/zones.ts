@@ -1,0 +1,439 @@
+// Shared zone model + Mapbox layer helpers.
+//
+// One source/truth for the RY / STR / HH investment zones so the public map
+// (highlight buttons) and the admin preview draw them identically: same colors,
+// same value-driven intensity.
+//
+// Spotlight effect: when a category is active, a single inverted "dim mask"
+// (a world-sized rectangle with the active zones punched out as holes) darkens
+// everything except the zones, and each active zone gets a semi-transparent
+// color fill under its bright border. Everything animates via mapbox paint
+// transitions (opacity only) so toggling fades in/out.
+
+import type mapboxgl from "mapbox-gl";
+
+// ── Spotlight look — tweak here ──────────────────────────────────────────────
+export const ZONE_DIM_COLOR = "#05070c";   // near-black overlay outside zones
+export const ZONE_DIM_OPACITY = 0.28;       // how dark the surroundings get
+export const ZONE_FILL_OPACITY = 0.15;      // base zone color fill
+export const ZONE_FILL_PULSE = 0.05;        // extra opacity at the pulse peak
+export const ZONE_ANIM_MS = 700;            // fade duration (smooth)
+export const ZONE_PULSE = true;             // subtle breathing pulse on fills
+// Outer ring for the dim mask — a generous rectangle around Dubai (well beyond
+// the map's maxBounds, so no un-dimmed strip shows at any reachable zoom) but
+// small enough to tessellate cleanly. Wound CCW (positive signed area); zone
+// holes are forced to the opposite winding in buildDimMask.
+const COVER_RING: [number, number][] = [
+  [50, 20], [60, 20], [60, 30], [50, 30], [50, 20],
+];
+const DIM_SRC = "zone-dim-src";
+const DIM_LAYER = "zone-dim";
+
+// Signed area (shoelace) — sign encodes winding: >0 CCW, <0 CW.
+function ringSignedArea(ring: [number, number][]): number {
+  let a = 0;
+  for (let i = 0; i < ring.length - 1; i++) {
+    a += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
+  }
+  return a / 2;
+}
+
+// Normalize a zone ring to a valid mask hole: closed, and wound CW (opposite the
+// CCW cover ring) so mapbox's classifyRings treats it as a hole to punch out
+// rather than a second filled exterior (that misclassification is what drew a
+// dark shape over the zone instead of a clear window).
+function toHoleRing(ring: [number, number][]): [number, number][] {
+  const r = ring.slice();
+  const first = r[0];
+  const last = r[r.length - 1];
+  if (first[0] !== last[0] || first[1] !== last[1]) r.push(first);
+  if (ringSignedArea(r) > 0) r.reverse();
+  return r;
+}
+
+// FLIP was called STR ("Short-Term Rental") until the rename to Flipping.
+// Existing rows may still say 'STR' until the migration runs — read DB values
+// through normalizeZoneCategory, never compare them to a category directly.
+export type ZoneCategory = "RY" | "FLIP" | "HH";
+
+export type ZoneRow = {
+  id: string;
+  name: string;
+  category: string; // constrained to ZoneCategory by the DB check, but typed wide from Supabase
+  value: number | null;
+  geometry: unknown; // GeoJSON Polygon stored as jsonb
+  created_at?: string;
+};
+
+export const ZONE_CATEGORIES: Record<
+  ZoneCategory,
+  { code: string; label: string; full: string; base: string; color: string }
+> = {
+  // code  = the short caption on the toolbar toggle button
+  // full  = strong outline for high-value zones
+  // base  = dim outline for low/no-value zones (value interpolation floor)
+  // color = the swatch shown in the button + legend
+  RY: { code: "RY", label: "Rental Yield", full: "#E6B800", base: "#7a6410", color: "#E6B800" },
+  // FLIP and HH swapped per request: the FLIP-keyed zones now present entirely as
+  // "HH / Holiday Home" (purple) and HH-keyed zones present as "FLIP / Flipping"
+  // (teal) — caption, colour, and label all swap together. Only the presentation
+  // swaps; the DB keys stay bound to their existing rows.
+  FLIP: { code: "HH", label: "Holiday Home", full: "#8B5CF6", base: "#4a3184", color: "#8B5CF6" },
+  HH: { code: "FLIP", label: "Flipping", full: "#0FB5AE", base: "#0a5f5b", color: "#0FB5AE" },
+};
+
+export const ZONE_ORDER: ZoneCategory[] = ["RY", "FLIP", "HH"];
+
+// Value scale used for the legend + the data-driven paint (yield %, roughly).
+export const ZONE_VALUE_MIN = 0;
+export const ZONE_VALUE_MAX = 12;
+
+export function isZoneCategory(v: string): v is ZoneCategory {
+  return v === "RY" || v === "FLIP" || v === "HH";
+}
+
+/**
+ * Read a category coming from the database, tolerating the legacy 'STR' value.
+ * The frontend deploy and the STR→FLIP migration are not atomic, so a row may
+ * still say 'STR' for a short window. Drop this once no 'STR' rows remain.
+ */
+export function normalizeZoneCategory(v: string): ZoneCategory | undefined {
+  const mapped = v === "STR" ? "FLIP" : v;
+  return isZoneCategory(mapped) ? mapped : undefined;
+}
+
+function srcId(cat: ZoneCategory) {
+  return `zones-${cat}-src`;
+}
+function fillId(cat: ZoneCategory) {
+  return `zones-${cat}-fill`;
+}
+function casingId(cat: ZoneCategory) {
+  return `zones-${cat}-casing`;
+}
+function lineId(cat: ZoneCategory) {
+  return `zones-${cat}-line`;
+}
+function labelId(cat: ZoneCategory) {
+  return `zones-${cat}-label`;
+}
+
+export function zoneLayerIds(cat: ZoneCategory) {
+  return { src: srcId(cat), fill: fillId(cat), casing: casingId(cat), line: lineId(cat), label: labelId(cat) };
+}
+
+type Ring = [number, number][];
+
+function polygonRings(geometry: unknown): Ring[] {
+  const g = geometry as { type?: string; coordinates?: unknown } | null;
+  if (!g || g.type !== "Polygon" || !Array.isArray(g.coordinates)) return [];
+  return g.coordinates as Ring[];
+}
+
+// Cheap ring centroid (average of the outer ring's unique vertices). Good enough
+// for placing a label; avoids pulling turf into the public map bundle.
+function ringCentroid(ring: Ring): [number, number] | null {
+  if (!ring || ring.length === 0) return null;
+  // Drop the closing vertex if the ring is closed.
+  const pts =
+    ring.length > 1 &&
+    ring[0][0] === ring[ring.length - 1][0] &&
+    ring[0][1] === ring[ring.length - 1][1]
+      ? ring.slice(0, -1)
+      : ring;
+  let x = 0;
+  let y = 0;
+  for (const [lng, lat] of pts) {
+    x += lng;
+    y += lat;
+  }
+  return [x / pts.length, y / pts.length];
+}
+
+// GeoJSON polygon features for the outlines, one per zone in the category.
+export function buildZonePolygons(zones: ZoneRow[]): GeoJSON.FeatureCollection {
+  const features: GeoJSON.Feature[] = [];
+  for (const z of zones) {
+    const rings = polygonRings(z.geometry);
+    if (rings.length === 0) continue;
+    features.push({
+      type: "Feature",
+      properties: { id: z.id, name: z.name, value: z.value ?? 0 },
+      geometry: { type: "Polygon", coordinates: rings },
+    });
+  }
+  return { type: "FeatureCollection", features };
+}
+
+// GeoJSON point features (centroids) for the name labels.
+export function buildZoneLabels(zones: ZoneRow[]): GeoJSON.FeatureCollection {
+  const features: GeoJSON.Feature[] = [];
+  for (const z of zones) {
+    const rings = polygonRings(z.geometry);
+    const c = rings[0] ? ringCentroid(rings[0]) : null;
+    if (!c) continue;
+    features.push({
+      type: "Feature",
+      properties: { name: z.name, value: z.value ?? 0 },
+      geometry: { type: "Point", coordinates: c },
+    });
+  }
+  return { type: "FeatureCollection", features };
+}
+
+type Bbox = [number, number, number, number]; // minX, minY, maxX, maxY
+function ringBbox(r: Ring): Bbox {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [x, y] of r) {
+    if (x < minX) minX = x; if (x > maxX) maxX = x;
+    if (y < minY) minY = y; if (y > maxY) maxY = y;
+  }
+  return [minX, minY, maxX, maxY];
+}
+function bboxDisjoint(a: Bbox, b: Bbox): boolean {
+  return a[2] < b[0] || a[0] > b[2] || a[3] < b[1] || a[1] > b[3];
+}
+function pointInRing(pt: [number, number], ring: Ring): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+    if (((yi > pt[1]) !== (yj > pt[1])) && pt[0] < ((xj - xi) * (pt[1] - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+function segCross(p1: [number, number], p2: [number, number], p3: [number, number], p4: [number, number]): boolean {
+  const d = (a: [number, number], b: [number, number], c: [number, number]) =>
+    (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  const d1 = d(p3, p4, p1), d2 = d(p3, p4, p2), d3 = d(p1, p2, p3), d4 = d(p1, p2, p4);
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
+// Do two closed rings overlap (share interior area)? Edge crossing OR one ring's
+// vertex sitting inside the other (containment). Cheap; no turf.
+function ringsOverlap(a: Ring, b: Ring): boolean {
+  for (let i = 0; i < a.length - 1; i++) {
+    for (let j = 0; j < b.length - 1; j++) {
+      if (segCross(a[i], a[i + 1], b[j], b[j + 1])) return true;
+    }
+  }
+  return pointInRing(a[0], b) || pointInRing(b[0], a);
+}
+
+// Inverted mask: one polygon whose outer ring is the local cover rectangle and
+// whose holes are the active zones. Filling it dark darkens everything EXCEPT
+// the zones. Each hole is normalized to CW winding (opposite the cover) so it
+// punches through instead of rendering as its own dark shape.
+//
+// Overlapping holes (e.g. the SAME area appearing in two active categories —
+// RY and HH both have DLRC/Falcon City) break Mapbox's earcut tessellation and
+// render a dark sliver ("shadow"). So holes are deduped: largest first, and any
+// hole that overlaps one already kept is skipped (its area is already revealed
+// by the kept hole). Built by hand so no turf import lands in the public bundle.
+export function buildDimMask(activeZones: ZoneRow[]): GeoJSON.FeatureCollection {
+  const candidates: { ring: Ring; bbox: Bbox; area: number }[] = [];
+  for (const z of activeZones) {
+    const raw = polygonRings(z.geometry)[0];
+    if (!raw || raw.length < 4) continue;
+    const ring = toHoleRing(raw);
+    candidates.push({ ring, bbox: ringBbox(ring), area: Math.abs(ringSignedArea(ring)) });
+  }
+  candidates.sort((a, b) => b.area - a.area); // keep larger holes, skip overlapping smaller
+  const kept: { ring: Ring; bbox: Bbox }[] = [];
+  for (const c of candidates) {
+    const clashes = kept.some((k) => !bboxDisjoint(k.bbox, c.bbox) && ringsOverlap(k.ring, c.ring));
+    if (!clashes) kept.push({ ring: c.ring, bbox: c.bbox });
+  }
+  const holes: Ring[] = kept.map((k) => k.ring);
+  if (holes.length === 0) return emptyFC();
+  return {
+    type: "FeatureCollection",
+    features: [
+      {
+        type: "Feature",
+        properties: {},
+        geometry: { type: "Polygon", coordinates: [COVER_RING, ...holes] },
+      },
+    ],
+  };
+}
+
+// Add all zone sources + layers ONCE (empty). Toggling is done by paint-opacity
+// + setData afterwards — never add/remove — which avoids the mapbox symbol-
+// placement crash source churn triggers on the Standard style. Adding needs a
+// loaded style, so this no-ops until then; the caller retries. Opacity/data
+// updates on already-added layers are always safe.
+//
+// Order (bottom→top): dim mask → per-category fills → casings → lines → labels.
+//
+// Not gated on isStyleLoaded(): the Mapbox Standard style (3D mode) reports
+// false long after add* actually works, which would starve the layers. Each
+// add is guarded by an existence check and wrapped so a genuine "style not
+// ready" throw is swallowed and simply retried on the next call.
+export function ensureZoneLayers(map: mapboxgl.Map) {
+  try {
+    ensureZoneLayersUnsafe(map);
+  } catch {
+    // Style not ready yet — caller retries (toggle / idle).
+  }
+}
+
+function ensureZoneLayersUnsafe(map: mapboxgl.Map) {
+  const tr = { duration: ZONE_ANIM_MS } as const;
+  const add = (layer: Record<string, unknown>) => (map.addLayer as (l: unknown) => void)(layer);
+
+  // Dim mask (single, shared).
+  if (!map.getSource(DIM_SRC)) {
+    map.addSource(DIM_SRC, { type: "geojson", data: emptyFC() });
+    add({
+      id: DIM_LAYER,
+      type: "fill",
+      source: DIM_SRC,
+      paint: {
+        "fill-color": ZONE_DIM_COLOR,
+        "fill-opacity": 0,
+        "fill-opacity-transition": tr,
+      },
+    });
+  }
+
+  // Per-category sources.
+  for (const cat of ZONE_ORDER) {
+    const ids = zoneLayerIds(cat);
+    if (map.getSource(ids.src)) continue;
+    map.addSource(ids.src, { type: "geojson", data: emptyFC() });
+    map.addSource(`${ids.src}-lbl`, { type: "geojson", data: emptyFC() });
+  }
+
+  // Fills (above the mask so the zone reads in its color, not dimmed).
+  for (const cat of ZONE_ORDER) {
+    const ids = zoneLayerIds(cat);
+    if (map.getLayer(ids.fill)) continue;
+    add({
+      id: ids.fill,
+      type: "fill",
+      source: ids.src,
+      paint: {
+        "fill-color": ZONE_CATEGORIES[cat].full,
+        "fill-opacity": 0,
+        "fill-opacity-transition": tr,
+      },
+    });
+  }
+
+  // Borders + labels on top.
+  for (const cat of ZONE_ORDER) {
+    const ids = zoneLayerIds(cat);
+    const palette = ZONE_CATEGORIES[cat];
+    if (map.getLayer(ids.line)) continue;
+
+    const valueExpr = ["coalesce", ["get", "value"], 0] as unknown;
+    const colorExpr = [
+      "interpolate", ["linear"], valueExpr,
+      ZONE_VALUE_MIN, palette.base,
+      ZONE_VALUE_MAX, palette.full,
+    ] as unknown;
+    const widthExpr = [
+      "interpolate", ["linear"], valueExpr,
+      ZONE_VALUE_MIN, 2,
+      ZONE_VALUE_MAX, 3.5,
+    ] as unknown;
+
+    add({
+      id: ids.casing,
+      type: "line",
+      source: ids.src,
+      layout: { "line-join": "round", "line-cap": "round" },
+      paint: {
+        "line-color": palette.full,
+        "line-width": ["+", widthExpr, 4],
+        "line-opacity": 0,
+        "line-blur": 2,
+        "line-opacity-transition": tr,
+      },
+    });
+    add({
+      id: ids.line,
+      type: "line",
+      source: ids.src,
+      layout: { "line-join": "round", "line-cap": "round" },
+      paint: {
+        "line-color": colorExpr,
+        "line-width": widthExpr,
+        "line-opacity": 0,
+        "line-opacity-transition": tr,
+      },
+    });
+    add({
+      id: ids.label,
+      type: "symbol",
+      source: `${ids.src}-lbl`,
+      layout: {
+        "text-field": ["get", "name"],
+        "text-size": 12,
+        "text-font": ["Open Sans Semibold", "Arial Unicode MS Regular"],
+        "text-allow-overlap": false,
+      },
+      paint: {
+        "text-color": palette.full,
+        "text-halo-color": "rgba(0,0,0,0.85)",
+        "text-halo-width": 1.4,
+        "text-opacity": 0,
+        "text-opacity-transition": tr,
+      },
+    });
+  }
+}
+
+// Refresh geometry + drive the spotlight. Data for every category is always
+// present; appearance is pure opacity (so both fade-in and fade-out animate).
+// `fillBoost` (0..ZONE_FILL_PULSE) is added to active fills for the breathing
+// pulse — pass 0 for a steady fill.
+export function applyZones(
+  map: mapboxgl.Map,
+  zones: ZoneRow[],
+  active: Set<ZoneCategory>,
+  fillBoost = 0,
+) {
+  ensureZoneLayers(map);
+
+  // Zone geometry (all categories, always) + the combined dim mask (active only).
+  const activeZones: ZoneRow[] = [];
+  for (const cat of ZONE_ORDER) {
+    const ids = zoneLayerIds(cat);
+    const rows = zones.filter((z) => normalizeZoneCategory(z.category) === cat);
+    if (active.has(cat)) activeZones.push(...rows);
+    (map.getSource(ids.src) as mapboxgl.GeoJSONSource | undefined)?.setData(buildZonePolygons(rows));
+    (map.getSource(`${ids.src}-lbl`) as mapboxgl.GeoJSONSource | undefined)?.setData(buildZoneLabels(rows));
+  }
+  (map.getSource(DIM_SRC) as mapboxgl.GeoJSONSource | undefined)?.setData(buildDimMask(activeZones));
+
+  const anyActive = activeZones.length > 0;
+  if (map.getLayer(DIM_LAYER)) {
+    map.setPaintProperty(DIM_LAYER, "fill-opacity", anyActive ? ZONE_DIM_OPACITY : 0);
+  }
+
+  for (const cat of ZONE_ORDER) {
+    const ids = zoneLayerIds(cat);
+    const on = active.has(cat);
+    if (map.getLayer(ids.fill)) {
+      map.setPaintProperty(ids.fill, "fill-opacity", on ? ZONE_FILL_OPACITY + fillBoost : 0);
+    }
+    // Casing (blurred glow) kept off — reads as a shadow around the zone.
+    if (map.getLayer(ids.casing)) map.setPaintProperty(ids.casing, "line-opacity", 0);
+    if (map.getLayer(ids.line)) map.setPaintProperty(ids.line, "line-opacity", on ? 1 : 0);
+    if (map.getLayer(ids.label)) map.setPaintProperty(ids.label, "text-opacity", on ? 1 : 0);
+  }
+}
+
+// Breathing pulse: nudge only the active fills' opacity (no geometry work), so
+// it can run on a timer cheaply. `boost` in 0..ZONE_FILL_PULSE.
+export function pulseZoneFills(map: mapboxgl.Map, active: Set<ZoneCategory>, boost: number) {
+  for (const cat of ZONE_ORDER) {
+    if (!active.has(cat)) continue;
+    const id = fillId(cat);
+    if (map.getLayer(id)) map.setPaintProperty(id, "fill-opacity", ZONE_FILL_OPACITY + boost);
+  }
+}
+
+function emptyFC(): GeoJSON.FeatureCollection {
+  return { type: "FeatureCollection", features: [] };
+}

@@ -1,0 +1,646 @@
+// Colored, labelled main-road network for the map — toggled by the "Roads"
+// button. Premium treatment:
+//   • ten signature roads each carry their own brand color (defined as CSS
+//     variables on :root so they can be re-themed without touching code); all
+//     other roads fall back to the per-class hierarchy colors;
+//   • staggered draw-on: the background network washes in first while each
+//     signature road draws itself (~1s each, cascading delays);
+//   • hover: the road under the cursor smoothly thickens, brightens and gains a
+//     soft glow in its own color (60 fps rAF-driven feature-state — Mapbox GL
+//     lines are WebGL, CSS transitions don't apply);
+//   • click: a subtle 300 ms pulse plus a dark glass tooltip with the road name.
+//
+// Uses a baked GeoJSON source (src/lib/roadsMain.generated.ts, from Overpass)
+// with lineMetrics (for the line-trim-offset draw) and generateId (for the
+// per-feature hover feature-state). The data is dynamically imported the first
+// time Roads is added so its ~2.8 MB stays out of the initial bundle.
+
+import mapboxgl from "mapbox-gl";
+
+type Expr = mapboxgl.ExpressionSpecification;
+
+export const ROADS_SOURCE_ID = "roads-main-geo";
+export const ROADS_BASE_ID = "roads-ghost-line";
+export const ROADS_LINE_ID = "roads-colored-line"; // non-signature roads
+export const ROADS_GLOW_ID = "roads-hover-glow";
+export const ROADS_HIT_ID = "roads-hit-line";
+export const ROADS_LABEL_ID = "roads-name-label";
+
+const LINE_OPACITY = 0.92;
+
+// --- Signature roads -------------------------------------------------------
+// `match` is tested against the OSM `name` property (note OSM spellings:
+// "Lahbab", "Dubai - Al Ain Road", "Sheikh Zayed bin Hamdan Al Nahyan Street").
+// Colors live in CSS variables (see ROADS_CSS) and are read at layer-add time;
+// the hex here is only the fallback if the variable is missing. The palette is
+// tuned for the dark basemap (luminous 400-tier tones that glow, keeping each
+// road's hue identity). Order is coast → inland: the draw cascade and the Roads
+// Guide legend both sweep from Sheikh Zayed Road out toward the desert.
+// `match` tests the OSM `name`; `ref` tests the OSM route ref (E11, E311, …).
+// A road is claimed if EITHER matches — the ref catches continuation segments
+// that OSM tags only with the route number and an Arabic name, so each road now
+// spans its full length to the map edge instead of stopping where the English
+// name tag ends.
+// Palette re-picked 2026-07-23 (see scripts/optimizeRoadColors.mjs): the old
+// hues had five road-road pairs below the ΔE≈20 legibility floor (worst: SZR
+// indigo vs MBZ blue at ΔE 10.1, and a blue/indigo/purple triple). These ten
+// were optimized (CIEDE2000) so every road-road pair is ≥21.8 apart and all
+// stay clear of the metro-line, zone, gold-accent and water-blue palettes
+// (min cross ΔE 11.1). All sit at L*≥62 so they read as bright thin lines on
+// the dark satellite basemap. No pure red/green pair remains, easing
+// deuteranopia/protanopia confusion.
+const ROUTES = [
+  // SZR: name-only. Ref E11 is a shared corridor (Sheikh Rashid Rd, Al Garhoud
+  // Bridge, Al Ittihad Rd downtown all carry E11), so matching it by ref would
+  // wrongly recolor those. The name tag already spans SZR's full in-bounds run.
+  { key: "szr", name: "Sheikh Zayed Road", colorName: "Pink", cssVar: "--road-szr", color: "#FF85A8", match: /^sheikh zayed road/i, ref: null },
+  { key: "ummsuqeim", name: "Umm Suqeim Street", colorName: "Coral", cssVar: "--road-ummsuqeim", color: "#FF8F68", match: /^umm suqeim street/i, ref: /^D\s*63$/i },
+  { key: "alkhail", name: "Al Khail Road", colorName: "Amber", cssVar: "--road-alkhail", color: "#CB8800", match: /^al khail road$/i, ref: /^E\s*44$/i },
+  { key: "hessa", name: "Hessa Street", colorName: "Chartreuse", cssVar: "--road-hessa", color: "#C2C900", match: /^hessa street/i, ref: /^D\s*61$/i },
+  { key: "mbz", name: "Mohammed Bin Zayed Road", colorName: "Green", cssVar: "--road-mbz", color: "#02AE09", match: /mohammed bin zayed/i, ref: /^E\s*311$/i },
+  // "Expo Road" and "Lehbab Road" are the same E77 highway; lehbab (ref E77)
+  // already draws its full length, so a separate expo route was a duplicate that
+  // only ever matched a few stray name-tagged stubs. Removed.
+  { key: "hamdan", name: "Zayed Bin Hamdan Road", colorName: "Sky", cssVar: "--road-hamdan", color: "#24C5FF", match: /zayed bin hamdan/i, ref: /^D\s*54$/i },
+  { key: "emirates", name: "Emirates Road", colorName: "Blue", cssVar: "--road-emirates", color: "#6A90FF", match: /^emirates road$/i, ref: /^E\s*611$/i },
+  { key: "alain", name: "Dubai–Al Ain Road", colorName: "Lavender", cssVar: "--road-alain", color: "#D7B2FE", match: /dubai\s*-\s*al ain road/i, ref: /^E\s*66$/i },
+  { key: "lehbab", name: "Lehbab Road", colorName: "Magenta", cssVar: "--road-lehbab", color: "#FF2DFF", match: /lahbab road/i, ref: /^E\s*77$/i },
+  // User-requested extra colours. NAMES ARE PLACEHOLDERS — the two requested
+  // streets ("AL alfy" / "alblays") couldn't be decoded to OSM names, so these
+  // match Al Wasl (mint) + Al Sufouh (orange) for now. Swap the `match` regex to
+  // the real street names to recolour the intended roads.
+  // Orange = Al Yalayis St (confirmed by user). Mint is still a placeholder
+  // (Al Wasl) until road 1's real name ("AL alfy") is provided.
+  { key: "roadmint", name: "Al Wasl Road", colorName: "Mint", cssVar: "--road-mint", color: "#35E0A1", match: /^al wasl road/i, ref: null },
+  { key: "roadorange", name: "Al Yalayis Street", colorName: "Orange", cssVar: "--road-orange", color: "#FF8A3D", match: /al yalayis/i, ref: null },
+] as const;
+
+type Route = (typeof ROUTES)[number];
+
+/** Legend data for the Roads Guide panel (colors resolve via the CSS vars). */
+export const ROAD_GUIDE = ROUTES.map(({ key, name, colorName, cssVar, color }) => ({
+  key, name, colorName, cssVar, color,
+}));
+
+const routeLayerId = (key: string) => `roads-route-${key}`;
+
+// Every non-signature road/street shares ONE uniform color (--road-base, easy to
+// retheme later). Only the 10 named signature roads above get their own color.
+// Declared before ROADS_CSS because that template literal interpolates it.
+const BASE_ROAD_COLOR = "#5b6672"; // muted slate — all non-signature roads/streets (softer than black)
+
+const ROADS_CSS = `:root{${ROUTES.map((r) => `${r.cssVar}:${r.color};`).join("")}--road-base:${BASE_ROAD_COLOR};}
+.road-popup .mapboxgl-popup-content{background:rgba(12,16,22,.92);backdrop-filter:blur(8px);
+  border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:8px 14px;
+  box-shadow:0 8px 28px rgba(0,0,0,.45);color:#fff;
+  font:600 12px/1.3 'Work Sans',Arial,sans-serif;letter-spacing:.2px}
+.road-popup .mapboxgl-popup-tip{border-top-color:rgba(12,16,22,.92);border-bottom-color:rgba(12,16,22,.92)}
+.road-popup .road-tip-row{display:flex;align-items:center;gap:8px}
+.road-popup .road-tip-dot{width:8px;height:8px;border-radius:9999px;flex:none;
+  box-shadow:0 0 8px currentColor;background:currentColor}`;
+
+function ensureRoadsStyles(): void {
+  if (typeof document === "undefined") return;
+  if (document.getElementById("roads-route-style")) return;
+  const el = document.createElement("style");
+  el.id = "roads-route-style";
+  el.textContent = ROADS_CSS;
+  document.head.appendChild(el);
+}
+
+function routeColor(route: Route): string {
+  if (typeof document === "undefined") return route.color;
+  const v = getComputedStyle(document.documentElement).getPropertyValue(route.cssVar).trim();
+  return v || route.color;
+}
+
+// Signature roads use their tagged color; every other road/street falls back to
+// the single uniform base color.
+const ROAD_COLOR = ["to-color", ["coalesce", ["get", "routeColor"], BASE_ROAD_COLOR]] as unknown as Expr;
+
+// Per-class width hierarchy: motorways read as spines, secondary streets stay
+// thin; hover/pulse thicken the live road. NOTE: Mapbox requires ["zoom"] to
+// drive the OUTERMOST interpolate of a paint property, so the class/effect
+// multipliers live inside each zoom stop (["*", zoomStop, classMult] at the top
+// level is rejected by style validation and kills the whole layer).
+const CLASS_MULT = [
+  "match", ["get", "class"],
+  "motorway", 1.5, "trunk", 1.25, "primary", 1.0, "secondary", 0.6,
+  /* other */ 1.0,
+] as const;
+
+// hoverT/pulseT are 0..1 feature-state values animated at 60 fps by the fx
+// loop below (eased there, so the paint expression stays linear).
+const HOVER_T = ["to-number", ["feature-state", "hoverT"]] as const;
+const PULSE_T = ["to-number", ["feature-state", "pulseT"]] as const;
+const FX_MULT = ["+", 1, ["*", 0.9, HOVER_T], ["*", 0.35, PULSE_T]] as const;
+
+function classWidth(scale: number, withFx: boolean): Expr {
+  const stop = (v: number) =>
+    withFx ? ["*", v * scale, CLASS_MULT, FX_MULT] : ["*", v * scale, CLASS_MULT];
+  return [
+    "interpolate", ["linear"], ["zoom"],
+    9, stop(0.6), 12, stop(1.6), 15, stop(3.4), 18, stop(8),
+  ] as unknown as Expr;
+}
+const LINE_WIDTH = classWidth(1, true);
+const BASE_WIDTH = classWidth(0.85, false);
+const GLOW_WIDTH = classWidth(2.6, true);
+
+// Hovered road brightens to full opacity; others hold at LINE_OPACITY.
+const LINE_OPACITY_EXPR = [
+  "+", LINE_OPACITY, ["*", 1 - LINE_OPACITY, HOVER_T],
+] as unknown as Expr;
+
+// Glow fades in/out with hover and flashes with the click pulse.
+const GLOW_OPACITY_EXPR = ["*", 0.6, ["max", HOVER_T, PULSE_T]] as unknown as Expr;
+
+const GLOW_BLUR = [
+  "interpolate", ["linear"], ["zoom"], 10, 1.5, 16, 5, 18, 7,
+] as unknown as Expr;
+
+const HIT_WIDTH = [
+  "interpolate", ["linear"], ["zoom"], 9, 6, 15, 14, 18, 22,
+] as unknown as Expr;
+
+const LABEL_SIZE = [
+  "interpolate", ["linear"], ["zoom"], 12, 9, 16, 13, 19, 16,
+] as unknown as Expr;
+
+const LABEL_FIELD = ["coalesce", ["get", "name"], ""] as unknown as Expr;
+
+// Filter that matches no feature — the hover-glow layer's resting state.
+const MATCH_NONE = ["==", ["id"], -1] as unknown as Expr;
+
+const ROUTE_LAYER_IDS = ROUTES.map((r) => routeLayerId(r.key));
+const ALL_LAYERS = [
+  ROADS_BASE_ID, ROADS_GLOW_ID, ROADS_LINE_ID, ...ROUTE_LAYER_IDS, ROADS_HIT_ID, ROADS_LABEL_ID,
+];
+
+const prefersReducedMotion = () =>
+  typeof window !== "undefined" &&
+  window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+
+let addingInFlight = false;
+
+// Maps that have the roads layers — lets the Roads Guide legend highlight a
+// route on whichever map instance is live. Feature ids come from generateId
+// (sequential feature index), recorded once during the tagging pass.
+const roadMaps = new Set<mapboxgl.Map>();
+const routeFeatureIds = new Map<string, number[]>();
+let dataTagged = false;
+
+/** Add the roads GeoJSON source + layers (hidden until toggled on). */
+export async function addRoadsLayers(map: mapboxgl.Map): Promise<void> {
+  if (addingInFlight) return;
+  const layersReady = ALL_LAYERS.every((id) => map.getLayer(id));
+  if (layersReady) return;
+
+  addingInFlight = true;
+  try {
+    ensureRoadsStyles();
+    const { ROADS_MAIN_GEOJSON } = await import("@/lib/roadsMain.generated");
+
+    // Tag signature-road features with their route key + CSS-variable color so
+    // paint expressions (line, glow) and the tooltip share one color source.
+    // Runs once — the data module is shared by every map instance.
+    if (!dataTagged) {
+      dataTagged = true;
+      const features = ROADS_MAIN_GEOJSON.features as GeoJSON.Feature[];
+      for (let i = 0; i < features.length; i++) {
+        const f = features[i];
+        if (!f.properties) continue;
+        const nm = f.properties.name;
+        const ref = f.properties.ref;
+        // Match by route ref first (E311, E66, …) so a road spans its full
+        // length even where OSM tags segments only by ref or an Arabic name;
+        // fall back to the English name for roads without a highway ref. OSM
+        // packs concurrent refs into a ";"-list ("E11;S113"), so test each part.
+        const refParts = typeof ref === "string" ? ref.split(";").map((s) => s.trim()) : [];
+        const route =
+          ROUTES.find((r) => r.ref && refParts.some((p) => (r.ref as RegExp).test(p))) ||
+          (typeof nm === "string" ? ROUTES.find((r) => r.match.test(nm)) : undefined) ||
+          null;
+        if (route) {
+          f.properties.route = route.key;
+          f.properties.routeColor = routeColor(route);
+          const ids = routeFeatureIds.get(route.key) ?? [];
+          ids.push(i); // generateId assigns ids by feature index
+          routeFeatureIds.set(route.key, ids);
+        }
+      }
+    }
+
+    if (!map.getSource(ROADS_SOURCE_ID)) {
+      map.addSource(ROADS_SOURCE_ID, {
+        type: "geojson",
+        data: ROADS_MAIN_GEOJSON,
+        lineMetrics: true, // required for the line-trim-offset draw reveal
+        generateId: true, // required for per-feature hover feature-state
+      });
+    }
+
+    const lineLayout = {
+      visibility: "none",
+      "line-cap": "round",
+      "line-join": "round",
+    } as const;
+
+    // Faint substrate — the whole network, always full, so the reveal reads as
+    // illuminating an existing network rather than drawing from nothing.
+    map.addLayer({
+      id: ROADS_BASE_ID,
+      type: "line",
+      source: ROADS_SOURCE_ID,
+      layout: { ...lineLayout },
+      paint: {
+        "line-color": ROAD_COLOR,
+        "line-width": BASE_WIDTH,
+        "line-opacity": 0.16,
+      },
+    } as unknown as mapboxgl.LayerSpecification);
+
+    // Soft glow in the road's own color — opacity rides the hover/pulse
+    // feature-state, filter narrows it to the animating roads only.
+    map.addLayer({
+      id: ROADS_GLOW_ID,
+      type: "line",
+      source: ROADS_SOURCE_ID,
+      filter: MATCH_NONE,
+      layout: { ...lineLayout },
+      paint: {
+        "line-color": ROAD_COLOR,
+        "line-width": GLOW_WIDTH,
+        "line-blur": GLOW_BLUR,
+        "line-opacity": GLOW_OPACITY_EXPR,
+      },
+    } as unknown as mapboxgl.LayerSpecification);
+
+    // Non-signature roads: one layer, washes in first during the reveal.
+    map.addLayer({
+      id: ROADS_LINE_ID,
+      type: "line",
+      source: ROADS_SOURCE_ID,
+      filter: ["!", ["has", "route"]] as unknown as Expr,
+      layout: { ...lineLayout },
+      paint: {
+        "line-color": ROAD_COLOR,
+        "line-width": LINE_WIDTH,
+        "line-opacity": LINE_OPACITY_EXPR,
+        // Whole line trimmed (hidden) initially; the reveal shrinks the trim.
+        "line-trim-offset": [0, 1],
+      },
+    } as unknown as mapboxgl.LayerSpecification);
+
+    // One layer per signature road so each can draw on with its own staggered
+    // timeline (line-trim-offset is per-layer, not per-feature).
+    for (const r of ROUTES) {
+      map.addLayer({
+        id: routeLayerId(r.key),
+        type: "line",
+        source: ROADS_SOURCE_ID,
+        filter: ["==", ["get", "route"], r.key] as unknown as Expr,
+        layout: { ...lineLayout },
+        paint: {
+          "line-color": ROAD_COLOR,
+          "line-width": LINE_WIDTH,
+          "line-opacity": LINE_OPACITY_EXPR,
+          "line-trim-offset": [0, 1],
+        },
+      } as unknown as mapboxgl.LayerSpecification);
+    }
+
+    // Invisible generous hit target so thin roads are easy to hover.
+    map.addLayer({
+      id: ROADS_HIT_ID,
+      type: "line",
+      source: ROADS_SOURCE_ID,
+      layout: { ...lineLayout },
+      paint: { "line-color": "#000000", "line-width": HIT_WIDTH, "line-opacity": 0 },
+    } as unknown as mapboxgl.LayerSpecification);
+
+    map.addLayer({
+      id: ROADS_LABEL_ID,
+      type: "symbol",
+      source: ROADS_SOURCE_ID,
+      layout: {
+        visibility: "none",
+        "symbol-placement": "line",
+        "text-field": LABEL_FIELD,
+        "text-size": LABEL_SIZE,
+        "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"],
+        "text-max-angle": 40,
+        "text-padding": 4,
+      },
+      paint: {
+        "text-color": "#ffffff",
+        "text-halo-color": "#101418",
+        "text-halo-width": 1.6,
+        "text-opacity": 0,
+      },
+    } as unknown as mapboxgl.LayerSpecification);
+
+    attachInteractions(map);
+    roadMaps.add(map);
+    map.on("remove", () => roadMaps.delete(map));
+  } catch (err) {
+    console.error("[roads] failed to add layers", err);
+  } finally {
+    addingInFlight = false;
+  }
+}
+
+/** Light a whole signature road up (or back down) — used by the Roads Guide
+ *  legend on hover. Reuses the same eased hover effect as the map cursor. */
+export function setRouteHighlight(key: string, on: boolean): void {
+  const ids = routeFeatureIds.get(key);
+  if (!ids) return;
+  for (const map of roadMaps) {
+    if (!map.getLayer(ROADS_GLOW_ID)) continue;
+    for (const id of ids) setHoverTarget(map, id, on ? 1 : 0);
+  }
+}
+
+// --- Draw-on reveal --------------------------------------------------------
+
+// Background network washes in over OTHERS_MS; each signature road draws
+// itself over ROUTE_MS, cascading ROUTE_STAGGER apart.
+const OTHERS_MS = 1800;
+const ROUTE_MS = 1000;
+const ROUTE_STAGGER = 160;
+const ROUTE_DELAY0 = 350;
+const REVEAL_TOTAL = Math.max(
+  OTHERS_MS,
+  ROUTE_DELAY0 + (ROUTES.length - 1) * ROUTE_STAGGER + ROUTE_MS,
+);
+
+const smoothstep = (t: number) => t * t * (3 - 2 * t);
+const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
+
+// Per-map reveal animation handle so a re-toggle cancels the in-flight one.
+const revealFrames = new WeakMap<mapboxgl.Map, number>();
+
+function setTrim(map: mapboxgl.Map, layerId: string, head: number): void {
+  if (map.getLayer(layerId)) {
+    map.setPaintProperty(layerId, "line-trim-offset", [clamp01(head), 1]);
+  }
+}
+
+/** Drive every draw-layer + the labels to `elapsed` ms of the reveal timeline. */
+function setRevealElapsed(map: mapboxgl.Map, elapsed: number): void {
+  setTrim(map, ROADS_LINE_ID, smoothstep(clamp01(elapsed / OTHERS_MS)));
+  ROUTES.forEach((r, i) => {
+    const t = clamp01((elapsed - ROUTE_DELAY0 - i * ROUTE_STAGGER) / ROUTE_MS);
+    setTrim(map, routeLayerId(r.key), smoothstep(t));
+  });
+  if (map.getLayer(ROADS_LABEL_ID)) {
+    // Labels fade in over the last portion of the reveal.
+    const t = clamp01((elapsed - (REVEAL_TOTAL - 700)) / 700);
+    map.setPaintProperty(ROADS_LABEL_ID, "text-opacity", t);
+  }
+}
+
+/** Show the roads with staggered draw-on; hide instantly (no reverse). */
+export function setRoadsVisible(map: mapboxgl.Map, on: boolean): void {
+  if (!map.getLayer(ROADS_LINE_ID)) return;
+
+  const prev = revealFrames.get(map);
+  if (prev) {
+    cancelAnimationFrame(prev);
+    revealFrames.delete(map);
+  }
+
+  // Hiding is immediate — no ending / reverse animation.
+  if (!on) {
+    setRevealElapsed(map, 0);
+    clearHover(map);
+    closePopup(map);
+    for (const id of ALL_LAYERS) {
+      if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none");
+    }
+    return;
+  }
+
+  for (const id of ALL_LAYERS) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "visible");
+  }
+
+  // Respect reduced-motion: show the network fully, skip the draw.
+  if (prefersReducedMotion()) {
+    setRevealElapsed(map, REVEAL_TOTAL);
+    return;
+  }
+
+  // Ghost substrate fades in instead of popping (native paint transition).
+  if (map.getLayer(ROADS_BASE_ID)) {
+    map.setPaintProperty(ROADS_BASE_ID, "line-opacity-transition", { duration: 0 });
+    map.setPaintProperty(ROADS_BASE_ID, "line-opacity", 0);
+    map.setPaintProperty(ROADS_BASE_ID, "line-opacity-transition", { duration: 700 });
+    map.setPaintProperty(ROADS_BASE_ID, "line-opacity", 0.16);
+  }
+
+  const start = performance.now();
+  const tick = () => {
+    const elapsed = performance.now() - start;
+    setRevealElapsed(map, elapsed);
+    if (elapsed < REVEAL_TOTAL) {
+      revealFrames.set(map, requestAnimationFrame(tick));
+    } else {
+      revealFrames.delete(map);
+    }
+  };
+  setRevealElapsed(map, 0);
+  revealFrames.set(map, requestAnimationFrame(tick));
+}
+
+// --- Hover / click effects -------------------------------------------------
+// Mapbox feature-state changes are not CSS-transitionable, so a single rAF
+// loop eases hoverT toward its target (~350 ms, smoothstep) and runs the
+// 300 ms click pulse. It only touches feature-state + the glow filter — no
+// DOM layout or repaint; the expressions evaluate on the GPU.
+
+const HOVER_MS = 350;
+const PULSE_MS = 300;
+
+type FxState = { t: number; target: number; pulseStart: number | null };
+
+const fxStates = new WeakMap<mapboxgl.Map, Map<number, FxState>>();
+const fxFrames = new WeakMap<mapboxgl.Map, number>();
+const fxLast = new WeakMap<mapboxgl.Map, number>();
+const hoveredId = new WeakMap<mapboxgl.Map, number>();
+const interactionsWired = new WeakSet<mapboxgl.Map>();
+const popups = new WeakMap<mapboxgl.Map, { popup: mapboxgl.Popup; timer: number }>();
+
+function states(map: mapboxgl.Map): Map<number, FxState> {
+  let s = fxStates.get(map);
+  if (!s) {
+    s = new Map();
+    fxStates.set(map, s);
+  }
+  return s;
+}
+
+function syncGlowFilter(map: mapboxgl.Map): void {
+  if (!map.getLayer(ROADS_GLOW_ID)) return;
+  const ids = [...states(map).keys()];
+  map.setFilter(
+    ROADS_GLOW_ID,
+    ids.length ? (["in", ["id"], ["literal", ids]] as unknown as Expr) : MATCH_NONE,
+  );
+}
+
+function startFxLoop(map: mapboxgl.Map): void {
+  if (fxFrames.has(map)) return;
+  fxLast.set(map, performance.now());
+  const step = () => {
+    const now = performance.now();
+    const dt = now - (fxLast.get(map) ?? now);
+    fxLast.set(map, now);
+
+    const s = states(map);
+    let filterDirty = false;
+    for (const [id, fx] of s) {
+      const dir = fx.target > fx.t ? 1 : -1;
+      fx.t = clamp01(fx.t + (dir * dt) / HOVER_MS);
+
+      let pulse = 0;
+      if (fx.pulseStart !== null) {
+        const p = (now - fx.pulseStart) / PULSE_MS;
+        if (p >= 1) fx.pulseStart = null;
+        else pulse = Math.sin(Math.PI * clamp01(p)); // grow then settle back
+      }
+
+      map.setFeatureState(
+        { source: ROADS_SOURCE_ID, id },
+        { hoverT: smoothstep(fx.t), pulseT: pulse },
+      );
+
+      if (fx.t === 0 && fx.target === 0 && fx.pulseStart === null) {
+        s.delete(id);
+        filterDirty = true;
+      }
+    }
+    if (filterDirty) syncGlowFilter(map);
+
+    if (s.size) {
+      fxFrames.set(map, requestAnimationFrame(step));
+    } else {
+      fxFrames.delete(map);
+    }
+  };
+  fxFrames.set(map, requestAnimationFrame(step));
+}
+
+function setHoverTarget(map: mapboxgl.Map, id: number, target: number): void {
+  const s = states(map);
+  const fx = s.get(id) ?? { t: 0, target: 0, pulseStart: null };
+  fx.target = target;
+  if (prefersReducedMotion()) fx.t = target;
+  s.set(id, fx);
+  syncGlowFilter(map);
+  startFxLoop(map);
+}
+
+function startPulse(map: mapboxgl.Map, id: number): void {
+  if (prefersReducedMotion()) return;
+  const s = states(map);
+  const fx = s.get(id) ?? { t: 0, target: 0, pulseStart: null };
+  fx.pulseStart = performance.now();
+  s.set(id, fx);
+  syncGlowFilter(map);
+  startFxLoop(map);
+}
+
+function clearHover(map: mapboxgl.Map): void {
+  const id = hoveredId.get(map);
+  if (id !== undefined) {
+    setHoverTarget(map, id, 0);
+    hoveredId.delete(map);
+  }
+  map.getCanvas().style.cursor = "";
+}
+
+function closePopup(map: mapboxgl.Map): void {
+  const p = popups.get(map);
+  if (p) {
+    window.clearTimeout(p.timer);
+    p.popup.remove();
+    popups.delete(map);
+  }
+}
+
+function showRoadPopup(map: mapboxgl.Map, lngLat: mapboxgl.LngLat, name: string, color: string): void {
+  closePopup(map);
+  const row = document.createElement("div");
+  row.className = "road-tip-row";
+  const dot = document.createElement("span");
+  dot.className = "road-tip-dot";
+  dot.style.color = color;
+  const label = document.createElement("span");
+  label.textContent = name; // textContent — never HTML
+  row.append(dot, label);
+
+  const popup = new mapboxgl.Popup({
+    className: "road-popup",
+    closeButton: false,
+    closeOnClick: false,
+    offset: 10,
+    maxWidth: "260px",
+  })
+    .setLngLat(lngLat)
+    .setDOMContent(row)
+    .addTo(map);
+
+  const timer = window.setTimeout(() => closePopup(map), 2600);
+  popups.set(map, { popup, timer });
+}
+
+function attachInteractions(map: mapboxgl.Map): void {
+  if (interactionsWired.has(map)) return;
+  interactionsWired.add(map);
+
+  // Roads hover, rAF-throttled. A LAYER-SCOPED mousemove makes Mapbox run an
+  // implicit queryRenderedFeatures against the huge roads source on EVERY raw
+  // pointer event (jank while moving). Instead, listen globally and query at most
+  // once per animation frame — and only while the hit layer exists (Roads on).
+  let lastPoint: mapboxgl.Point | null = null;
+  let hoverRafPending = false;
+  const processHover = () => {
+    hoverRafPending = false;
+    if (!lastPoint || !map.getLayer(ROADS_HIT_ID)) return;
+    const f = map.queryRenderedFeatures(lastPoint, { layers: [ROADS_HIT_ID] })[0];
+    if (!f || f.id === undefined) {
+      clearHover(map);
+      return;
+    }
+    const id = f.id as number;
+    if (hoveredId.get(map) === id) return;
+    const prev = hoveredId.get(map);
+    if (prev !== undefined) setHoverTarget(map, prev, 0);
+    hoveredId.set(map, id);
+    setHoverTarget(map, id, 1);
+    map.getCanvas().style.cursor = "pointer";
+  };
+  map.on("mousemove", (e) => {
+    if (!map.getLayer(ROADS_HIT_ID)) return; // Roads off → nothing to hover
+    lastPoint = e.point;
+    if (!hoverRafPending) {
+      hoverRafPending = true;
+      requestAnimationFrame(processHover);
+    }
+  });
+  map.on("mouseout", () => clearHover(map));
+
+  map.on("click", ROADS_HIT_ID, (e) => {
+    const f = e.features?.[0];
+    if (f?.id === undefined) return;
+    startPulse(map, f.id as number);
+    const props = (f.properties ?? {}) as Record<string, unknown>;
+    const route = ROUTES.find((r) => r.key === props.route);
+    const name =
+      route?.name ?? (typeof props.name === "string" && props.name ? props.name : "Road");
+    const color =
+      typeof props.routeColor === "string" && props.routeColor ? props.routeColor : "#c9a84c";
+    showRoadPopup(map, e.lngLat, name, color);
+  });
+}

@@ -1,0 +1,73 @@
+import { defineConfig, loadEnv } from "vite";
+import viteReact from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+import tsConfigPaths from "vite-tsconfig-paths";
+import { tanstackStart } from "@tanstack/react-start/plugin/vite";
+
+export default defineConfig(async ({ command, mode }) => {
+  // Expose VITE_* to import.meta.env for the SSR/nitro runtime too.
+  const env = loadEnv(mode, process.cwd(), "VITE_");
+  const define: Record<string, string> = {};
+  for (const [k, v] of Object.entries(env)) define[`import.meta.env.${k}`] = JSON.stringify(v);
+
+  const plugins = [
+    tailwindcss(),
+    tsConfigPaths({ projects: ["./tsconfig.json"] }),
+    tanstackStart({
+      // src/server.ts wraps SSR error handling.
+      server: { entry: "server" },
+      importProtection: {
+        behavior: "error",
+        client: { files: ["**/server/**"], specifiers: ["server-only"] },
+      },
+    }),
+    viteReact(),
+  ];
+
+  // Nitro produces the deploy bundle — build only. defaultPreset is the fallback
+  // when NITRO_PRESET is unset (local builds → cloudflare-module); on Vercel the
+  // NITRO_PRESET=vercel env from vercel.json wins, so use defaultPreset (not
+  // preset) to avoid forcing the wrong target.
+  if (command === "build") {
+    const { nitro } = await import("nitro/vite");
+    plugins.splice(3, 0, nitro({ defaultPreset: "cloudflare-module" }));
+  }
+
+  return {
+    define,
+    server: {
+      port: 8080,
+      // Never serve server-only implementation files through the dev HTTP
+      // server. Vite's default deny list covers .env/.git, but not arbitrary
+      // `*.server.*` modules inside src/.
+      fs: {
+        strict: true,
+        deny: ["**/*.server.*", "**/.env*", "**/.git/**"],
+      },
+    },
+    // Lightning CSS in dev and build alike, so build-time CSS transforms
+    // (e.g. -webkit-backdrop-filter handling) match the dev preview.
+    css: { transformer: "lightningcss" as const },
+    resolve: {
+      alias: { "@": `${process.cwd()}/src` },
+      dedupe: [
+        "react",
+        "react-dom",
+        "react/jsx-runtime",
+        "react/jsx-dev-runtime",
+        "@tanstack/react-query",
+        "@tanstack/query-core",
+      ],
+    },
+    optimizeDeps: {
+      include: [
+        "react",
+        "react-dom",
+        "react-dom/client",
+        "react/jsx-runtime",
+        "react/jsx-dev-runtime",
+      ],
+    },
+    plugins,
+  };
+});
