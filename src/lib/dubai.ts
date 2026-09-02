@@ -1,8 +1,34 @@
 // Dubai geo constants shared across map surfaces.
 export const DUBAI_CENTER = { lat: 25.1972, lng: 55.2744 }; // Downtown Dubai
 
-// Emirate-scoped bounds. Used for framing (fitBounds, the min-zoom fit) so the
-// map opens and floors on Dubai proper.
+// Named camera targets used by the emirate switcher. Keep Dubai as the first
+// entry so it remains the default opening/recenter destination.
+export const EMIRATE_VIEWS = {
+  dubai: {
+    key: "dubai",
+    label: "Dubai",
+    center: DUBAI_CENTER,
+    zoom: 11.2,
+  },
+  sharjah: {
+    key: "sharjah",
+    label: "Sharjah",
+    center: { lat: 25.3463, lng: 55.4209 },
+    zoom: 11.2,
+  },
+  rasAlKhaimah: {
+    key: "rasAlKhaimah",
+    label: "Ras Al Khaimah",
+    center: { lat: 25.8007, lng: 55.9762 },
+    zoom: 11.2,
+  },
+} as const;
+
+export type EmirateKey = keyof typeof EMIRATE_VIEWS;
+export type EmirateView = (typeof EMIRATE_VIEWS)[EmirateKey];
+
+// Opening frame. Used for framing (fitBounds, the min-zoom fit) so the map
+// opens on Dubai proper even though the user can roam across the wider region.
 export const DUBAI_BOUNDS = {
   south: 24.79,
   west: 54.89,
@@ -10,22 +36,20 @@ export const DUBAI_BOUNDS = {
   east: 55.65,
 };
 
-// Pan limit — held tight to Dubai proper so the user can't drag out to the
-// neighbouring emirates (Sharjah to the NE, the Abu Dhabi border / Ghantoot to
-// the SW). NOTE: this is no longer Mapbox's native `maxBounds`, because that
-// option also clamps how far you can zoom OUT. It is enforced by a custom
-// centre clamp in MapboxView (clampCenterToBounds) that only engages once the
-// user has zoomed past the wide overview.
+// Regional pan limit — covers Dubai, the northern emirates and the coastline
+// up to Ras Al Khaimah. NOTE: this is no longer Mapbox's native `maxBounds`,
+// because that option also clamps how far you can zoom OUT. It is enforced by
+// a custom centre clamp in MapboxView (clampCenterToBounds) that only engages
+// once the user has zoomed past the wide overview.
 export const MAP_MAX_BOUNDS = {
-  // Free-pan area: Ghantoot (W) through Ajman / Umm Al Quwain (NE). Held just
-  // inside ZOOM_OUT_BOUNDS on every side so the custom pan clamp barely engages
-  // (no sticky nudge-back near the edge); the native maxBounds gives the smooth
-  // final stop. NOTE: the OPENING view is framed on DUBAI_BOUNDS, not this box —
-  // so the map opens on Dubai only, then the user can roam out to these borders.
+  // Free-pan area: Ghantoot (W) through Ras Al Khaimah (N/NE). Held just inside
+  // ZOOM_OUT_BOUNDS on every side so the custom pan clamp barely engages (no
+  // sticky nudge-back near the edge); the native maxBounds gives the smooth
+  // final stop. The opening view remains framed on DUBAI_BOUNDS.
   south: 24.48,
   west: 54.57, // well past Ghantoot — Abu Dhabi border
-  north: 25.89, // past Umm Al Quwain
-  east: 55.99,
+  north: 26.15, // Ras Al Khaimah coastline
+  east: 56.35, // Ras Al Khaimah / inland edge
 };
 
 // The rect handed to Mapbox as the native `maxBounds`, and the one the min-zoom
@@ -33,20 +57,19 @@ export const MAP_MAX_BOUNDS = {
 // further and see more of the coast; panning is still restricted to
 // MAP_MAX_BOUNDS by the custom clamp. Kept inside the animated water mesh's
 // coverage (SEA_COVER in scripts/generate-water-geometry.ts) so pulling back
-// never reveals the edge of the water, and matches the bbox generate-roads.ts
-// already fetches, so road data reaches these edges too.
+// never reveals the edge of the water. The Mapbox basemap supplies the
+// underlying regional roads beyond the optional animated road overlay.
 // ~1.7x MAP_MAX_BOUNDS about the same centre. Deliberately NOT the full road /
 // SEA_COVER bbox: fitting to that pulled the floor out to the whole UAE and ran
 // the viewport past the generated water geometry, which showed as pale seams.
 export const ZOOM_OUT_BOUNDS = {
-  // Zoom-out extent + native maxBounds. Kept ~0.02° outside MAP_MAX_BOUNDS on
-  // every side (so the custom clamp isn't fighting the native one) and inside the
-  // water mesh's SEA_COVER limits (west 54.51 / south 24.41 / east 56.03 /
-  // north 25.93) so pulling back never reveals the mesh edge.
+  // Zoom-out extent + native maxBounds. Kept outside MAP_MAX_BOUNDS on the
+  // relevant sides (so the custom clamp isn't fighting the native one) and
+  // inside the water mesh's expanded SEA_COVER limits.
   south: 24.46,
   west: 54.55,
-  north: 25.91,
-  east: 56.01,
+  north: 26.20,
+  east: 56.40,
 };
 
 // Opening view: wide over Dubai, flat (pitch/bearing 0). After the map is idle

@@ -23,6 +23,15 @@ interface StationClone {
   baseScale: number;
 }
 
+function disposeObject3D(object: THREE.Object3D) {
+  object.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return;
+    child.geometry.dispose();
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    materials.forEach((material) => material.dispose());
+  });
+}
+
 export function createStationModelLayer(
   controller: { shouldRender: () => boolean },
   lines: MetroLine[],
@@ -36,7 +45,7 @@ export function createStationModelLayer(
   let clones: StationClone[] = [];
   let gltfTemplate: THREE.Group | null = null;
   let clock: THREE.Clock | null = null;
-  let lastGoodMatrix: number[] = new Array(16).fill(0);
+  const lastGoodMatrix: number[] = new Array(16).fill(0);
   lastGoodMatrix[15] = 1;
   let disposed = false;
   let renderCount = 0;
@@ -91,13 +100,9 @@ export function createStationModelLayer(
       const box = new THREE.Box3().setFromObject(clone);
       if (isFinite(box.min.z)) clone.position.z -= box.min.z;
       clone.visible = false;
-      if (clone.type === "Group") {
-        clone.traverse((child) => {
-          if ((child as any).isMesh) (child as THREE.Mesh).frustumCulled = true;
-        });
-      } else {
-        (clone as any).frustumCulled = true;
-      }
+      clone.traverse((child) => {
+        if (child instanceof THREE.Mesh) child.frustumCulled = true;
+      });
       scene!.add(clone);
       clones.push({
         mesh: clone,
@@ -188,30 +193,8 @@ export function createStationModelLayer(
 
     onRemove() {
       disposed = true;
-      clones.forEach((c) => {
-        c.mesh.traverse((child) => {
-          if ((child as any).geometry) (child as THREE.Mesh).geometry.dispose();
-          if ((child as any).material) {
-            if (Array.isArray((child as any).material)) {
-              (child as any).material.forEach((m: THREE.Material) => m.dispose());
-            } else {
-              (child as any).material.dispose();
-            }
-          }
-        });
-      });
-      if (gltfTemplate) {
-        gltfTemplate.traverse((child) => {
-          if ((child as any).geometry) (child as THREE.Mesh).geometry.dispose();
-          if ((child as any).material) {
-            if (Array.isArray((child as any).material)) {
-              (child as any).material.forEach((m: THREE.Material) => m.dispose());
-            } else {
-              (child as any).material.dispose();
-            }
-          }
-        });
-      }
+      clones.forEach((clone) => disposeObject3D(clone.mesh));
+      if (gltfTemplate) disposeObject3D(gltfTemplate);
       releaseSharedRenderer();
       clones = [];
       gltfTemplate = null;

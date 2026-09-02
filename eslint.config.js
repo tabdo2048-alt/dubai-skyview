@@ -6,7 +6,10 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist", ".output", ".vinxi"] },
+  // Generated map geometry is validated by the dedicated geodata scripts;
+  // linting millions of coordinate literals makes the repository-wide check
+  // unnecessarily slow and provides no useful source-level feedback.
+  { ignores: ["dist", ".output", ".vinxi", "**/*.generated.ts", "scripts/.cache"] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ["**/*.{ts,tsx}"],

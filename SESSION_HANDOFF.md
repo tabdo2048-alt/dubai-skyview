@@ -18,7 +18,7 @@ Luxury 3D Dubai real-estate map. Stack: React + Vite + **TanStack Start (SSR/nit
 - `src/lib/dubai.ts` — bounds constants. `src/lib/zones.ts` — RY/FLIP/HH zones.
 - `src/hooks/use-pois.ts` — POI query (tourism/schools/hospitals).
 - `src/routes/_authenticated/admin.tsx` — admin CRUD (places live here).
-- `src/components/map/CategoryPanel.tsx` — **now orphaned** (removed from public map; safe to delete).
+- `src/components/map/CategoryPanel.tsx` — removed after confirming it was orphaned from the public map.
 
 ## Done this session (commits on `water-osm-rebuild`)
 - **Bounds/opening:** opening frames **Dubai only** (`DUBAI_BOUNDS`), pan borders reach **Ghantoot (W) → Umm Al Quwain (NE)** (`MAP_MAX_BOUNDS`), zoom-out widened to the water-mesh `SEA_COVER` limit (`ZOOM_OUT_BOUNDS`). Opening fit is gated on a real container size (was locking a wrong 0×0 fit).

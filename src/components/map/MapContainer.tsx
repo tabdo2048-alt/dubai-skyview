@@ -18,6 +18,7 @@ import { MapboxView, type LightPreset } from "./MapboxView";
 import { CloudLayer } from "./CloudLayer";
 import { CategoryPanel } from "./CategoryPanel";
 import { LayersMenu } from "./LayersMenu";
+import { EmiratesMenu } from "./EmiratesMenu";
 import { ProjectPopup } from "./ProjectPopup";
 // Dev-only editor. Lazy so its static WaterLayer import (Three.js + the ~1.6 MB
 // coastline) never enters the production bundle and doesn't defeat the dynamic
@@ -35,7 +36,7 @@ import { canAccessTenant } from "@/integrations/supabase/saas";
 import { useProjects, filterProjects } from "@/hooks/use-projects";
 import { usePois, usePoiRealtime } from "@/hooks/use-pois";
 import { useZones, useZonesRealtime } from "@/hooks/use-zones";
-import { DUBAI_CENTER, DEFAULT_ZOOM } from "@/lib/dubai";
+import { DUBAI_CENTER, DEFAULT_ZOOM, EMIRATE_VIEWS, type EmirateKey, type EmirateView } from "@/lib/dubai";
 import { CATEGORY_COLORS } from "@/lib/metro";
 
 const LIGHT_PRESETS: { value: LightPreset; label: string; Icon: typeof Sun }[] = [
@@ -114,8 +115,16 @@ export function MapContainer() {
   // only) can flip it on/off for the rest of the session without a console command.
   const [waterEditorEnabled, setWaterEditorEnabled] = useState(() => shouldShowWaterDebugEditor());
   const [editorMap, setEditorMap] = useState<mapboxgl.Map | null>(null);
-  // Bumped by the Recenter button to ease the active map back to the Dubai overview.
-  const [recenterNonce, setRecenterNonce] = useState(0);
+  // Camera destination selected by the emirate menu or the Dubai recenter button.
+  const [emirateTarget, setEmirateTarget] = useState<EmirateView | null>(null);
+  const [selectedEmirate, setSelectedEmirate] = useState<EmirateKey>("dubai");
+
+  const goToEmirate = (view: EmirateView) => {
+    setSelectedEmirate(view.key);
+    // Create a fresh object so selecting the currently active emirate starts a
+    // new animation as well.
+    setEmirateTarget({ ...view });
+  };
 
   const filtered = useMemo(() => filterProjects(projects, filters), [projects, filters]);
   // Projects start hidden; only those the user has revealed (eye toggle) draw as
@@ -169,7 +178,7 @@ export function MapContainer() {
                 accessToken={cfg.mapboxAccessToken}
                 projects={projectsToShow}
                 pois={pois}
-                recenterNonce={recenterNonce}
+                flyToTarget={emirateTarget}
                 browsingPois={browsingPois}
                 zones={zones}
                 zoneCategories={zoneCategories}
@@ -199,7 +208,7 @@ export function MapContainer() {
                 accessToken={cfg.mapboxAccessToken}
                 projects={projectsToShow}
                 pois={pois}
-                recenterNonce={recenterNonce}
+                flyToTarget={emirateTarget}
                 browsingPois={browsingPois}
                 zones={zones}
                 zoneCategories={zoneCategories}
@@ -268,6 +277,7 @@ export function MapContainer() {
             <Globe2 className="h-3.5 w-3.5" /> 3D
           </button>
         </div>
+        <EmiratesMenu activeKey={selectedEmirate} onSelect={goToEmirate} />
         <LayersMenu
           canUseMetro={canUseMetro}
           showWaterEditor={import.meta.env.DEV}
@@ -277,7 +287,7 @@ export function MapContainer() {
         <button
           type="button"
           title="Recenter on Dubai"
-          onClick={() => setRecenterNonce((n) => n + 1)}
+          onClick={() => goToEmirate(EMIRATE_VIEWS.dubai)}
           className="glass gold-hairline grid h-8 w-8 place-items-center rounded-full text-cream transition-colors hover:text-gold"
         >
           <LocateFixed className="h-4 w-4" />

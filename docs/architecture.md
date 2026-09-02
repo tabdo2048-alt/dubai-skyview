@@ -1,5 +1,9 @@
 # Dubai Skyview - Project Structure & Data Tree
 
+> Current canonical references are [`../arcteture.md`](../arcteture.md)
+> and [`../futures.md`](../futures.md). This older quick reference is kept
+> for history and may contain pre-unit/PDF file names.
+
 ## File Structure
 
 ```

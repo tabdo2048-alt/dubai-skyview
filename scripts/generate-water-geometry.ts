@@ -1,4 +1,4 @@
-// OSM-based Dubai water-geometry generator.
+// OSM-based Dubai–Ras Al Khaimah water-geometry generator.
 //
 // Rebuilds src/lib/coastline.generated.ts entirely from real OpenStreetMap
 // data (© OpenStreetMap contributors, ODbL) fetched via the Overpass API, so
@@ -38,16 +38,17 @@ type LngLat = [number, number];
 
 const REFRESH = process.argv.includes("--refresh");
 
-// The map's maxBounds (dubai.ts DUBAI_BOUNDS: S24.79 / W54.89 / N25.55 / E55.65).
+// The opening frame (dubai.ts DUBAI_BOUNDS: S24.79 / W54.89 / N25.55 / E55.65).
+// The interactive map can roam farther north/east to Ras Al Khaimah.
 const DUBAI_BOUNDS = { west: 54.89, south: 24.79, east: 55.65, north: 25.55 };
 
-// Coverage rectangle — DUBAI_BOUNDS padded by 50% of its width/height on every
-// side so the animated water mesh reaches well past maxBounds. (The pitched
-// camera can see even farther toward the horizon; that far field is covered by
-// tinting the basemap's own water to the sea colour in MapboxView, so nothing
-// beyond COVER shows black.) The coastline is fetched across this same bbox so
-// real desert (Abu Dhabi/Sharjah) is still excluded as land.
-const SEA_COVER = { west: 54.51, south: 24.41, east: 56.03, north: 25.93 };
+// Coverage rectangle — expanded around the regional map bounds so the animated
+// water mesh reaches beyond Ras Al Khaimah and never exposes a mesh edge while
+// zooming out. (The pitched camera can see farther toward the horizon; that
+// far field is covered by tinting the basemap's own water to the sea colour in
+// MapboxView.) The coastline is fetched across this same bbox so real desert
+// and the Hajar foothills remain excluded as land.
+const SEA_COVER = { west: 54.51, south: 24.41, east: 56.45, north: 26.28 };
 const SEA_COVER_RECT: LngLat[] = [
   [SEA_COVER.west, SEA_COVER.south],
   [SEA_COVER.east, SEA_COVER.south],
@@ -965,8 +966,10 @@ async function main() {
     // Dubai open sea.
     [55.05, 25.15], [54.95, 25.3], [55.25, 25.35], [55.117, 25.14],
     [55.3, 25.45], [55.1, 25.1], [55.08, 25.12],
-    // COVER open-Gulf edges (NW / N / W) — sea must reach the visible margin.
+    // COVER open-Gulf edges (NW / N / W) — sea must reach the visible margin,
+    // including the northern water west of Ras Al Khaimah.
     [54.55, 25.89], [55.0, 25.89], [55.6, 25.89], [55.8, 25.89],
+    [55.55, 26.05], [55.8, 26.15],
     [54.55, 25.3], [54.55, 24.95],
   ];
   for (const p of waterProbes) {
@@ -974,9 +977,10 @@ async function main() {
   }
   const landProbes: LngLat[] = [
     [55.27, 25.2], [55.36, 25.27], [55.139, 25.112], [55.152, 25.079], [55.132, 25.005],
-    // COVER desert edges (S / E) must NOT be sea. SE corner is the blue-desert gate.
+    // COVER desert edges (S / E) must NOT be sea. SE corner is the blue-desert
+    // gate; the new eastern probe protects the Ras Al Khaimah land edge.
     [55.99, 24.45], [55.4, 24.45], [55.8, 24.45], [55.99, 24.9], [55.99, 25.4],
-    [54.7, 24.45], [55.3, 24.9],
+    [54.7, 24.45], [55.3, 24.9], [56.2, 25.9],
   ];
   for (const p of landProbes) {
     assertProbe(`land not sea ${JSON.stringify(p)}`, !inAnySea(p));
@@ -995,7 +999,8 @@ async function main() {
   // Emit
   // -------------------------------------------------------------------------
   console.log(`Writing ${OUT_FILE}…`);
-  const banner = `// AUTO-GENERATED — do not hand-edit. Real Dubai water geometry derived from
+  const banner = `// @ts-nocheck
+// AUTO-GENERATED — do not hand-edit. Real Dubai–Ras Al Khaimah water geometry derived from
 // OpenStreetMap (© OpenStreetMap contributors, ODbL) via the Overpass API,
 // coverage bbox ${BBOX} (S,W,N,E), fetched ${new Date().toISOString().slice(0, 10)}.
 // Sources: natural=coastline; place~island|islet; marina rel ${MARINA_REL};

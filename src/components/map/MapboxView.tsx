@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
-import { DUBAI_BOUNDS, MAP_MAX_BOUNDS, ZOOM_OUT_BOUNDS, DEFAULT_PITCH, DEFAULT_BEARING, DUBAI_CENTER, DEFAULT_ZOOM } from "@/lib/dubai";
+import {
+  DUBAI_BOUNDS,
+  MAP_MAX_BOUNDS,
+  ZOOM_OUT_BOUNDS,
+  DEFAULT_PITCH,
+  DEFAULT_BEARING,
+  DUBAI_CENTER,
+  DEFAULT_ZOOM,
+  type EmirateView,
+} from "@/lib/dubai";
 import {
   METRO_LINES,
   TRAIN_LINES,
@@ -73,8 +82,8 @@ type Props = {
   pois?: PoiPoint[];
   /** True while any POI category is on — the map is in clean "browse places" mode. */
   browsingPois?: boolean;
-  /** Bump to recenter this map on the Dubai overview (from the Recenter button). */
-  recenterNonce?: number;
+  /** Camera target selected from the emirate switcher. */
+  flyToTarget?: EmirateView | null;
   /** All zones (any category); the map only draws the categories in `zoneCategories`. */
   zones?: ZoneRow[];
   /** Which RY/STR/HH highlight buttons are currently on. */
@@ -166,7 +175,7 @@ export function MapboxView({
   accessToken,
   projects,
   pois = [],
-  recenterNonce = 0,
+  flyToTarget = null,
   zones = [],
   zoneCategories,
   camera,
@@ -1819,21 +1828,30 @@ export function MapboxView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zones, activeZoneKey, mapReady]);
 
-  // Recenter on the Dubai overview when the Recenter button bumps recenterNonce.
-  // Only the active map instance moves. nonce 0 is the initial value → ignored.
+  // Fly to a named emirate only on the active map. Queue the move until the
+  // style is loaded when the user selects a destination during map startup.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !active || recenterNonce === 0) return;
-    map.easeTo({
-      center: [DUBAI_CENTER.lng, DUBAI_CENTER.lat],
-      zoom: DEFAULT_ZOOM,
-      pitch: mode === "3d" ? DEFAULT_PITCH : 0,
-      bearing: DEFAULT_BEARING,
-      duration: 1100,
-      essential: true,
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recenterNonce]);
+    if (!map || !active || !flyToTarget) return;
+
+    const moveToTarget = () => {
+      map.easeTo({
+        center: [flyToTarget.center.lng, flyToTarget.center.lat],
+        zoom: flyToTarget.zoom,
+        pitch: mode === "3d" ? DEFAULT_PITCH : 0,
+        bearing: DEFAULT_BEARING,
+        duration: 1100,
+        essential: true,
+      });
+    };
+
+    if (map.loaded()) moveToTarget();
+    else map.once("load", moveToTarget);
+
+    return () => {
+      map.off("load", moveToTarget);
+    };
+  }, [active, flyToTarget, mode]);
 
   // Zoom-in fly to the selected project (sidebar or marker click). Only the
   // active map instance animates.
