@@ -44,3 +44,10 @@ artifacts
 .mcp.json
 scripts/.cache/
 .vercel/
+
+# Internal-only contributor and handoff notes; keep them local, out of the
+# customer-facing GitHub repository.
+AGENTS.md
+SESSION_HANDOFF.md
+docs/CONTRIBUTING.md
+docs/architecture.md

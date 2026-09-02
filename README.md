@@ -135,8 +135,6 @@ dubai-skyview/
 - [futures.md](futures.md) — implemented feature inventory and extension guide
 - [docs/ENGINEERING_BUILD.md](docs/ENGINEERING_BUILD.md) — system architecture, data model, security, and release guide
 - [docs/SALES_OFFER_PDF_ENGINEERING_BUILD.md](docs/SALES_OFFER_PDF_ENGINEERING_BUILD.md) — sales-offer PDF data contract, dynamic rules, media, and QA checklist
-- [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) — **start here to add a feature**: architecture, layer patterns, step-by-step recipes, performance rules
-- [docs/architecture.md](docs/architecture.md) — file tree, database schema, data flow
 - [docs/map-performance.md](docs/map-performance.md) — how the map is loaded and kept fast
 - [docs/water-layer.md](docs/water-layer.md) — water layer styling and geometry
 - [docs/geodata.md](docs/geodata.md) — regenerating metro/road/water data

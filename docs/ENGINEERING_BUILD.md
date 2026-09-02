@@ -38,4 +38,4 @@ Copy `.env.example` to `.env` and provide Supabase and Mapbox values. Apply revi
 
 ## 7. Maintenance Notes
 
-Generated geodata should be changed through its generator and validation script, not by hand. New map layers must be registered after Mapbox `style.load` and must gate animation work. The unused `src/components/map/CategoryPanel.tsx` was removed after confirming there were no imports; SQL handoff files and scripts remain because they support migration recovery and data validation.
+Generated geodata should be changed through its generator and validation script, not by hand. New map layers must be registered after Mapbox `style.load` and must gate animation work. Database apply scripts and geodata validators are retained as engineering tools and should be reviewed before execution.
