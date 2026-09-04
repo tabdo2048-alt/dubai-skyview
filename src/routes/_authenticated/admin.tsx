@@ -759,7 +759,7 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
   }, [existing?.id, existing?.images]);
 
   useEffect(() => {
-    if (!existing) return;
+    if (!existing?.id) return;
     setF((current) => ({
       ...current,
       offer_primary_color: existing.offer_primary_color ?? "",
