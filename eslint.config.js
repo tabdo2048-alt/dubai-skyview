@@ -39,6 +39,12 @@ export default tseslint.config(
       "@typescript-eslint/no-unused-vars": "off",
     },
   },
+  {
+    // shadcn/ui modules intentionally export reusable variants and helpers next
+    // to their components. This is supported, but React Refresh cannot infer it.
+    files: ["src/components/ui/**/*.{ts,tsx}"],
+    rules: { "react-refresh/only-export-components": "off" },
+  },
   eslintPluginPrettier,
   {
     // Formatting is handled by `npm run format`. Keeping it out of ESLint avoids

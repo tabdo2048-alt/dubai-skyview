@@ -1565,7 +1565,6 @@ export function MapboxView({
       return;
     }
     setRoadsVisible(map, roadsMode);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roadsMode]);
 
   // Switch Mapbox Standard's built-in light preset (day/dawn/dusk/night) live,

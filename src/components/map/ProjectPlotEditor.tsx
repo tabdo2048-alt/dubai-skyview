@@ -133,7 +133,6 @@ export function ProjectPlotEditor({ accessToken, lat, lng, value, onChange }: Pr
     }
     emittedRef.current = value;
     validate(value);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value, ready]);
 
   const clear = () => {
