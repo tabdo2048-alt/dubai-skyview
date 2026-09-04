@@ -15,7 +15,6 @@
 // clipped to DUBAI_BOUNDS so its first/last points land exactly on the map edges.
 //
 // Run (repo root):  npm run generate:rail
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import * as turf from "@turf/turf";
