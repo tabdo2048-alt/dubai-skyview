@@ -115,7 +115,6 @@ export function AdminZoneEditor({ accessToken }: Props) {
       mapRef.current = null;
       drawRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken]);
 
   const resetForm = () => {
