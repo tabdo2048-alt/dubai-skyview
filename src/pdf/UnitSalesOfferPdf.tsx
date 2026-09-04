@@ -898,3 +898,54 @@ function PaymentTable({
             {formatCurrency(installment.amount)}
           </Text>
           <Text style={[offerStyles.cellText, offerStyles.colDue]}>
+            {installment.due_label ?? installment.due_type ?? ""}
+          </Text>
+        </View>
+      ))}
+      <View style={offerStyles.tableTotal}>
+        <Text style={[offerStyles.cellStrong, offerStyles.colStage]}>Total installments</Text>
+        <Text style={[offerStyles.cellStrong, offerStyles.colPercent]}>
+          {formatPercentage(calculation.totalPercentage)}
+        </Text>
+        <Text style={[offerStyles.cellStrong, offerStyles.colAmount]}>
+          {formatCurrency(calculation.totalInstallmentAmount)}
+        </Text>
+        <Text style={[offerStyles.cellStrong, offerStyles.colDue]} />
+      </View>
+    </View>
+  );
+}
+
+function FinancialRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={offerStyles.financialRow}>
+      <Text style={offerStyles.financialLabel}>{label}</Text>
+      <Text style={offerStyles.financialValue}>{value}</Text>
+    </View>
+  );
+}
+
+function Footer({
+  project,
+  offerId,
+  accentColor,
+}: {
+  project: ProjectWithRelations;
+  offerId: string;
+  accentColor: string;
+}) {
+  return (
+    <View style={offerStyles.footer} fixed>
+      <Text style={offerStyles.disclaimer}>
+        Disclaimer: This document is generated from current listing data for information purposes.
+        Availability, prices, fees, payment terms, images, and dates are subject to confirmation in
+        the final sale documents.
+      </Text>
+      <Text style={[offerStyles.footerBrand, { color: accentColor }]}>
+        {project.developer?.name ?? project.name}
+        {"\n"}
+        {offerId}
+      </Text>
+    </View>
+  );
+}
