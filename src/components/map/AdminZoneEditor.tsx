@@ -49,6 +49,7 @@ export function AdminZoneEditor({ accessToken }: Props) {
   // The currently drawn polygon (from Draw), or null when nothing is drawn.
   const [drawn, setDrawn] = useState<GeoJSON.Polygon | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
+  const [mapUnavailable, setMapUnavailable] = useState(false);
   const { currentTenantId } = useTenantStore();
 
   const load = async () => {
@@ -82,17 +83,24 @@ export function AdminZoneEditor({ accessToken }: Props) {
   useEffect(() => {
     if (!containerRef.current || !accessToken) return;
     mapboxgl.accessToken = accessToken;
+    void load();
 
-    const map = new mapboxgl.Map({
-      container: containerRef.current,
-      style: "mapbox://styles/mapbox/satellite-streets-v12",
-      center: [DUBAI_CENTER.lng, DUBAI_CENTER.lat],
-      zoom: 10.5,
-      maxBounds: [
-        [DUBAI_BOUNDS.west - 0.3, DUBAI_BOUNDS.south - 0.3],
-        [DUBAI_BOUNDS.east + 0.3, DUBAI_BOUNDS.north + 0.3],
-      ],
-    });
+    let map: mapboxgl.Map;
+    try {
+      map = new mapboxgl.Map({
+        container: containerRef.current,
+        style: "mapbox://styles/mapbox/satellite-streets-v12",
+        center: [DUBAI_CENTER.lng, DUBAI_CENTER.lat],
+        zoom: 10.5,
+        maxBounds: [
+          [DUBAI_BOUNDS.west - 0.3, DUBAI_BOUNDS.south - 0.3],
+          [DUBAI_BOUNDS.east + 0.3, DUBAI_BOUNDS.north + 0.3],
+        ],
+      });
+    } catch {
+      setMapUnavailable(true);
+      return;
+    }
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
 
     const draw = new MapboxDraw({
@@ -108,7 +116,6 @@ export function AdminZoneEditor({ accessToken }: Props) {
 
     mapRef.current = map;
     drawRef.current = draw;
-    void load();
 
     return () => {
       map.remove();
@@ -198,7 +205,13 @@ export function AdminZoneEditor({ accessToken }: Props) {
 
       <div className="mt-4 grid gap-4 lg:grid-cols-[1.4fr_1fr]">
         <div className="overflow-hidden rounded-2xl border border-gold/20">
-          <div ref={containerRef} className="h-[420px] w-full bg-[#d9eef2]" />
+          <div ref={containerRef} className="h-[420px] w-full bg-[#d9eef2]">
+            {mapUnavailable && (
+              <div className="flex h-full items-center justify-center px-6 text-center text-sm text-slate-700">
+                The zone map is unavailable on this device. The rest of the admin tools remain available.
+              </div>
+            )}
+          </div>
         </div>
 
         <form onSubmit={save} className="glass-strong gold-hairline grid h-fit gap-3 rounded-2xl p-5">
