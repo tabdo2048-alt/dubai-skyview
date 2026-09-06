@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import {
   ArrowLeft,
   MapPin,
@@ -85,6 +85,7 @@ export const Route = createFileRoute("/projects/$slug")({
 });
 
 function ProjectDetail() {
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
   const loaderData = Route.useLoaderData();
   const { slug } = Route.useParams();
   const clientProject = useProject(slug);
@@ -124,6 +125,11 @@ function ProjectDetail() {
   useEffect(() => setActiveImage(images[0]?.full ?? null), [p?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   // Collapse the plan breakdown when switching projects.
   useEffect(() => setPlansOpen(false), [p?.id]);
+
+  // The unit route is nested under this project route. Render only the child
+  // page for /units/... so the project detail screen does not mask it.
+  if (pathname.includes("/units/")) return <Outlet />;
+
   if (!p) {
     return (
       <div className="min-h-screen">
