@@ -1332,7 +1332,7 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
             {communities.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </Field>
-        {cfg?.mapboxAccessToken && mapsAvailable && (
+        {!id && cfg?.mapboxAccessToken && mapsAvailable && (
           <div className="sm:col-span-2">
             <Label className="text-xs uppercase tracking-widest text-muted-foreground">Location on map</Label>
             <div className="mt-1">
@@ -1350,7 +1350,7 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
             <LocationFromLink onCoords={({ lat, lng }) => setF({ ...f, lat, lng })} />
           </Field>
         </div>
-        {cfg?.mapboxAccessToken && mapsAvailable && (
+        {!id && cfg?.mapboxAccessToken && mapsAvailable && (
           <div className="sm:col-span-2">
             <Field label="Plot boundary (optional — draw the land parcel)">
               <div className="mb-2 flex items-center gap-2">
