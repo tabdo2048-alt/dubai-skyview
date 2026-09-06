@@ -127,7 +127,7 @@ function ProjectDetail() {
   useEffect(() => setPlansOpen(false), [p?.id]);
 
   // The unit route is nested under this project route. Render only the child
-  // page for /units/... so the project detail screen does not mask it.
+  // page for /units/... so the project detail screen cannot mask the unit experience.
   if (pathname.includes("/units/")) return <Outlet />;
 
   if (!p) {
