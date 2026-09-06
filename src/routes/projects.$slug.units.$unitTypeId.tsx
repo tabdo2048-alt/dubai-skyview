@@ -205,7 +205,7 @@ function UnitTypeDetail() {
           </div>
         </div>
       </div>
-      <UnitOfferDialog project={project} initialUnitId={unit.id} open={offerOpen} onOpenChange={setOfferOpen} />
+      <UnitOfferDialog project={project} initialUnitId={unit.id} lockUnitSelection open={offerOpen} onOpenChange={setOfferOpen} />
     </div>
   );
 }
