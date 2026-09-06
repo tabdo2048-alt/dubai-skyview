@@ -1,4 +1,4 @@
-import { Document, Image, Page, Text, View } from "@react-pdf/renderer";
+import { Circle, Document, Image, Page, Svg, Text, View } from "@react-pdf/renderer";
 import type { ProjectWithRelations } from "@/lib/types";
 import type { DisplayPaymentPlan } from "@/lib/payment-plans";
 import type { DisplayUnitType } from "@/lib/unit-types";
@@ -221,20 +221,11 @@ function LegacyUnitSalesOfferPdf({
               <Text style={offerStyles.sectionTitle}>Payment distribution</Text>
               <View style={[offerStyles.sectionRule, { borderBottomColor: accentColor }]} />
               <View style={offerStyles.distributionBox}>
-                <View style={offerStyles.distributionBar}>
-                  {calculation.installments.map((installment, index) => (
-                    <View
-                      key={installment.id}
-                      style={[
-                        offerStyles.distributionSegment,
-                        {
-                          width: `${Math.max(0, installment.percentage)}%`,
-                          backgroundColor: chartColors[index % chartColors.length],
-                        },
-                      ]}
-                    />
-                  ))}
-                </View>
+                <PaymentDonutChart
+                  calculation={calculation}
+                  primaryColor={primaryColor}
+                  accentColor={accentColor}
+                />
                 <View style={offerStyles.legend}>
                   {calculation.installments.map((installment, index) => (
                     <View style={offerStyles.legendItem} key={installment.id}>
@@ -502,25 +493,12 @@ function OnePageSalesOffer({
               </Text>
               <View style={[offerStyles.sectionRule, { borderBottomColor: accentColor }]} />
               <View style={offerStyles.oneDistributionBox}>
-                <View
-                  style={[
-                    offerStyles.oneDistributionBar,
-                    { flexDirection: "row", borderRadius: 4, overflow: "hidden" },
-                  ]}
-                >
-                  {calculation.installments.map((installment, index) => (
-                    <View
-                      key={installment.id}
-                      style={[
-                        offerStyles.oneDistributionSegment,
-                        {
-                          width: `${Math.max(0, installment.percentage)}%`,
-                          backgroundColor: chartColors[index % chartColors.length],
-                        },
-                      ]}
-                    />
-                  ))}
-                </View>
+                <PaymentDonutChart
+                  calculation={calculation}
+                  primaryColor={primaryColor}
+                  accentColor={accentColor}
+                  compact
+                />
                 <View style={offerStyles.oneLegend}>
                   {calculation.installments.map((installment, index) => (
                     <View style={offerStyles.oneLegendItem} key={installment.id}>
@@ -667,6 +645,98 @@ function OnePageSalesOffer({
         <Footer project={project} offerId={offerId} accentColor={accentColor} />
       </Page>
     </Document>
+  );
+}
+
+
+function PaymentDonutChart({
+  calculation,
+  primaryColor,
+  accentColor,
+  compact = false,
+}: {
+  calculation: OfferCalculation;
+  primaryColor: string;
+  accentColor: string;
+  compact?: boolean;
+}) {
+  const size = compact ? 48 : 76;
+  const radius = compact ? 17 : 27;
+  const strokeWidth = compact ? 8 : 12;
+  const circumference = 2 * Math.PI * radius;
+  let cumulativePercentage = 0;
+
+  return (
+    <View
+      style={{
+        alignSelf: "center",
+        alignItems: "center",
+        justifyContent: "center",
+        marginBottom: compact ? 3 : 7,
+      }}
+    >
+      <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke="#e7e1d5"
+          strokeWidth={strokeWidth}
+        />
+        {calculation.installments.map((installment, index) => {
+          const percentage = Math.max(0, Math.min(100, installment.percentage));
+          const dash = (percentage / 100) * circumference;
+          const offset = -((cumulativePercentage / 100) * circumference);
+          cumulativePercentage += percentage;
+          return (
+            <Circle
+              key={installment.id}
+              cx={size / 2}
+              cy={size / 2}
+              r={radius}
+              fill="none"
+              stroke={chartColors[index % chartColors.length]}
+              strokeWidth={strokeWidth}
+              strokeDasharray={`${dash} ${circumference - dash}`}
+              strokeDashoffset={offset}
+              strokeLinecap="butt"
+              transform={`rotate(-90 ${size / 2} ${size / 2})`}
+            />
+          );
+        })}
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={compact ? 10 : 16}
+          fill={primaryColor}
+          stroke={accentColor}
+          strokeWidth={compact ? 1 : 1.5}
+        />
+      </Svg>
+      <Text
+        style={{
+          marginTop: compact ? -30 : -46,
+          marginBottom: compact ? 17 : 29,
+          color: "#ffffff",
+          fontSize: compact ? 7 : 10,
+          fontWeight: 700,
+        }}
+      >
+        {formatPercentage(calculation.totalPercentage)}
+      </Text>
+      <Text
+        style={{
+          color: primaryColor,
+          fontSize: compact ? 5.5 : 7,
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: 0.5,
+        }}
+      >
+        Payment split
+      </Text>
+    </View>
   );
 }
 
