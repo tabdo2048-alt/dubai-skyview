@@ -27,11 +27,13 @@ import {
 export function UnitOfferDialog({
   project,
   initialUnitId,
+  lockUnitSelection = false,
   open,
   onOpenChange,
 }: {
   project: ProjectWithRelations;
   initialUnitId?: string;
+  lockUnitSelection?: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -71,15 +73,18 @@ export function UnitOfferDialog({
   }, [open, project]);
 
   useEffect(() => {
-    setSelectedUnitId(units.find((unit) => unit.id === initialUnitId)?.id ?? units[0]?.id ?? "");
-  }, [initialUnitId, offerProject.id, units]);
+    const requestedUnit = units.find((unit) => unit.id === initialUnitId)?.id;
+    setSelectedUnitId(requestedUnit ?? (lockUnitSelection ? "" : units[0]?.id ?? ""));
+  }, [initialUnitId, lockUnitSelection, offerProject.id, units]);
 
   useEffect(() => {
     const defaultPlan = plans.find((plan) => plan.is_default) ?? plans[0];
     setSelectedPlanId(defaultPlan?.id ?? "");
   }, [offerProject.id, plans]);
 
-  const selectedUnit = units.find((unit) => unit.id === selectedUnitId) ?? null;
+  const selectedUnit = lockUnitSelection && initialUnitId
+    ? units.find((unit) => unit.id === initialUnitId) ?? null
+    : units.find((unit) => unit.id === selectedUnitId) ?? null;
   const selectedPlan = plans.find((plan) => plan.id === selectedPlanId) ?? null;
   const calculation = useMemo<OfferCalculation | null>(() => {
     if (!selectedUnit || !selectedPlan || selectedUnit.price_aed == null) return null;
@@ -200,27 +205,50 @@ export function UnitOfferDialog({
       <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto border-gold/30 bg-background/95 text-cream backdrop-blur-xl">
         <DialogHeader>
           <DialogTitle className="font-display text-2xl text-cream">Create sales offer</DialogTitle>
-          <DialogDescription className="text-muted-foreground">Choose the unit type and a saved payment plan. All PDF stages and amounts come from that plan’s configured installments.</DialogDescription>
+          <DialogDescription className="text-muted-foreground">
+            {lockUnitSelection
+              ? "This sales offer is fixed to the unit you are viewing. Choose only the saved payment plan."
+              : "Choose the unit type and a saved payment plan. All PDF stages and amounts come from that plan’s configured installments."}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-5 lg:grid-cols-[1fr_1.1fr]">
           <div className="space-y-4">
-            <SelectionGroup title="1. Select unit type" icon={<Ruler className="h-4 w-4 text-gold" />}>
-              {units.length === 0 ? (
-                <EmptyState>There are no priced unit types available for this project.</EmptyState>
-              ) : (
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
-                  {units.map((unit) => (
-                    <ChoiceButton key={unit.id} selected={unit.id === selectedUnitId} onClick={() => setSelectedUnitId(unit.id)}>
-                      <span className="min-w-0 text-left"><span className="block font-medium text-cream">{unit.label}</span>{areaLabel(unit) && <span className="block text-xs text-muted-foreground">{areaLabel(unit)}</span>}</span>
-                      <span className="shrink-0 text-sm text-gold-gradient">{formatCurrency(unit.price_aed)}</span>
-                    </ChoiceButton>
-                  ))}
-                </div>
-              )}
-            </SelectionGroup>
+            {lockUnitSelection ? (
+              <SelectionGroup title="Selected unit" icon={<Ruler className="h-4 w-4 text-gold" />}>
+                {selectedUnit ? (
+                  <div className="rounded-xl border border-gold bg-gold/10 p-3 ring-1 ring-gold/40">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="min-w-0">
+                        <span className="block font-medium text-cream">{selectedUnit.label}</span>
+                        {areaLabel(selectedUnit) && <span className="block text-xs text-muted-foreground">{areaLabel(selectedUnit)}</span>}
+                      </span>
+                      <span className="shrink-0 text-sm text-gold-gradient">{formatCurrency(selectedUnit.price_aed)}</span>
+                    </div>
+                    <div className="mt-2 text-[10px] uppercase tracking-widest text-gold">Locked to this unit</div>
+                  </div>
+                ) : (
+                  <EmptyState>The selected unit is unavailable or has no price.</EmptyState>
+                )}
+              </SelectionGroup>
+            ) : (
+              <SelectionGroup title="1. Select unit type" icon={<Ruler className="h-4 w-4 text-gold" />}>
+                {units.length === 0 ? (
+                  <EmptyState>There are no priced unit types available for this project.</EmptyState>
+                ) : (
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+                    {units.map((unit) => (
+                      <ChoiceButton key={unit.id} selected={unit.id === selectedUnitId} onClick={() => setSelectedUnitId(unit.id)}>
+                        <span className="min-w-0 text-left"><span className="block font-medium text-cream">{unit.label}</span>{areaLabel(unit) && <span className="block text-xs text-muted-foreground">{areaLabel(unit)}</span>}</span>
+                        <span className="shrink-0 text-sm text-gold-gradient">{formatCurrency(unit.price_aed)}</span>
+                      </ChoiceButton>
+                    ))}
+                  </div>
+                )}
+              </SelectionGroup>
+            )}
 
-            <SelectionGroup title="2. Select payment plan" icon={<Wallet className="h-4 w-4 text-gold" />}>
+            <SelectionGroup title={lockUnitSelection ? "1. Select payment plan" : "2. Select payment plan"} icon={<Wallet className="h-4 w-4 text-gold" />}>
               {plans.length === 0 ? (
                 <EmptyState>No payment plan has been configured for this project.</EmptyState>
               ) : (
