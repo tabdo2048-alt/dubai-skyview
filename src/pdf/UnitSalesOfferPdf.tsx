@@ -1,4 +1,4 @@
-import { Circle, Document, Image, Page, Svg, Text, View } from "@react-pdf/renderer";
+import { Circle, Document, Image, Page, Path, Svg, Text, View } from "@react-pdf/renderer";
 import type { ProjectWithRelations } from "@/lib/types";
 import type { DisplayPaymentPlan } from "@/lib/payment-plans";
 import type { DisplayUnitType } from "@/lib/unit-types";
@@ -663,8 +663,11 @@ function PaymentDonutChart({
   const size = compact ? 48 : 76;
   const radius = compact ? 17 : 27;
   const strokeWidth = compact ? 8 : 12;
-  const circumference = 2 * Math.PI * radius;
   let cumulativePercentage = 0;
+  const point = (r: number, angle: number) => {
+    const radians = ((angle - 90) * Math.PI) / 180;
+    return { x: size / 2 + r * Math.cos(radians), y: size / 2 + r * Math.sin(radians) };
+  };
 
   return (
     <View
@@ -686,22 +689,26 @@ function PaymentDonutChart({
         />
         {calculation.installments.map((installment, index) => {
           const percentage = Math.max(0, Math.min(100, installment.percentage));
-          const dash = (percentage / 100) * circumference;
-          const offset = -((cumulativePercentage / 100) * circumference);
+          const startAngle = cumulativePercentage * 3.6;
+          const endAngle = startAngle + percentage * 3.6;
           cumulativePercentage += percentage;
+          const outerStart = point(radius + strokeWidth / 2, startAngle);
+          const outerEnd = point(radius + strokeWidth / 2, endAngle);
+          const innerEnd = point(radius - strokeWidth / 2, endAngle);
+          const innerStart = point(radius - strokeWidth / 2, startAngle);
+          const largeArc = percentage > 50 ? 1 : 0;
+          const path = [
+            `M ${outerStart.x} ${outerStart.y}`,
+            `A ${radius + strokeWidth / 2} ${radius + strokeWidth / 2} 0 ${largeArc} 1 ${outerEnd.x} ${outerEnd.y}`,
+            `L ${innerEnd.x} ${innerEnd.y}`,
+            `A ${radius - strokeWidth / 2} ${radius - strokeWidth / 2} 0 ${largeArc} 0 ${innerStart.x} ${innerStart.y}`,
+            "Z",
+          ].join(" ");
           return (
-            <Circle
+            <Path
               key={installment.id}
-              cx={size / 2}
-              cy={size / 2}
-              r={radius}
-              fill="none"
-              stroke={chartColors[index % chartColors.length]}
-              strokeWidth={strokeWidth}
-              strokeDasharray={`${dash} ${circumference - dash}`}
-              strokeDashoffset={offset}
-              strokeLinecap="butt"
-              transform={`rotate(-90 ${size / 2} ${size / 2})`}
+              d={path}
+              fill={chartColors[index % chartColors.length]}
             />
           );
         })}
