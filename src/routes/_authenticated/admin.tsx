@@ -15,7 +15,7 @@ import { useAuth, useIsAdmin } from "@/hooks/use-auth";
 import { useMapConfig } from "@/hooks/use-map-config";
 import { useProjects, useProjectById, useCommunities, useDevelopers } from "@/hooks/use-projects";
 import { useTenantStore } from "@/store/tenant";
-import { fetchPlatformTenants, setTenantSuspended, isActiveStatus, fetchPlatformUsers, deletePlatformUser, type PlatformTenant, type PlatformUser } from "@/integrations/supabase/saas";
+import { fetchPlatformTenants } from "@/integrations/supabase/saas";
 import { POI_TABLES, type PoiCategory, type PoiPoint } from "@/hooks/use-pois";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -27,9 +27,7 @@ import { formatAed, CATEGORIES } from "@/lib/dubai";
 import { mediaSrc } from "@/lib/media";
 import { safeHttpUrl } from "@/lib/utils";
 import { parseLatLngFromGoogleMapsUrl } from "@/lib/googleMapsLink";
-import { setUserBlocked } from "@/lib/user-security.functions";
 import { optimizeProjectImage, thumbnailPathFromStoragePath } from "@/lib/image-optimization";
-import { formatSubscriptionPeriod } from "@/lib/subscription-period";
 import type { ProjectFeeRow, ProjectPaymentPlanInstallmentRow, ProjectPaymentPlanRow, ProjectUnitTypeImageRow, ProjectUnitTypeRow } from "@/lib/types";
 import { lowestUnitPrice } from "@/lib/unit-types";
 import { legacyPaymentPlanValue } from "@/lib/payment-plans";
@@ -369,7 +367,7 @@ const POI_CATEGORIES = Object.keys(POI_TABLES) as PoiCategory[];
 // Add / list / delete Places of Interest (tourism, schools, hospitals). Mirrors
 // DeveloperManager, but the active POI table is chosen with a category tab and
 // the location is set with the same map picker used for projects.
-export function PoiManager() {
+export function PoiManager({ canManage }: { canManage: boolean }) {
   const { data: cfg } = useMapConfig();
   const [category, setCategory] = useState<PoiCategory>("tourism");
   const [rows, setRows] = useState<PoiPoint[]>([]);
@@ -451,7 +449,7 @@ export function PoiManager() {
         ))}
       </div>
 
-      <form onSubmit={save} className="glass-strong gold-hairline mt-4 grid gap-3 rounded-2xl p-5 sm:grid-cols-2">
+      {canManage ? <form onSubmit={save} className="glass-strong gold-hairline mt-4 grid gap-3 rounded-2xl p-5 sm:grid-cols-2">
         <Field label="Name"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></Field>
         <Field label="Image URLs (comma-separated)"><Input value={form.images} onChange={(e) => setForm({ ...form, images: e.target.value })} placeholder="https://…, https://…" /></Field>
         {cfg?.mapboxAccessToken && (
@@ -479,7 +477,7 @@ export function PoiManager() {
             <Plus className="mr-1 h-4 w-4" /> {saving ? "Saving…" : `Add ${POI_TABLES[category].label} place`}
           </Button>
         </div>
-      </form>
+      </form> : <p className="mt-3 text-sm text-muted-foreground">Read-only access</p>}
 
       <div className="mt-4 grid gap-2">
         {loading && <div className="p-4 text-center text-sm text-muted-foreground">Loading…</div>}
@@ -497,7 +495,7 @@ export function PoiManager() {
               <div className="truncate font-display text-lg text-cream">{row.name}</div>
               <div className="truncate text-xs text-muted-foreground">{row.lat.toFixed(4)}, {row.lng.toFixed(4)}</div>
             </div>
-            <Button size="icon" variant="ghost" onClick={() => del(row)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+            {canManage ? <Button size="icon" variant="ghost" onClick={() => del(row)}><Trash2 className="h-4 w-4 text-destructive" /></Button> : null}
           </div>
         ))}
       </div>
@@ -1998,7 +1996,7 @@ function getProjectMediaPath(url: string) {
 // still stamped with the platform admin's own tenant (tenant_id is NOT NULL);
 // what makes a project show on the public map is `is_public`, not which org owns
 // it, so publishing from here works regardless of the owning org.
-export function PublicProjectsManager() {
+export function PublicProjectsManager({ canManage }: { canManage: boolean }) {
   const { data: projects = [], refetch } = useProjects();
   const qc = useQueryClient();
   const { currentTenantId, loaded: tenantLoaded, load: loadTenants } = useTenantStore();
@@ -2062,17 +2060,17 @@ export function PublicProjectsManager() {
           >
             {onlyPublic ? "Show all" : "Show published only"}
           </Button>
-          <Button
+          {canManage ? <Button
             onClick={() => setCreating(true)}
             disabled={!tenantLoaded || !currentTenantId}
             className="bg-gold text-gold-foreground hover:bg-gold/90"
           >
             <Plus className="mr-1 h-4 w-4" /> New project
-          </Button>
+          </Button> : null}
         </div>
       </div>
 
-      {creating && currentTenantId && (
+      {canManage && creating && currentTenantId && (
         <ProjectForm
           id={null}
           tenantId={currentTenantId}
@@ -2103,6 +2101,7 @@ export function PublicProjectsManager() {
               <span className={`text-xs font-medium ${pub ? "text-emerald-400" : "text-muted-foreground"}`}>
                 {pub ? "Public" : "Private"}
               </span>
+              {canManage ? <>
               <Button
                 size="icon"
                 variant="ghost"
@@ -2119,235 +2118,8 @@ export function PublicProjectsManager() {
               <Button size="icon" variant="ghost" onClick={() => del(p.id)}>
                 <Trash2 className="h-4 w-4 text-destructive" />
               </Button>
+              </> : null}
             </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-export function SubscribersManager() {
-  const [rows, setRows] = useState<PlatformTenant[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [busyId, setBusyId] = useState<string | null>(null);
-
-  const load = async () => {
-    setLoading(true);
-    try {
-      setRows(await fetchPlatformTenants());
-    } catch (err) {
-      toast.error(errMsg(err, "Could not load subscribers"));
-    } finally {
-      setLoading(false);
-    }
-  };
-  useEffect(() => { void load(); }, []);
-
-  const toggleSuspend = async (t: PlatformTenant) => {
-    setBusyId(t.id);
-    try {
-      await setTenantSuspended(t.id, !t.suspended);
-      toast.success(t.suspended ? "Subscriber re-enabled" : "Subscriber suspended");
-      await load();
-    } catch (err) {
-      toast.error(errMsg(err, "Action failed"));
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const badge = (t: PlatformTenant) => {
-    if (t.suspended) return { label: "Suspended", cls: "text-destructive" };
-    if (isActiveStatus(t.subscription_status)) return { label: "Active", cls: "text-emerald-400" };
-    return { label: t.subscription_status, cls: "text-muted-foreground" };
-  };
-
-  return (
-    <div id="admin-subscribers" className="mt-10 scroll-mt-24">
-      <h2 className="font-display text-3xl text-cream">Subscribers</h2>
-      <p className="mt-1 text-sm text-muted-foreground">{rows.length} organization{rows.length === 1 ? "" : "s"}</p>
-
-      <div className="mt-4 grid gap-2">
-        {loading && <div className="p-4 text-center text-sm text-muted-foreground">Loading…</div>}
-        {!loading && rows.length === 0 && (
-          <div className="glass gold-hairline rounded-2xl p-4 text-center text-sm text-muted-foreground">No subscribers yet.</div>
-        )}
-        {rows.map((t) => {
-          const b = badge(t);
-          // No `suspended` here: this row already renders a Suspended status
-          // badge, so the pill stays focused on the billing period itself.
-          const period = formatSubscriptionPeriod(t.current_period_end, t.subscription_status);
-          return (
-            <div key={t.id} className="glass gold-hairline flex items-center gap-3 rounded-2xl p-3">
-              <div className="min-w-0 flex-1">
-                <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-                  <span className="truncate font-display text-lg text-cream">{t.name}</span>
-                  {period && (
-                    <span
-                      title={period.title}
-                      className={`glass gold-hairline shrink-0 rounded-full px-2 py-0.5 text-[11px] leading-tight ${period.cls}`}
-                    >
-                      {period.label}
-                      {period.detail ? ` · ${period.detail}` : ""}
-                    </span>
-                  )}
-                </div>
-                <div className="truncate text-xs text-muted-foreground">
-                  {t.owner_email ?? "—"} · {t.project_count} project{t.project_count === 1 ? "" : "s"}
-                  {t.plan ? ` · ${t.plan}` : ""}
-                </div>
-              </div>
-              <span className={`text-xs font-medium ${b.cls}`}>{b.label}</span>
-              {/* Regular platform admins cannot suspend an org containing a
-                  platform admin. The designated owner override is enforced by
-                  the RPC and is reflected here only for clearer UI feedback. */}
-              {t.has_platform_admin && !t.suspended && !t.can_suspend_platform_admins ? (
-                <span className="flex items-center gap-1 text-xs text-muted-foreground" title="Platform administrators cannot be suspended">
-                  <Shield className="h-3.5 w-3.5" /> Platform admin
-                </span>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={busyId === t.id}
-                  onClick={() => toggleSuspend(t)}
-                  className="glass gold-hairline text-cream"
-                >
-                  <Ban className="mr-1 h-3.5 w-3.5" />
-                  {t.suspended ? "Unsuspend" : "Suspend"}
-                </Button>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// Platform-admin only: every user account (via platform_list_users RPC).
-export function UsersManager() {
-  const [rows, setRows] = useState<PlatformUser[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const { user: currentUser } = useAuth();
-
-  const load = async () => {
-    setLoading(true);
-    try {
-      setRows(await fetchPlatformUsers());
-    } catch (err) {
-      toast.error(errMsg(err, "Could not load users"));
-    } finally {
-      setLoading(false);
-    }
-  };
-  useEffect(() => { void load(); }, []);
-
-  const toggleBlock = async (u: PlatformUser) => {
-    setBusyId(u.user_id);
-    try {
-      await setUserBlocked({ data: { userId: u.user_id, blocked: !u.blocked } });
-      toast.success(u.blocked ? "User unblocked" : "User blocked");
-      await load();
-    } catch (err) {
-      toast.error(errMsg(err, "Could not change user access"));
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  const remove = async (u: PlatformUser) => {
-    if (!confirm(`Permanently delete ${u.email ?? "this user"} and the organizations they own? This cannot be undone.`)) return;
-    setBusyId(u.user_id);
-    try {
-      await deletePlatformUser(u.user_id);
-      toast.success("User removed");
-      await load();
-    } catch (err) {
-      toast.error(errMsg(err, "Delete failed"));
-    } finally {
-      setBusyId(null);
-    }
-  };
-
-  return (
-    <div id="admin-users" className="mt-10 scroll-mt-24">
-      <h2 className="font-display text-3xl text-cream">Users</h2>
-      <p className="mt-1 text-sm text-muted-foreground">{rows.length} account{rows.length === 1 ? "" : "s"}</p>
-
-      <div className="mt-4 grid gap-2">
-        {loading && <div className="p-4 text-center text-sm text-muted-foreground">Loading…</div>}
-        {!loading && rows.length === 0 && (
-          <div className="glass gold-hairline rounded-2xl p-4 text-center text-sm text-muted-foreground">No users.</div>
-        )}
-        {rows.map((u) => {
-          const period = formatSubscriptionPeriod(u.current_period_end, u.subscription_status);
-          return (
-          <div key={u.user_id} className="glass gold-hairline flex items-center gap-3 rounded-2xl p-3">
-            <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-                <span className="truncate font-display text-lg text-cream">{u.email ?? "—"}</span>
-                {period && (
-                  <span
-                    title={period.title}
-                    className={`glass gold-hairline shrink-0 rounded-full px-2 py-0.5 text-[11px] leading-tight ${period.cls}`}
-                  >
-                    {period.label}
-                    {period.detail ? ` · ${period.detail}` : ""}
-                  </span>
-                )}
-              </div>
-              <div className="truncate text-xs text-muted-foreground">
-                {u.orgs ? `${u.orgs} (${u.org_roles ?? "member"})` : "no organization"}
-              </div>
-            </div>
-            {u.blocked && (
-              <span className="rounded-full border border-destructive/50 px-2.5 py-1 text-xs text-destructive">
-                Blocked
-              </span>
-            )}
-            {u.is_platform_admin ? (
-              <span className="glass gold-hairline rounded-full px-2.5 py-1 text-xs text-gold">Platform admin</span>
-            ) : (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={busyId === u.user_id}
-                onClick={() => remove(u)}
-                className="glass gold-hairline text-destructive"
-              >
-                <Trash2 className="mr-1 h-3.5 w-3.5" /> Remove
-              </Button>
-            )}
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={
-                busyId === u.user_id ||
-                currentUser?.id === u.user_id ||
-                // `blocked` is absent until the account-block SQL is applied to
-                // the database (supabase/APPLY_THIS_4.sql). Disable rather than
-                // let the click fail with a 404 on the missing RPC.
-                u.blocked === undefined ||
-                (u.is_platform_admin && !u.can_block_platform_admins)
-              }
-              onClick={() => void toggleBlock(u)}
-              title={
-                u.blocked === undefined
-                  ? "Account blocking is not installed on this database yet"
-                  : currentUser?.id === u.user_id
-                    ? "You cannot block yourself"
-                    : u.is_platform_admin && !u.can_block_platform_admins
-                      ? "Only ashraf@admin.com can block a platform administrator"
-                      : undefined
-              }
-              className="glass gold-hairline text-destructive"
-            >
-              <Ban className="mr-1 h-3.5 w-3.5" /> {u.blocked ? "Unblock" : "Block"}
-            </Button>
-          </div>
           );
         })}
       </div>
