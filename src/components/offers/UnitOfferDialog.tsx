@@ -3,7 +3,7 @@ import { Check, FileDown, Loader2, Ruler, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import type { ProjectWithRelations } from "@/lib/types";
 import { fetchProjectById } from "@/hooks/use-projects";
-import { areaLabel, displayUnitTypes, pricedUnitTypes, projectDetailSlug, type DisplayUnitType, unitDetailSlug } from "@/lib/unit-types";
+import { areaLabel, displayUnitTypes, pricedUnitTypes, canOfferUnit, projectDetailSlug, type DisplayUnitType, unitDetailSlug } from "@/lib/unit-types";
 import { preparePdfImage, projectMainImage, projectOfferImage, unitFloorPlanImage, unitPhotoImage } from "@/lib/pdf-media";
 import { DEFAULT_OFFER_ACCENT_COLOR, DEFAULT_OFFER_PRIMARY_COLOR, safeOfferColor } from "@/lib/offer-branding";
 import { safeHttpUrl } from "@/lib/utils";
@@ -28,18 +28,20 @@ export function UnitOfferDialog({
   project,
   initialUnitId,
   lockUnitSelection = false,
+  previewOnly = false,
   open,
   onOpenChange,
 }: {
   project: ProjectWithRelations;
   initialUnitId?: string;
   lockUnitSelection?: boolean;
+  previewOnly?: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
   const [offerProject, setOfferProject] = useState(project);
   const [loadingProject, setLoadingProject] = useState(false);
-  const units = useMemo(() => pricedUnitTypes(displayUnitTypes(offerProject.unit_types, offerProject.starting_price_aed)), [offerProject]);
+  const units = useMemo(() => pricedUnitTypes(displayUnitTypes(offerProject.unit_types, offerProject.starting_price_aed)).filter(canOfferUnit), [offerProject]);
   const plans = useMemo(() => displayPaymentPlans(offerProject.payment_plans, offerProject.payment_plan), [offerProject]);
   const [selectedUnitId, setSelectedUnitId] = useState(units[0]?.id ?? "");
   const [selectedPlanId, setSelectedPlanId] = useState("");
@@ -48,7 +50,7 @@ export function UnitOfferDialog({
   useEffect(() => {
     let active = true;
     setOfferProject(project);
-    if (!open) {
+    if (!open || previewOnly) {
       setLoadingProject(false);
       return () => {
         active = false;
@@ -70,7 +72,7 @@ export function UnitOfferDialog({
     return () => {
       active = false;
     };
-  }, [open, project]);
+  }, [open, project, previewOnly]);
 
   useEffect(() => {
     const requestedUnit = units.find((unit) => unit.id === initialUnitId)?.id;
@@ -96,6 +98,7 @@ export function UnitOfferDialog({
   const canGenerate = Boolean(!loadingProject && calculation?.installments.length && calculation.validation.valid);
 
   async function generateOffer() {
+    if (generating) return;
     if (loadingProject) {
       toast.error("Project details are still loading");
       return;
@@ -123,12 +126,28 @@ export function UnitOfferDialog({
       previewWindow.document.title = "Preparing sales offer PDF…";
     }
     try {
+      const freshProject = previewOnly ? project : await fetchProjectById(project.id);
+      const freshUnit = freshProject?.unit_types.find(unit => unit.id === selectedUnit.id);
+      if (!freshProject || (selectedUnit.id !== "legacy-starting-price" && (!freshUnit || !canOfferUnit(freshUnit)))) {
+        throw new Error("This unit is no longer available for an offer. Refresh the page.");
+      }
+      if (freshUnit && freshUnit.price_aed !== selectedUnit.price_aed) {
+        setOfferProject(freshProject);
+        throw new Error("The unit price changed. Review the updated price and generate again.");
+      }
+      if (!previewOnly) {
+        const latestPlan = displayPaymentPlans(freshProject.payment_plans, freshProject.payment_plan).find(plan => plan.id === selectedPlan.id);
+        if (!latestPlan || JSON.stringify(calculatePaymentPlan(freshUnit?.price_aed ?? selectedUnit.price_aed!, latestPlan, freshProject.fees)) !== JSON.stringify(calculation)) {
+          setOfferProject(freshProject);
+          throw new Error("Payment terms changed. Review the updated plan and generate again.");
+        }
+      }
       const [{ pdf }, { UnitSalesOfferPdf }, QRCode] = await Promise.all([
         import("@react-pdf/renderer"),
         import("@/pdf/UnitSalesOfferPdf"),
         import("qrcode"),
       ]);
-      const offerId = createOfferId(offerProject.slug, selectedUnit);
+      const offerId = `${previewOnly ? "DRAFT-" : ""}${createOfferId(offerProject.slug, selectedUnit)}`;
       const offerDate = formatDate(new Date());
       const validUntilDate = new Date();
       validUntilDate.setDate(validUntilDate.getDate() + 7);
@@ -183,6 +202,7 @@ export function UnitOfferDialog({
         anchor.href = url;
         anchor.download = `${safeFileName(offerProject.name)}-${safeFileName(selectedUnit.label)}-${offerId}.pdf`;
         anchor.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000);
         toast.success("Popup was blocked, so the sales offer PDF was downloaded");
       } else {
         previewWindow.location.href = url;
@@ -204,7 +224,7 @@ export function UnitOfferDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto border-gold/30 bg-background/95 text-cream backdrop-blur-xl">
         <DialogHeader>
-          <DialogTitle className="font-display text-2xl text-cream">Create sales offer</DialogTitle>
+          <DialogTitle className="font-display text-2xl text-cream">{previewOnly ? "Draft preview — not saved" : "Create sales offer"}</DialogTitle>
           <DialogDescription className="text-muted-foreground">
             {lockUnitSelection
               ? "This sales offer is fixed to the unit you are viewing. Choose only the saved payment plan."

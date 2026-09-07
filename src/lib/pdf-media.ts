@@ -42,11 +42,6 @@ export function unitPhotoImage(unit: DisplayUnitType): string {
   return mediaSrc(photo?.src, photo?.url);
 }
 
-/** @deprecated Use unitFloorPlanImage for clarity. */
-export function unitOfferImage(unit: DisplayUnitType): string {
-  return unitFloorPlanImage(unit);
-}
-
 /**
  * React PDF's browser image parser supports JPEG and PNG, not WebP. Uploaded
  * project media is optimized to WebP, so rasterize it to a local JPEG data URI
@@ -60,7 +55,7 @@ export async function preparePdfImage(value: string | null | undefined): Promise
     return source;
   }
 
-  if (!safeHttpUrl(source)) return source.startsWith("data:image/") ? source : "";
+  if (!safeHttpUrl(source) && !source.startsWith("blob:")) return source.startsWith("data:image/") ? source : "";
 
   try {
     const response = await fetch(source);

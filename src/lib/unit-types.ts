@@ -4,6 +4,10 @@ export type DisplayUnitType = Pick<
   ProjectUnitTypeRow,
   "id" | "label" | "price_aed" | "area_sqm_min" | "area_sqm_max" | "floor" | "floor_plan_url" | "sort_order"
 > & {
+  availability?: string;
+  bedrooms?: number | null;
+  bathrooms?: number | null;
+  view_description?: string | null;
   floor_plan_src?: string | null;
   images?: Array<ProjectUnitTypeImageRow & { src?: string; thumb_src?: string }>;
 };
@@ -39,6 +43,23 @@ export function displayUnitTypes(
 
 export function pricedUnitTypes(items: DisplayUnitType[]): DisplayUnitType[] {
   return sortUnitTypes(items).filter((item) => Number.isFinite(item.price_aed) && (item.price_aed ?? 0) > 0);
+}
+
+export function canOfferUnit(unit: DisplayUnitType): boolean {
+  return unit.availability !== "sold" && Number.isFinite(unit.price_aed) && (unit.price_aed ?? 0) > 0;
+}
+
+export function unitAvailabilityLabel(unit: DisplayUnitType): string {
+  return unit.availability === "sold" ? "Sold" : unit.availability === "reserved" ? "Reserved" : "Available";
+}
+
+/** Resolve only within this project's units; reject ambiguous legacy labels. */
+export function findUnitForRoute(project: { name: string; slug: string; developer?: { name: string; slug: string } | null; unit_types: DisplayUnitType[] } | null | undefined, key: string) {
+  if (!project) return null;
+  const byId = project.unit_types.find((unit) => unit.id === key);
+  if (byId) return byId;
+  const matches = project.unit_types.filter((unit) => unitDetailSlug({ projectName: project.name, projectSlug: project.slug, developerName: project.developer?.name, developerSlug: project.developer?.slug, unitLabel: unit.label }) === key);
+  return matches.length === 1 ? matches[0] : null;
 }
 
 /**

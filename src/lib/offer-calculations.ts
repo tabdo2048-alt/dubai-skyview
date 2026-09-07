@@ -57,7 +57,7 @@ export function validatePaymentPlanTotal(
 ): PaymentPlanValidation {
   const total = installments.reduce((sum, installment) => sum + (Number(installment.percentage) || 0), 0);
   return {
-    valid: Math.abs(total - 100) <= EPSILON,
+    valid: installments.every(row => Number.isFinite(Number(row.percentage)) && Number(row.percentage) >= 0 && Number(row.percentage) <= 100) && Math.abs(total - 100) <= EPSILON,
     total,
     difference: 100 - total,
   };
@@ -66,7 +66,7 @@ export function validatePaymentPlanTotal(
 export function calculateFinancialSummary(unitPrice: number, fees: OfferFee[] = []): FinancialSummary {
   const feeRows = [...fees]
     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-    .filter((fee) => fee.label.trim() && Number.isFinite(Number(fee.value)) && Number(fee.value) >= 0)
+    .filter((fee) => fee.label.trim() && Number.isFinite(Number(fee.value)) && Number(fee.value) > 0)
     .map((fee) => ({
       ...fee,
       amount: fee.fee_type === "percentage" ? unitPrice * (Number(fee.value) / 100) : Number(fee.value),
@@ -84,7 +84,7 @@ export function calculatePaymentPlan(
     const order = (a.sort_order ?? 0) - (b.sort_order ?? 0);
     return order || a.id.localeCompare(b.id);
   });
-  const installments = source.map((installment) => ({
+  const installments = source.filter(installment => Number(installment.percentage) > 0).map((installment) => ({
     ...installment,
     percentage: Number(installment.percentage),
     amount: calculateInstallmentAmount(unitPrice, Number(installment.percentage)),
@@ -93,7 +93,7 @@ export function calculatePaymentPlan(
       installment.months,
     ),
   }));
-  const validation = validatePaymentPlanTotal(installments);
+  const validation = validatePaymentPlanTotal(source);
   const stageMap = new Map<string, { percentage: number; amount: number }>();
   for (const installment of installments) {
     const stage = installment.stage?.trim();

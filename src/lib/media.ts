@@ -210,4 +210,4 @@ export type SignedMedia = {
 export const mediaSrc = (
   signed: string | null | undefined,
   original: string | null | undefined,
-): string => safeHttpUrl(signed) ?? safeHttpUrl(original) ?? "";
+): string => signed?.startsWith("blob:") ? signed : safeHttpUrl(signed) ?? safeHttpUrl(original) ?? "";

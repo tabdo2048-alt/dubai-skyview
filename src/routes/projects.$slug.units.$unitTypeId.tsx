@@ -1,30 +1,23 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft, Bath, Bed, Building2, FileDown, Ruler } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import type { ProjectWithRelations } from "@/lib/types";
+import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import { ArrowLeft, Bath, Bed, Building2, FileDown, Ruler, MessageCircle, Share2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { toast } from "sonner";
+import { whatsappUrl } from "@/lib/contact";
+import { UnitGallery } from "@/components/units/UnitGallery";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { fetchProjectBySlug, useProject } from "@/hooks/use-projects";
 import { UnitOfferDialog } from "@/components/offers/UnitOfferDialog";
 import { Button } from "@/components/ui/button";
 import { mediaSrc } from "@/lib/media";
-import { formatAed, bedroomsLabel, positiveCount } from "@/lib/dubai";
-import { areaLabel, projectDetailSlug, unitDetailSlug } from "@/lib/unit-types";
+import { formatAed } from "@/lib/dubai";
+import { areaLabel, projectDetailSlug, findUnitForRoute, canOfferUnit, unitAvailabilityLabel } from "@/lib/unit-types";
+import { formatCurrency, calculateInstallmentAmount } from "@/lib/offer-calculations";
 import { displayPaymentPlans } from "@/lib/payment-plans";
-
-function findUnitForRoute(project: ProjectWithRelations | null | undefined, unitTypeId: string) {
-  if (!project) return null;
-  return project.unit_types.find((item) => item.id === unitTypeId || unitDetailSlug({
-    projectName: project.name,
-    projectSlug: project.slug,
-    developerName: project.developer?.name,
-    developerSlug: project.developer?.slug,
-    unitLabel: item.label,
-  }) === unitTypeId) ?? null;
-}
 
 export const Route = createFileRoute("/projects/$slug/units/$unitTypeId")({
   loader: async ({ params }) => {
     const project = await fetchProjectBySlug(params.slug);
+    if (project && !findUnitForRoute(project, params.unitTypeId)) throw notFound();
     // A server render may not have the browser's Supabase session yet. Keep the
     // route alive so the client can retry with the logged-in user's session.
     return { project };
@@ -40,7 +33,11 @@ export const Route = createFileRoute("/projects/$slug/units/$unitTypeId")({
     return {
       meta: [
         { title: `${unit.label} — ${project.name} | Dubai Residences` },
-        { name: "description", content: `${unit.label} details, images, area, and pricing in ${project.name}.` },
+        { name: "description", content: `${unit.label} in ${project.name} · ${formatAed(unit.price_aed)} · ${areaLabel(unit) ?? "Contact for area"}` },
+        { property: "og:title", content: `${unit.label} — ${project.name}` },
+        { property: "og:description", content: `${formatAed(unit.price_aed)} · ${areaLabel(unit) ?? "Contact for area"} · ${unitAvailabilityLabel(unit)}` },
+        { property: "og:type", content: "website" },
+        { name: "twitter:card", content: "summary_large_image" },
         ...(unitImage ? [{ property: "og:image", content: unitImage }] : []),
       ],
     };
@@ -57,36 +54,8 @@ function UnitTypeDetail() {
   const project = clientProject.data ?? loaderData.project;
   const unit = useMemo(() => findUnitForRoute(project, unitTypeId), [project, unitTypeId]);
 
-  // Keep every hook above the loading/not-found return. The project can be
-  // unavailable during the first client render while the authenticated query
-  // is being retried, so conditional hooks here would break the route exactly
-  // when it is recovering from that state.
-  const unitImages = useMemo(() => {
-    if (!unit) return [];
-    const rows = (unit.images ?? []).slice().sort((a, b) => a.sort_order - b.sort_order);
-    const images = rows.map((image) => ({
-      id: image.id,
-      full: mediaSrc(image.src, image.url),
-      thumb: mediaSrc(image.thumb_src, image.src ?? image.url),
-      isFloorPlan: image.is_floor_plan,
-    })).filter((image) => image.full);
-    const fallbackFloorPlan = mediaSrc(unit.floor_plan_src, unit.floor_plan_url);
-    if (fallbackFloorPlan && !images.some((image) => image.isFloorPlan)) {
-      images.push({ id: "legacy-floor-plan", full: fallbackFloorPlan, thumb: fallbackFloorPlan, isFloorPlan: true });
-    }
-    return images;
-  }, [unit]);
-  // The first normal unit photo is the unit page hero. The project image is
-  // deliberately never included here; it belongs to the parent project page.
-  const unitPhotos = unitImages.filter((image) => !image.isFloorPlan);
-  const selectedFloorPlan = unitImages.find((image) => image.isFloorPlan) ?? null;
-  const mainUnitImage = unitPhotos[0] ?? null;
-  const gallery = [...unitPhotos, ...(selectedFloorPlan ? [selectedFloorPlan] : [])];
-  const [activeImage, setActiveImage] = useState(mainUnitImage?.full ?? null);
   const [offerOpen, setOfferOpen] = useState(false);
-  const activeIsFloorPlan = gallery.find((image) => image.full === activeImage)?.isFloorPlan ?? false;
   const paymentPlans = useMemo(() => displayPaymentPlans(project?.payment_plans, project?.payment_plan), [project?.payment_plan, project?.payment_plans]);
-  useEffect(() => setActiveImage(mainUnitImage?.full ?? null), [unit?.id, mainUnitImage?.full]);
 
   if (!project || !unit) {
     return (
@@ -101,8 +70,9 @@ function UnitTypeDetail() {
       </div>
     );
   }
-  const beds = bedroomsLabel(project);
-  const baths = positiveCount(project.bathrooms);
+  const beds = unit.bedrooms == null ? null : unit.bedrooms === 0 ? "Studio" : String(unit.bedrooms);
+  const baths = unit.bathrooms;
+  const inquiryUrl = whatsappUrl(`${project.name} — ${unit.label}`);
 
   return (
     <div className="min-h-screen">
@@ -113,48 +83,7 @@ function UnitTypeDetail() {
         </Button>
 
         <div className="mt-6 grid gap-8 lg:grid-cols-[1.3fr_1fr]">
-          <div className="space-y-3">
-            <div className="glass gold-hairline overflow-hidden rounded-3xl bg-white">
-              {activeImage ? (
-                <img src={activeImage} alt={`${unit.label} in ${project.name}`} className={`h-[480px] w-full ${activeIsFloorPlan ? "bg-white object-contain" : "object-cover"}`} loading="eager" decoding="async" />
-              ) : (
-                <div className="grid h-[480px] place-items-center bg-muted text-muted-foreground">No unit image</div>
-              )}
-            </div>
-            {gallery.length > 1 && (
-              <div>
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <div className="text-xs uppercase tracking-widest text-muted-foreground">Unit photos &amp; floor plan</div>
-                  <div className="text-[10px] uppercase tracking-wider text-gold">Main photo first</div>
-                </div>
-                <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
-                  {gallery.map((image, index) => (
-                    <button key={image.id} type="button" onClick={() => setActiveImage(image.full)} className={`group relative glass aspect-[4/3] overflow-hidden rounded-2xl ${activeImage === image.full ? "ring-2 ring-gold" : "gold-hairline"}`} aria-label={`Show ${image.isFloorPlan ? "floor plan" : "unit photo"}`}>
-                      <img src={image.thumb} alt="" className={`h-full w-full ${image.isFloorPlan ? "bg-white object-contain" : "object-cover transition-transform group-hover:scale-105"}`} loading="lazy" decoding="async" />
-                      <span className="absolute inset-x-1 bottom-1 rounded bg-black/65 px-1.5 py-1 text-left text-[9px] uppercase tracking-wider text-white">
-                        {image.isFloorPlan ? "Floor plan" : index === 0 ? "Main photo" : "Unit photo"}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            {selectedFloorPlan && (
-              <div className="glass gold-hairline overflow-hidden rounded-3xl bg-white">
-                <div className="flex items-center justify-between gap-3 border-b border-border/60 bg-white px-4 py-3">
-                  <div className="text-xs font-semibold uppercase tracking-widest text-ink">Floor plan</div>
-                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Selected unit layout</div>
-                </div>
-                <img
-                  src={selectedFloorPlan.full}
-                  alt={`${unit.label} floor plan`}
-                  className="h-[300px] w-full object-contain p-2"
-                  loading="lazy"
-                  decoding="async"
-                />
-              </div>
-            )}
-          </div>
+          <UnitGallery key={unit.id} unit={unit} projectName={project.name} />
 
           <div className="space-y-4">
             <div className="flex items-center gap-1 text-xs uppercase tracking-widest text-muted-foreground"><Building2 className="h-3.5 w-3.5" /> Unit details</div>
@@ -183,25 +112,30 @@ function UnitTypeDetail() {
                 {unit.floor && <DetailStat emphasis icon={<Building2 className="h-4 w-4" />} label="Floor" value={unit.floor} />}
                 {beds && <DetailStat icon={<Bed className="h-4 w-4" />} label="Bedrooms" value={beds} />}
                 {baths != null && <DetailStat icon={<Bath className="h-4 w-4" />} label="Bathrooms" value={String(baths)} />}
-                <DetailStat icon={<Building2 className="h-4 w-4" />} label="Status" value={project.status.replace(/_/g, " ")} />
+                <DetailStat icon={<Building2 className="h-4 w-4" />} label="Availability" value={unitAvailabilityLabel(unit)} />
+                {unit.view_description && <DetailStat icon={<Building2 className="h-4 w-4" />} label="View" value={unit.view_description} />}
               </div>
               <div className="mt-5 border-t border-border/50 pt-4">
                 <div className="text-xs uppercase tracking-widest text-muted-foreground">Starting price</div>
                 <div className="mt-1 font-display text-3xl text-gold-gradient">{formatAed(unit.price_aed)}</div>
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
-                <Button type="button" onClick={() => setOfferOpen(true)} className="bg-gold text-gold-foreground hover:bg-gold/90"><FileDown className="mr-1 h-4 w-4" /> Sales offer PDF</Button>
+                <Button type="button" disabled={!canOfferUnit(unit)} onClick={() => setOfferOpen(true)} className="bg-gold text-gold-foreground hover:bg-gold/90"><FileDown className="mr-1 h-4 w-4" /> Sales offer PDF</Button>
                 <Button asChild variant="outline" className="glass gold-hairline text-cream"><Link to="/projects/$slug" params={{ slug: projectDetailSlug({ name: project.name, slug: project.slug }) }}>View full project</Link></Button>
               </div>
             </div>
 
-            <PaymentPlans plans={paymentPlans} />
+            <PaymentPlans plans={paymentPlans} price={unit.price_aed} />
+            <div className="flex flex-wrap gap-2">
+              {inquiryUrl && <Button asChild variant="outline"><a href={inquiryUrl} target="_blank" rel="noopener noreferrer"><MessageCircle className="mr-2 h-4 w-4" /> Ask about this unit</a></Button>}
+              <Button variant="outline" onClick={async () => {
+                const url = `${window.location.origin}/projects/${encodeURIComponent(slug)}/units/${encodeURIComponent(unit.id)}`;
+                try { await navigator.clipboard.writeText(url); toast.success("Unit link copied"); } catch { toast.error("Could not copy. Copy the address from your browser."); }
+              }}><Share2 className="mr-2 h-4 w-4" /> Copy unit link</Button>
+            </div>
+            {unit.availability === "sold" && <p className="text-sm text-muted-foreground">This unit is sold. Sales offers are unavailable.</p>}
 
-            {unitImages.some((image) => image.isFloorPlan) && (
-              <div className="rounded-2xl border border-gold/20 bg-gold/5 p-4 text-sm text-cream">
-                The selected floor plan is marked in the unit gallery and is the image used in the sales offer PDF.
-              </div>
-            )}
+
           </div>
         </div>
       </div>
@@ -210,7 +144,7 @@ function UnitTypeDetail() {
   );
 }
 
-function PaymentPlans({ plans }: { plans: ReturnType<typeof displayPaymentPlans> }) {
+function PaymentPlans({ plans, price }: { plans: ReturnType<typeof displayPaymentPlans>; price: number | null }) {
   return (
     <div className="glass-strong gold-hairline rounded-3xl p-5">
       <div className="flex items-center justify-between gap-3">
@@ -233,10 +167,10 @@ function PaymentPlans({ plans }: { plans: ReturnType<typeof displayPaymentPlans>
               {plan.details && <div className="mt-1 whitespace-pre-line text-sm text-muted-foreground">{plan.details}</div>}
               {plan.installments.length > 0 && (
                 <div className="mt-3 space-y-1.5 border-t border-border/40 pt-3">
-                  {plan.installments.map((installment) => (
+                  {plan.installments.filter(installment => installment.percentage > 0).map((installment) => (
                     <div key={installment.id} className="flex items-center justify-between gap-3 text-sm">
                       <span className="min-w-0 truncate text-cream">{installment.label}</span>
-                      <span className="shrink-0 text-gold">{installment.percentage}%{installment.due_label ? ` · ${installment.due_label}` : ""}</span>
+                      <span className="shrink-0 text-gold">{installment.percentage}%{price != null && price > 0 ? ` · ${formatCurrency(calculateInstallmentAmount(price, installment.percentage))}` : ""}{installment.due_label ? ` · ${installment.due_label}` : ""}</span>
                     </div>
                   ))}
                 </div>

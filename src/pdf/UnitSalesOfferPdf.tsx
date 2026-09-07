@@ -3,8 +3,8 @@ import type { ProjectWithRelations } from "@/lib/types";
 import type { DisplayPaymentPlan } from "@/lib/payment-plans";
 import type { DisplayUnitType } from "@/lib/unit-types";
 import { formatCurrency, formatPercentage, type OfferCalculation } from "@/lib/offer-calculations";
-import { bedroomsLabel, positiveCount } from "@/lib/dubai";
-import { areaLabel } from "@/lib/unit-types";
+
+import { areaLabel, unitAvailabilityLabel } from "@/lib/unit-types";
 import {
   projectMainImage,
   projectOfferImage,
@@ -33,7 +33,7 @@ export type UnitSalesOfferPdfProps = {
   developerLogoSrc?: string;
 };
 
-function LegacyUnitSalesOfferPdf({
+function MultiPageSalesOffer({
   project,
   unit,
   plan,
@@ -46,18 +46,19 @@ function LegacyUnitSalesOfferPdf({
   shareUrl,
   projectImageSrc,
   projectMainImageSrc,
+  unitPhotoImageSrc,
   unitPlanImageSrc,
   developerLogoSrc,
 }: UnitSalesOfferPdfProps) {
   const projectHeroImage = projectImageSrc || projectOfferImage(project);
-  const projectDetailImage = projectMainImageSrc || projectMainImage(project);
+  const projectDetailImage = unitPhotoImageSrc || unitPhotoImage(unit) || projectMainImageSrc || projectMainImage(project);
   const unitPlanImage = unitPlanImageSrc || unitFloorPlanImage(unit);
   const heroImage = projectHeroImage;
   const developerLogo = developerLogoSrc || safeHttpUrl(project.developer?.logo_url);
   const primaryColor = safeOfferColor(project.offer_primary_color, offerColors.navy);
   const accentColor = safeOfferColor(project.offer_accent_color, offerColors.gold);
   const unitArea = areaLabel(unit);
-  const summaryCount = calculation.installments.length + 1;
+  const summaryCount = Math.min(calculation.installments.length, 4) + 1;
   const summaryCardWidth =
     summaryCount <= 3
       ? "32.2%"
@@ -73,10 +74,11 @@ function LegacyUnitSalesOfferPdf({
     ["Unit type", unit.label],
     ["Floor", unit.floor],
     ["Size", unitArea],
-    ["Bedrooms", bedroomsLabel(project)],
-    ["Bathrooms", positiveCount(project.bathrooms)?.toString() ?? null],
+    ["Bedrooms", unit.bedrooms == null ? null : unit.bedrooms === 0 ? "Studio" : String(unit.bedrooms)],
+    ["Bathrooms", unit.bathrooms?.toString() ?? null],
     ["Developer", project.developer?.name],
-    ["Status", project.status],
+    ["Availability", unitAvailabilityLabel(unit)],
+    ["View", unit.view_description],
     ["Completion", project.completion_date],
   ].filter((row): row is [string, string] => Boolean(row[1]));
 
@@ -106,7 +108,7 @@ function LegacyUnitSalesOfferPdf({
               primaryColor={primaryColor}
               accentColor={accentColor}
             />
-            {calculation.installments.map((installment) => (
+            {calculation.installments.slice(0, 4).map((installment) => (
               <SummaryCard
                 width={summaryCardWidth}
                 key={installment.id}
@@ -127,7 +129,7 @@ function LegacyUnitSalesOfferPdf({
                 {projectDetailImage && (
                   <Image src={projectDetailImage} style={offerStyles.projectDetailImage} />
                 )}
-                {projectDetailImage && <Text style={offerStyles.imageCaption}>Project image</Text>}
+                {projectDetailImage && <Text style={offerStyles.imageCaption}>{unitPhotoImageSrc || unitPhotoImage(unit) ? "Unit photo" : "Project image"}</Text>}
                 {detailRows.map(([label, value]) => (
                   <View
                     style={
@@ -352,7 +354,7 @@ export function UnitSalesOfferPdf(props: UnitSalesOfferPdfProps) {
   return props.calculation.installments.length <= 4 ? (
     <OnePageSalesOffer {...props} />
   ) : (
-    <LegacyUnitSalesOfferPdf {...props} />
+    <MultiPageSalesOffer {...props} />
   );
 }
 
@@ -379,17 +381,18 @@ function OnePageSalesOffer({
   const primaryColor = safeOfferColor(project.offer_primary_color, offerColors.navy);
   const accentColor = safeOfferColor(project.offer_accent_color, offerColors.gold);
   const unitArea = areaLabel(unit);
-  const summaryCount = calculation.installments.length + 1;
+  const summaryCount = Math.min(calculation.installments.length, 4) + 1;
   const summaryCardWidth = `${Math.max(5.2, (100 - (summaryCount - 1) * 0.7) / summaryCount)}%`;
   const detailRows = [
     ["Project", project.name],
     ["Unit type", unit.label],
     ["Floor", unit.floor],
     ["Size", unitArea],
-    ["Bedrooms", bedroomsLabel(project)],
-    ["Bathrooms", positiveCount(project.bathrooms)?.toString() ?? null],
+    ["Bedrooms", unit.bedrooms == null ? null : unit.bedrooms === 0 ? "Studio" : String(unit.bedrooms)],
+    ["Bathrooms", unit.bathrooms?.toString() ?? null],
     ["Developer", project.developer?.name],
-    ["Status", project.status],
+    ["Availability", unitAvailabilityLabel(unit)],
+    ["View", unit.view_description],
     ["Completion", project.completion_date],
   ].filter((row): row is [string, string] => Boolean(row[1]));
 
@@ -689,6 +692,7 @@ function PaymentDonutChart({
         />
         {calculation.installments.map((installment, index) => {
           const percentage = Math.max(0, Math.min(100, installment.percentage));
+          if (percentage >= 99.9999) return <Circle key={installment.id} cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={chartColors[index % chartColors.length]} strokeWidth={strokeWidth} />;
           const startAngle = cumulativePercentage * 3.6;
           const endAngle = startAngle + percentage * 3.6;
           cumulativePercentage += percentage;

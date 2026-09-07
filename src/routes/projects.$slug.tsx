@@ -26,7 +26,7 @@ import { track } from "@/lib/analytics";
 import { safeHttpUrl } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import type { ProjectWithRelations } from "@/lib/types";
-import { areaLabel, displayUnitTypes, highestUnitPrice, lowestUnitPrice, pricedUnitTypes, projectDetailSlug, unitDetailSlug } from "@/lib/unit-types";
+import { areaLabel, displayUnitTypes, highestUnitPrice, lowestUnitPrice, pricedUnitTypes, projectDetailSlug, unitAvailabilityLabel } from "@/lib/unit-types";
 import { displayPaymentPlans, paymentPlanSummary } from "@/lib/payment-plans";
 import { UnitOfferDialog } from "@/components/offers/UnitOfferDialog";
 
@@ -225,10 +225,10 @@ function ProjectDetail() {
                       <div key={item.id} className="flex items-center justify-between gap-4 rounded-xl bg-black/15 px-3 py-2">
                         {item.id === "legacy-starting-price" ? <span className="font-medium text-cream">{item.label}</span> : <Link
                           to="/projects/$slug/units/$unitTypeId"
-                          params={{ slug: projectDetailSlug({ name: p.name, slug: p.slug }), unitTypeId: unitDetailSlug({ projectName: p.name, projectSlug: p.slug, developerName: p.developer?.name, developerSlug: p.developer?.slug, unitLabel: item.label }) }}
+                          params={{ slug: projectDetailSlug({ name: p.name, slug: p.slug }), unitTypeId: item.id }}
                           className="font-medium text-cream underline-offset-4 hover:text-gold hover:underline"
                         >
-                          {item.label}
+                          {item.label} <span className="ml-2 text-xs text-muted-foreground">{unitAvailabilityLabel(item)}</span>
                         </Link>}
                         <span className="text-gold-gradient">{item.price_aed != null && item.price_aed > 0 ? formatAed(item.price_aed) : "Price on request"}</span>
                       </div>

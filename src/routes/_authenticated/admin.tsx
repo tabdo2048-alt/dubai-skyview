@@ -35,6 +35,10 @@ import { lowestUnitPrice } from "@/lib/unit-types";
 import { legacyPaymentPlanValue } from "@/lib/payment-plans";
 import { validatePaymentPlanTotal } from "@/lib/offer-calculations";
 import { DEFAULT_OFFER_ACCENT_COLOR, DEFAULT_OFFER_PRIMARY_COLOR } from "@/lib/offer-branding";
+import { UnitGallery } from "@/components/units/UnitGallery";
+import { UnitOfferDialog } from "@/components/offers/UnitOfferDialog";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import type { ProjectWithRelations } from "@/lib/types";
 
 const PROJECT_MEDIA_BUCKET = "project-media";
 const MAX_PROJECT_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -47,6 +51,40 @@ const IMAGE_EXTENSIONS: Record<string, string> = {
 };
 
 const UNIT_TYPE_QUICK_PICKS = ["Studio", "1BHK", "2BHK", "3BHK", "4BHK"];
+
+function DraftUnitPreview({ project, unit, plans, fees, onClose }: { project: ProjectWithRelations; unit: UnitTypeDraft; plans: PaymentPlanDraft[]; fees: FeeDraft[]; onClose: () => void }) {
+  const [uploads, setUploads] = useState<Array<{ key: string; url: string }>>([]);
+  const [offerOpen, setOfferOpen] = useState(false);
+  useEffect(() => {
+    const next = unit.imageFiles.map(image => ({ key: image.key, url: URL.createObjectURL(image.file) }));
+    setUploads(next);
+    return () => next.forEach(image => URL.revokeObjectURL(image.url));
+  }, [unit.imageFiles]);
+  const draft = useMemo<ProjectWithRelations>(() => {
+    const stamps = { tenant_id: project.unit_types[0]?.tenant_id ?? "", created_at: project.created_at, updated_at: project.updated_at };
+    const unitId = unit.id ?? "draft-unit";
+    const images = [
+      ...unit.images.map(image => ({ ...image, is_floor_plan: image.id === unit.floorPlanImageKey })),
+      ...uploads.map((image, index) => ({ ...stamps, id: image.key, project_id: project.id, unit_type_id: unitId, url: image.url, src: image.url, sort_order: unit.images.length + index, is_floor_plan: image.key === unit.floorPlanImageKey })),
+    ];
+    const floor = images.find(image => image.is_floor_plan);
+    return {
+      ...project,
+      unit_types: [{ ...stamps, ...unit, id: unitId, project_id: project.id, images, floor_plan_src: floor?.src ?? floor?.url ?? unit.floor_plan_src, floor_plan_url: floor?.url ?? unit.floor_plan_url }],
+      payment_plans: plans.map((plan, index) => ({ ...stamps, ...plan, id: plan.id ?? `draft-plan-${index}`, project_id: project.id, installments: plan.installments.map((row, rowIndex) => ({ ...stamps, ...row, id: row.id ?? `draft-row-${index}-${rowIndex}`, payment_plan_id: plan.id ?? `draft-plan-${index}` })) })),
+      fees: fees.map((fee, index) => ({ ...stamps, ...fee, id: fee.id ?? `draft-fee-${index}`, project_id: project.id })),
+    };
+  }, [project, unit, plans, fees, uploads]);
+  return <Dialog open onOpenChange={open => { if (!open) onClose(); }}><DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto">
+    <DialogTitle>{unit.label || "Untitled unit"} — Draft preview</DialogTitle>
+    <DialogDescription>Unit, images and payment plan edits shown here have not been saved.</DialogDescription>
+    <p className="text-gold">{formatAed(unit.price_aed)} · {unit.area_sqm_min ?? unit.area_sqm_max ?? "—"} m² · {unit.availability}</p>
+    <UnitGallery unit={draft.unit_types[0]} projectName={project.name} />
+    <Button type="button" disabled={unit.availability === "sold"} onClick={() => setOfferOpen(true)}>Preview draft PDF</Button>
+    <UnitOfferDialog project={draft} initialUnitId={draft.unit_types[0].id} lockUnitSelection previewOnly open={offerOpen} onOpenChange={setOfferOpen} />
+  </DialogContent></Dialog>;
+}
+
 type UnitTypeDraft = Omit<ProjectUnitTypeRow, "id" | "project_id" | "tenant_id" | "created_at" | "updated_at"> & {
   id?: string;
   floor_plan_src?: string | null;
@@ -63,6 +101,10 @@ function unitTypeDraft(row: ProjectUnitTypeRow): UnitTypeDraft {
   return {
     id: row.id,
     label: row.label,
+    availability: row.availability ?? "available",
+    bedrooms: row.bedrooms ?? null,
+    bathrooms: row.bathrooms ?? null,
+    view_description: row.view_description ?? null,
     price_aed: row.price_aed,
     area_sqm_min: row.area_sqm_min,
     area_sqm_max: row.area_sqm_max,
@@ -733,6 +775,11 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
   });
   const [gallery, setGallery] = useState(existing?.images ?? []);
   const [unitTypes, setUnitTypes] = useState<UnitTypeDraft[]>(() => (existing?.unit_types ?? []).map(unitTypeDraft));
+  const [unitSearch, setUnitSearch] = useState("");
+  const [unitStatusFilter, setUnitStatusFilter] = useState("");
+  const [unitMinPrice, setUnitMinPrice] = useState("");
+  const [unitMaxPrice, setUnitMaxPrice] = useState("");
+  const [previewUnitIndex, setPreviewUnitIndex] = useState<number | null>(null);
   const [paymentPlans, setPaymentPlans] = useState<PaymentPlanDraft[]>(() => (existing?.payment_plans ?? []).map(paymentPlanDraft));
   const [fees, setFees] = useState<FeeDraft[]>(() => (existing?.fees ?? []).map(feeDraft));
   const [imageFiles, setImageFiles] = useState<File[]>([]);
@@ -901,6 +948,10 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
   const persistUnitTypes = async (projectId: string) => {
     const rows = unitTypes.map((item, index) => ({
       label: item.label.trim(),
+      availability: item.availability,
+      bedrooms: item.bedrooms,
+      bathrooms: item.bathrooms,
+      view_description: item.view_description?.trim() || null,
       price_aed: item.price_aed,
       area_sqm_min: item.area_sqm_min,
       area_sqm_max: item.area_sqm_max,
@@ -1179,6 +1230,10 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
     for (const [index, item] of unitTypes.entries()) {
       if (!item.label.trim()) {
         toast.error(`Unit type ${index + 1}: label is required`);
+        return;
+      }
+      if ([item.bedrooms, item.bathrooms].some(value => value != null && (!Number.isInteger(value) || value < 0))) {
+        toast.error(`Unit type ${index + 1}: room counts must be non-negative whole numbers`);
         return;
       }
       if (item.price_aed != null && (!Number.isFinite(item.price_aed) || item.price_aed <= 0)) {
@@ -1480,11 +1535,17 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
             className="glass gold-hairline text-cream"
             onClick={() => setUnitTypes((current) => [
               ...current,
-              { label: "", price_aed: null, area_sqm_min: null, area_sqm_max: null, floor: null, floor_plan_url: null, sort_order: current.length, images: [], imageFiles: [], floorPlanImageKey: null },
+              { label: "", availability: "available", bedrooms: null, bathrooms: null, view_description: null, price_aed: null, area_sqm_min: null, area_sqm_max: null, floor: null, floor_plan_url: null, sort_order: current.length, images: [], imageFiles: [], floorPlanImageKey: null },
             ])}
           >
             <Plus className="mr-1 h-4 w-4" /> Add unit type
           </Button>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-4">
+          <Input aria-label="Search units in this project" placeholder="Search units…" value={unitSearch} onChange={e => setUnitSearch(e.target.value)} />
+          <select aria-label="Filter unit availability" className="rounded-md border border-border bg-background p-2 text-sm" value={unitStatusFilter} onChange={e => setUnitStatusFilter(e.target.value)}><option value="">All statuses</option><option value="available">Available</option><option value="reserved">Reserved</option><option value="sold">Sold</option></select>
+          <Input aria-label="Minimum unit price" type="number" min="0" placeholder="Min AED" value={unitMinPrice} onChange={e => setUnitMinPrice(e.target.value)} />
+          <Input aria-label="Maximum unit price" type="number" min="0" placeholder="Max AED" value={unitMaxPrice} onChange={e => setUnitMaxPrice(e.target.value)} />
         </div>
         {unitTypes.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border/60 p-3 text-sm text-muted-foreground">
@@ -1492,7 +1553,7 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
           </div>
         ) : (
           <div className="space-y-2">
-            {unitTypes.map((item, index) => (
+            {unitTypes.map((item, index) => ({ item, index })).filter(({ item }) => item.label.toLowerCase().includes(unitSearch.trim().toLowerCase()) && (!unitStatusFilter || item.availability === unitStatusFilter) && (!unitMinPrice || (item.price_aed != null && item.price_aed >= Number(unitMinPrice))) && (!unitMaxPrice || (item.price_aed != null && item.price_aed <= Number(unitMaxPrice)))).map(({ item, index }) => (
               <div key={item.id ?? `new-unit-${index}`} className="grid gap-2 rounded-xl border border-border/60 bg-black/20 p-3 sm:grid-cols-[1.1fr_1fr_1fr_1fr_1fr_auto] sm:items-end">
                 <label className="space-y-1 text-xs text-muted-foreground">
                   <span>Type</span>
@@ -1561,6 +1622,17 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
                   </Button>
                 </div>
                 <div className="space-y-2 sm:col-span-6">
+                  <div className="grid gap-2 sm:grid-cols-4">
+                    <label className="space-y-1 text-xs">Availability<select value={item.availability} className="block w-full rounded-md border border-border bg-background p-2" onChange={e => setUnitTypes(current => current.map((row, i) => i === index ? { ...row, availability: e.target.value } : row))}><option value="available">Available</option><option value="reserved">Reserved</option><option value="sold">Sold</option></select></label>
+                    <label className="space-y-1 text-xs">Bedrooms (0 = studio)<Input type="number" min="0" step="1" placeholder="Not specified" value={item.bedrooms ?? ""} onChange={e => setUnitTypes(current => current.map((row, i) => i === index ? { ...row, bedrooms: e.target.value === "" ? null : Number(e.target.value) } : row))} /></label>
+                    <label className="space-y-1 text-xs">Bathrooms<Input type="number" min="0" step="1" placeholder="Not specified" value={item.bathrooms ?? ""} onChange={e => setUnitTypes(current => current.map((row, i) => i === index ? { ...row, bathrooms: e.target.value === "" ? null : Number(e.target.value) } : row))} /></label>
+                    <label className="space-y-1 text-xs">View<Input placeholder="Sea / garden / city" value={item.view_description ?? ""} onChange={e => setUnitTypes(current => current.map((row, i) => i === index ? { ...row, view_description: e.target.value || null } : row))} /></label>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {existing && <Button type="button" size="sm" variant="outline" onClick={() => setPreviewUnitIndex(index)}>Preview unsaved changes</Button>}
+                    <Button type="button" size="sm" variant="outline" onClick={() => { setUnitSearch(""); setUnitStatusFilter(""); setUnitMinPrice(""); setUnitMaxPrice(""); setUnitTypes(current => [...current, { ...item, id: undefined, label: `${item.label} copy`, availability: "available", images: [], imageFiles: [], floor_plan_url: null, floor_plan_src: null, floorPlanImageKey: null, sort_order: current.length }]); toast.success("Unit details copied. Add photos for the new unit."); }}><Copy className="mr-1 h-4 w-4" /> Duplicate details</Button>
+                    {item.id && existing && <Button asChild size="sm" variant="outline"><Link to="/projects/$slug/units/$unitTypeId" params={{ slug: existing.slug, unitTypeId: item.id }} target="_blank">Preview saved unit & PDF</Link></Button>}
+                  </div>
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <span className="block text-xs font-medium text-cream">Unit photos &amp; floor plan</span>
@@ -1599,10 +1671,12 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
                   </div>
                   {(item.images.length > 0 || item.imageFiles.length > 0) && (
                     <div className="grid gap-2 sm:grid-cols-3">
-                      {item.images.map((image) => (
+                      {item.images.map((image, imageIndex) => (
                         <div key={image.id} className="overflow-hidden rounded-lg border border-border/50 bg-black/20">
                           <img src={mediaSrc(image.thumb_src, image.src ?? image.url)} alt="" className="aspect-video w-full object-cover" loading="lazy" />
                           <div className="flex items-center gap-2 p-2">
+                            <Button type="button" size="icon" variant="ghost" className="h-6 w-6" disabled={imageIndex === 0} aria-label="Move photo earlier" onClick={() => setUnitTypes(current => current.map((row, i) => { if (i !== index) return row; const images = [...row.images]; [images[imageIndex - 1], images[imageIndex]] = [images[imageIndex], images[imageIndex - 1]]; return { ...row, images }; }))}><ArrowUp className="h-3 w-3" /></Button>
+                            <Button type="button" size="icon" variant="ghost" className="h-6 w-6" disabled={imageIndex === item.images.length - 1} aria-label="Move photo later" onClick={() => setUnitTypes(current => current.map((row, i) => { if (i !== index) return row; const images = [...row.images]; [images[imageIndex], images[imageIndex + 1]] = [images[imageIndex + 1], images[imageIndex]]; return { ...row, images }; }))}><ArrowDown className="h-3 w-3" /></Button>
                             <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 text-[11px] text-cream">
                               <input
                                 type="radio"
@@ -1653,6 +1727,7 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
         <datalist id="unit-type-quick-picks">
           {UNIT_TYPE_QUICK_PICKS.map((label) => <option key={label} value={label} />)}
         </datalist>
+        {existing && previewUnitIndex != null && unitTypes[previewUnitIndex] && <DraftUnitPreview project={existing} unit={unitTypes[previewUnitIndex]} plans={paymentPlans} fees={fees} onClose={() => setPreviewUnitIndex(null)} />}
       </div>
       <div className="space-y-3 rounded-2xl border border-gold/20 bg-black/10 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">

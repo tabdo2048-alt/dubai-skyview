@@ -341,6 +341,10 @@ export type Database = {
       }
       project_unit_types: {
         Row: {
+          availability: string
+          bedrooms: number | null
+          bathrooms: number | null
+          view_description: string | null
           area_sqm_max: number | null
           area_sqm_min: number | null
           created_at: string
@@ -355,6 +359,10 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          availability?: string
+          bedrooms?: number | null
+          bathrooms?: number | null
+          view_description?: string | null
           area_sqm_max?: number | null
           area_sqm_min?: number | null
           created_at?: string
@@ -369,6 +377,10 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          availability?: string
+          bedrooms?: number | null
+          bathrooms?: number | null
+          view_description?: string | null
           area_sqm_max?: number | null
           area_sqm_min?: number | null
           created_at?: string

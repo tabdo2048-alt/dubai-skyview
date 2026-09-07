@@ -14,12 +14,15 @@ export const offerColors = {
 
 export const offerStyles = StyleSheet.create({
   page: {
+    minHeight: 595.28,
     backgroundColor: "#ffffff",
     color: offerColors.ink,
     fontFamily: "Helvetica",
     paddingBottom: 35,
   },
   header: {
+    height: 132,
+    flexShrink: 0,
     backgroundColor: offerColors.navy,
     color: "#f8fafc",
     padding: 0,
@@ -27,6 +30,7 @@ export const offerStyles = StyleSheet.create({
     position: "relative",
   },
   headerImage: {
+    zIndex: 0,
     position: "absolute",
     right: 0,
     top: 0,
@@ -115,7 +119,6 @@ export const offerStyles = StyleSheet.create({
   },
   offerMeta: {
     position: "absolute",
-    zIndex: 2,
     right: 16,
     top: 14,
     width: 118,
