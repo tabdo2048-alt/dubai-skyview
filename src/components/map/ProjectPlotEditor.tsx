@@ -4,6 +4,7 @@ import MapboxDraw from "@mapbox/mapbox-gl-draw";
 import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ZOOM_OUT_BOUNDS } from "@/lib/dubai";
 import {
   drawnPolygon,
   normalizePolygon,
@@ -84,6 +85,10 @@ export function ProjectPlotEditor({ accessToken, lat, lng, value, onChange }: Pr
       style: "mapbox://styles/mapbox/satellite-streets-v12",
       center: [lngRef.current, latRef.current],
       zoom: 15.5,
+      maxBounds: [
+        [ZOOM_OUT_BOUNDS.west, ZOOM_OUT_BOUNDS.south],
+        [ZOOM_OUT_BOUNDS.east, ZOOM_OUT_BOUNDS.north],
+      ],
     });
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
     const draw = new MapboxDraw({ displayControlsDefault: false, controls: { polygon: true, trash: true } });
