@@ -47,18 +47,12 @@ export function MediaStorageManager({ canManage }: { canManage: boolean }) {
         return;
       }
 
-      const { data: signed, error: signError } = await supabase.storage
-        .from(PROJECT_MEDIA_BUCKET)
-        .createSignedUrls(rows.map((row) => row.object_path), 600);
-      if (signError) throw signError;
-
       let completed = 0;
       for (const [index, row] of rows.entries()) {
-        const signedUrl = signed?.[index]?.signedUrl;
-        if (!signedUrl) continue;
-        const response = await fetch(signedUrl);
-        if (!response.ok) continue;
-        const blob = await response.blob();
+        const { data: blob, error: downloadError } = await supabase.storage
+          .from(PROJECT_MEDIA_BUCKET)
+          .download(row.object_path);
+        if (downloadError) throw downloadError;
         const source = new File([blob], row.object_path.split("/").pop() || "image", { type: blob.type });
         const optimized = await optimizeProjectImage(source);
         if (!optimized.thumbnail) continue;
