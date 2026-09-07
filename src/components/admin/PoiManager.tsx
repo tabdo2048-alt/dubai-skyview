@@ -17,12 +17,22 @@ function message(error: unknown, fallback: string) { return error instanceof Err
 
 export function PoiManager({ canManage }: { canManage: boolean }) {
   const { data: config } = useMapConfig();
+  const [mapsAvailable, setMapsAvailable] = useState(false);
   const [category, setCategory] = useState<PoiCategory>("tourism");
   const [rows, setRows] = useState<PoiPoint[]>([]);
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const table = POI_TABLES[category].table;
+
+  useEffect(() => {
+    try {
+      const canvas = document.createElement("canvas");
+      setMapsAvailable(Boolean(canvas.getContext("webgl2") || canvas.getContext("webgl")));
+    } catch {
+      setMapsAvailable(false);
+    }
+  }, []);
 
   async function load(selected: PoiCategory) {
     setLoading(true);
@@ -56,7 +66,7 @@ export function PoiManager({ canManage }: { canManage: boolean }) {
     {canManage ? <form onSubmit={save} className="glass-strong gold-hairline mt-4 grid gap-3 rounded-2xl p-5 sm:grid-cols-2">
       <AdminField label="Name"><Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required /></AdminField>
       <AdminField label="Image URLs (comma-separated)"><Input value={form.images} onChange={(event) => setForm({ ...form, images: event.target.value })} /></AdminField>
-      {config?.mapboxAccessToken ? <div className="sm:col-span-2"><Label className="text-xs uppercase tracking-widest text-muted-foreground">Location on map</Label><AdminLocationPicker accessToken={config.mapboxAccessToken} lat={form.lat} lng={form.lng} onChange={({ lat, lng }) => setForm({ ...form, lat, lng })} /></div> : null}
+      {config?.mapboxAccessToken && mapsAvailable ? <div className="sm:col-span-2"><Label className="text-xs uppercase tracking-widest text-muted-foreground">Location on map</Label><AdminLocationPicker accessToken={config.mapboxAccessToken} lat={form.lat} lng={form.lng} onChange={({ lat, lng }) => setForm({ ...form, lat, lng })} /></div> : null}
       <div className="sm:col-span-2"><AdminField label="Google Maps link"><LocationFromLink onCoords={({ lat, lng }) => setForm({ ...form, lat, lng })} /></AdminField></div>
       <AdminField label="Latitude"><Input type="number" step="0.0001" value={form.lat} onChange={(event) => setForm({ ...form, lat: Number(event.target.value) })} required /></AdminField>
       <AdminField label="Longitude"><Input type="number" step="0.0001" value={form.lng} onChange={(event) => setForm({ ...form, lng: Number(event.target.value) })} required /></AdminField>
