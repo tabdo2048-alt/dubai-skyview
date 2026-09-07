@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { whatsappUrl } from "@/lib/contact";
 import { UnitGallery } from "@/components/units/UnitGallery";
 import { AppNavbar } from "@/components/layout/AppNavbar";
-import { fetchProjectBySlug, useProject } from "@/hooks/use-projects";
+import { fetchProjectBySlug, fetchUnitImages, useProject, useUnitImages } from "@/hooks/use-projects";
 import { UnitOfferDialog } from "@/components/offers/UnitOfferDialog";
 import { Button } from "@/components/ui/button";
 import { mediaSrc } from "@/lib/media";
@@ -17,7 +17,11 @@ import { displayPaymentPlans } from "@/lib/payment-plans";
 export const Route = createFileRoute("/projects/$slug/units/$unitTypeId")({
   loader: async ({ params }) => {
     const project = await fetchProjectBySlug(params.slug);
-    if (project && !findUnitForRoute(project, params.unitTypeId)) throw notFound();
+    const unit = findUnitForRoute(project, params.unitTypeId);
+    if (project && !unit) throw notFound();
+    if (project && unit && unit.id !== "legacy-starting-price") {
+      unit.images = await fetchUnitImages(unit.id);
+    }
     // A server render may not have the browser's Supabase session yet. Keep the
     // route alive so the client can retry with the logged-in user's session.
     return { project };
@@ -52,7 +56,10 @@ function UnitTypeDetail() {
   const { slug, unitTypeId } = Route.useParams();
   const clientProject = useProject(slug);
   const project = clientProject.data ?? loaderData.project;
-  const unit = useMemo(() => findUnitForRoute(project, unitTypeId), [project, unitTypeId]);
+  const baseUnit = useMemo(() => findUnitForRoute(project, unitTypeId), [project, unitTypeId]);
+  const unitImages = useUnitImages(baseUnit?.id === "legacy-starting-price" ? null : baseUnit?.id ?? null);
+  const unit = useMemo(() => baseUnit ? { ...baseUnit, images: unitImages.data ?? baseUnit.images ?? [] } : null, [baseUnit, unitImages.data]);
+  const offerProject = useMemo(() => project && unit ? { ...project, unit_types: project.unit_types.map((item) => item.id === unit.id ? { ...item, images: unit.images } : item) } : project, [project, unit]);
 
   const [offerOpen, setOfferOpen] = useState(false);
   const paymentPlans = useMemo(() => displayPaymentPlans(project?.payment_plans, project?.payment_plan), [project?.payment_plan, project?.payment_plans]);
@@ -139,7 +146,7 @@ function UnitTypeDetail() {
           </div>
         </div>
       </div>
-      <UnitOfferDialog project={project} initialUnitId={unit.id} lockUnitSelection open={offerOpen} onOpenChange={setOfferOpen} />
+      <UnitOfferDialog project={offerProject ?? project} initialUnitId={unit.id} lockUnitSelection open={offerOpen} onOpenChange={setOfferOpen} />
     </div>
   );
 }

@@ -3,8 +3,10 @@ import { ArrowLeft, Loader2 } from "lucide-react";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { Button } from "@/components/ui/button";
 import { useAuth, useIsAdmin } from "@/hooks/use-auth";
-import { PoiManager, PublicProjectsManager } from "./admin";
+import { PublicProjectsManager } from "./admin";
+import { PoiManager } from "@/components/admin/PoiManager";
 import { SubscribersManager, UsersManager } from "@/components/admin/PlatformAccountManagers";
+import { MediaStorageManager } from "@/components/admin/MediaStorageManager";
 import { isPlatformOwner } from "@/lib/platform-owner";
 
 // `admin_` (trailing underscore) un-nests this to a standalone /admin/platform
@@ -45,6 +47,7 @@ function PlatformPage() {
             <PublicProjectsManager canManage={canManage} />
             <SubscribersManager canManage={canManage} />
             <UsersManager canManage={canManage} />
+            <MediaStorageManager canManage={canManage} />
             <PoiManager canManage={canManage} />
           </>
         )}

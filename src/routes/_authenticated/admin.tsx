@@ -16,7 +16,6 @@ import { useMapConfig } from "@/hooks/use-map-config";
 import { useProjects, useProjectById, useCommunities, useDevelopers } from "@/hooks/use-projects";
 import { useTenantStore } from "@/store/tenant";
 import { fetchPlatformTenants } from "@/integrations/supabase/saas";
-import { POI_TABLES, type PoiCategory, type PoiPoint } from "@/hooks/use-pois";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,8 +25,8 @@ import { toast } from "sonner";
 import { formatAed, CATEGORIES } from "@/lib/dubai";
 import { mediaSrc } from "@/lib/media";
 import { safeHttpUrl } from "@/lib/utils";
-import { parseLatLngFromGoogleMapsUrl } from "@/lib/googleMapsLink";
-import { optimizeProjectImage, thumbnailPathFromStoragePath } from "@/lib/image-optimization";
+import { AdminField as Field, LocationFromLink } from "@/components/admin/AdminFormFields";
+import { formatImageBytes, imageContentHash, optimizeProjectImage, thumbnailPathFromStoragePath } from "@/lib/image-optimization";
 import type { ProjectFeeRow, ProjectPaymentPlanInstallmentRow, ProjectPaymentPlanRow, ProjectUnitTypeImageRow, ProjectUnitTypeRow } from "@/lib/types";
 import { lowestUnitPrice } from "@/lib/unit-types";
 import { legacyPaymentPlanValue } from "@/lib/payment-plans";
@@ -39,7 +38,7 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/compone
 import type { ProjectWithRelations } from "@/lib/types";
 
 const PROJECT_MEDIA_BUCKET = "project-media";
-const MAX_PROJECT_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_PROJECT_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_PROJECT_IMAGES = 12;
 const IMAGE_EXTENSIONS: Record<string, string> = {
   "image/jpeg": "jpg",
@@ -63,7 +62,7 @@ function DraftUnitPreview({ project, unit, plans, fees, onClose }: { project: Pr
     const unitId = unit.id ?? "draft-unit";
     const images = [
       ...unit.images.map(image => ({ ...image, is_floor_plan: image.id === unit.floorPlanImageKey })),
-      ...uploads.map((image, index) => ({ ...stamps, id: image.key, project_id: project.id, unit_type_id: unitId, url: image.url, src: image.url, sort_order: unit.images.length + index, is_floor_plan: image.key === unit.floorPlanImageKey })),
+      ...uploads.map((image, index) => ({ ...stamps, id: image.key, project_id: project.id, unit_type_id: unitId, url: image.url, src: image.url, content_hash: null, sort_order: unit.images.length + index, is_floor_plan: image.key === unit.floorPlanImageKey })),
     ];
     const floor = images.find(image => image.is_floor_plan);
     return {
@@ -87,9 +86,28 @@ type UnitTypeDraft = Omit<ProjectUnitTypeRow, "id" | "project_id" | "tenant_id" 
   id?: string;
   floor_plan_src?: string | null;
   images: Array<ProjectUnitTypeImageRow & { src?: string; thumb_src?: string }>;
-  imageFiles: Array<{ key: string; file: File }>;
+  imageFiles: PreparedImageUpload[];
   floorPlanImageKey: string | null;
 };
+
+type PreparedImageUpload = {
+  key: string;
+  file: File;
+  thumbnail: File | null;
+  contentHash: string;
+  originalSize: number;
+};
+
+async function prepareImageUpload(file: File, key: string): Promise<PreparedImageUpload> {
+  const optimized = await optimizeProjectImage(file);
+  return {
+    key,
+    file: optimized.full,
+    thumbnail: optimized.thumbnail,
+    contentHash: await imageContentHash(optimized.full),
+    originalSize: file.size,
+  };
+}
 
 function unitTypeDraft(row: ProjectUnitTypeRow): UnitTypeDraft {
   const source = row as ProjectUnitTypeRow & {
@@ -166,7 +184,7 @@ function feeDraft(row: ProjectFeeRow): FeeDraft {
 
 function imageFileError(file: File): string | null {
   if (!IMAGE_EXTENSIONS[file.type]) return `${file.name}: only JPEG, PNG, WebP, and AVIF images are allowed`;
-  if (file.size > MAX_PROJECT_IMAGE_BYTES) return `${file.name}: image must be 10 MB or smaller`;
+  if (file.size > MAX_PROJECT_IMAGE_BYTES) return `${file.name}: image must be 8 MB or smaller`;
   return null;
 }
 
@@ -356,147 +374,6 @@ function AdminNav() {
           >
             {s.label}
           </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-const POI_CATEGORIES = Object.keys(POI_TABLES) as PoiCategory[];
-
-// Add / list / delete Places of Interest (tourism, schools, hospitals). Mirrors
-// DeveloperManager, but the active POI table is chosen with a category tab and
-// the location is set with the same map picker used for projects.
-export function PoiManager({ canManage }: { canManage: boolean }) {
-  const { data: cfg } = useMapConfig();
-  const [category, setCategory] = useState<PoiCategory>("tourism");
-  const [rows, setRows] = useState<PoiPoint[]>([]);
-  const [loading, setLoading] = useState(false);
-  const empty = { name: "", lat: 25.1972, lng: 55.2744, images: "" };
-  const [form, setForm] = useState(empty);
-  const [saving, setSaving] = useState(false);
-
-  const table = POI_TABLES[category].table;
-
-  const load = async (cat: PoiCategory) => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from(POI_TABLES[cat].table)
-      .select("*")
-      .order("created_at", { ascending: false });
-    setLoading(false);
-    if (error) return toast.error(errMsg(error, "Could not load places"));
-    setRows((data ?? []) as PoiPoint[]);
-  };
-
-  useEffect(() => {
-    void load(category);
-    setForm(empty);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category]);
-
-  const save = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.name.trim()) return toast.error("Name is required");
-    setSaving(true);
-    try {
-      const payload = {
-        name: form.name.trim(),
-        lat: Number(form.lat),
-        lng: Number(form.lng),
-        images: form.images
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean),
-      };
-      const { error } = await supabase.from(table).insert(payload);
-      if (error) throw error;
-      toast.success(`${POI_TABLES[category].label} place added`);
-      setForm(empty);
-      void load(category);
-    } catch (err) {
-      toast.error(errMsg(err));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const del = async (row: PoiPoint) => {
-    if (!confirm(`Delete "${row.name}"?`)) return;
-    const { error } = await supabase.from(table).delete().eq("id", row.id);
-    if (error) return toast.error(errMsg(error, "Delete failed"));
-    toast.success("Place deleted");
-    void load(category);
-  };
-
-  return (
-    <div id="admin-poi" className="mt-10 scroll-mt-24">
-      <h2 className="font-display text-3xl text-cream">Places of interest</h2>
-
-      {/* Category tabs */}
-      <div className="mt-3 flex flex-wrap gap-2">
-        {POI_CATEGORIES.map((c) => (
-          <button
-            key={c}
-            type="button"
-            onClick={() => setCategory(c)}
-            className={`rounded-full px-4 py-1.5 text-sm transition-all ${
-              category === c ? "bg-gold text-gold-foreground shadow" : "glass gold-hairline text-cream hover:text-gold"
-            }`}
-          >
-            {POI_TABLES[c].icon} {POI_TABLES[c].label}
-          </button>
-        ))}
-      </div>
-
-      {canManage ? <form onSubmit={save} className="glass-strong gold-hairline mt-4 grid gap-3 rounded-2xl p-5 sm:grid-cols-2">
-        <Field label="Name"><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></Field>
-        <Field label="Image URLs (comma-separated)"><Input value={form.images} onChange={(e) => setForm({ ...form, images: e.target.value })} placeholder="https://…, https://…" /></Field>
-        {cfg?.mapboxAccessToken && (
-          <div className="sm:col-span-2">
-            <Label className="text-xs uppercase tracking-widest text-muted-foreground">Location on map</Label>
-            <div className="mt-1">
-              <AdminLocationPicker
-                accessToken={cfg.mapboxAccessToken}
-                lat={form.lat}
-                lng={form.lng}
-                onChange={({ lat, lng }) => setForm({ ...form, lat, lng })}
-              />
-            </div>
-          </div>
-        )}
-        <div className="sm:col-span-2">
-          <Field label="Google Maps link (auto-fills location)">
-            <LocationFromLink onCoords={({ lat, lng }) => setForm({ ...form, lat, lng })} />
-          </Field>
-        </div>
-        <Field label="Latitude"><Input type="number" step="0.0001" value={form.lat} onChange={(e) => setForm({ ...form, lat: Number(e.target.value) })} required /></Field>
-        <Field label="Longitude"><Input type="number" step="0.0001" value={form.lng} onChange={(e) => setForm({ ...form, lng: Number(e.target.value) })} required /></Field>
-        <div className="flex gap-2 sm:col-span-2">
-          <Button type="submit" disabled={saving} className="bg-gold text-gold-foreground hover:bg-gold/90">
-            <Plus className="mr-1 h-4 w-4" /> {saving ? "Saving…" : `Add ${POI_TABLES[category].label} place`}
-          </Button>
-        </div>
-      </form> : <p className="mt-3 text-sm text-muted-foreground">Read-only access</p>}
-
-      <div className="mt-4 grid gap-2">
-        {loading && <div className="p-4 text-center text-sm text-muted-foreground">Loading…</div>}
-        {!loading && rows.length === 0 && (
-          <div className="glass gold-hairline rounded-2xl p-4 text-center text-sm text-muted-foreground">
-            No {POI_TABLES[category].label.toLowerCase()} places yet.
-          </div>
-        )}
-        {rows.map((row) => (
-          <div key={row.id} className="glass gold-hairline flex items-center gap-3 rounded-2xl p-3">
-            <div className="grid h-10 w-10 place-items-center rounded-md bg-black/30 text-lg" style={{ color: POI_TABLES[category].color }}>
-              {POI_TABLES[category].icon}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="truncate font-display text-lg text-cream">{row.name}</div>
-              <div className="truncate text-xs text-muted-foreground">{row.lat.toFixed(4)}, {row.lng.toFixed(4)}</div>
-            </div>
-            {canManage ? <Button size="icon" variant="ghost" onClick={() => del(row)}><Trash2 className="h-4 w-4 text-destructive" /></Button> : null}
-          </div>
         ))}
       </div>
     </div>
@@ -780,7 +657,7 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
   const [previewUnitIndex, setPreviewUnitIndex] = useState<number | null>(null);
   const [paymentPlans, setPaymentPlans] = useState<PaymentPlanDraft[]>(() => (existing?.payment_plans ?? []).map(paymentPlanDraft));
   const [fees, setFees] = useState<FeeDraft[]>(() => (existing?.fees ?? []).map(feeDraft));
-  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [imageFiles, setImageFiles] = useState<PreparedImageUpload[]>([]);
   const [saving, setSaving] = useState(false);
   const [mapsAvailable, setMapsAvailable] = useState(false);
 
@@ -837,9 +714,9 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
 
   const imagePreviews = useMemo(
     () =>
-      imageFiles.map((file) => ({
-        file,
-        url: URL.createObjectURL(file),
+      imageFiles.map((upload) => ({
+        ...upload,
+        url: URL.createObjectURL(upload.file),
       })),
     [imageFiles],
   );
@@ -855,19 +732,19 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
     if (imageFiles.length > MAX_PROJECT_IMAGES) {
       throw new Error(`You can upload up to ${MAX_PROJECT_IMAGES} images at a time`);
     }
-    for (const file of imageFiles) {
-      const validationError = imageFileError(file);
-      if (validationError) throw new Error(validationError);
-      if (!(await hasAllowedImageSignature(file))) {
-        throw new Error(`${file.name}: file contents do not match its image type`);
-      }
-    }
+    const { data: hashRows, error: hashError } = await supabase.from("project_images")
+      .select("content_hash")
+      .eq("project_id", projectId)
+      .not("content_hash", "is", null);
+    if (hashError) throw hashError;
+    const existingHashes = new Set<string>((hashRows ?? []).map((row: { content_hash: string }) => row.content_hash));
+    const pending = imageFiles.filter((upload) => !existingHashes.has(upload.contentHash));
+    if (pending.length < imageFiles.length) toast.info(`${imageFiles.length - pending.length} duplicate image${imageFiles.length - pending.length === 1 ? " was" : "s were"} skipped`);
 
     const uploaded = await Promise.all(
-      imageFiles.map(async (file, index) => {
-        const optimized = await optimizeProjectImage(file);
-        const extension = IMAGE_EXTENSIONS[optimized.full.type] ?? (optimized.full.type === "image/jpeg" ? "jpg" : "webp");
-        const safeName = file.name
+      pending.map(async (upload, index) => {
+        const extension = IMAGE_EXTENSIONS[upload.file.type] ?? (upload.file.type === "image/jpeg" ? "jpg" : "webp");
+        const safeName = upload.file.name
           .replace(/\.[^/.]+$/, "")
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, "-")
@@ -880,9 +757,9 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
 
         const { error: uploadError } = await supabase.storage
           .from(PROJECT_MEDIA_BUCKET)
-          .upload(path, optimized.full, {
+          .upload(path, upload.file, {
             cacheControl: "31536000",
-            contentType: optimized.full.type,
+            contentType: upload.file.type,
             upsert: false,
           });
 
@@ -890,35 +767,36 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
 
         // Keep a tiny, immutable object beside the original. Map/list views
         // resolve this derived path; old objects fall back to the full image.
-        if (optimized.thumbnail) {
+        if (upload.thumbnail) {
           const { error: thumbnailError } = await supabase.storage
             .from(PROJECT_MEDIA_BUCKET)
-            .upload(thumbnailPathFromStoragePath(path), optimized.thumbnail, {
+            .upload(thumbnailPathFromStoragePath(path), upload.thumbnail, {
               cacheControl: "31536000",
-              contentType: optimized.thumbnail.type,
+              contentType: upload.thumbnail.type,
               upsert: false,
             });
           if (thumbnailError) throw thumbnailError;
         }
 
         const { data } = supabase.storage.from(PROJECT_MEDIA_BUCKET).getPublicUrl(path);
-        return data.publicUrl;
+        return { url: data.publicUrl, content_hash: upload.contentHash };
       }),
     );
 
     const firstSort = gallery.length;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error: imageError } = await (supabase.from("project_images").insert as any)(
-      uploaded.map((url, index) => ({
+      uploaded.map((image, index) => ({
         project_id: projectId,
         tenant_id: projectTenantId, // the project's own tenant, not the selected one
-        url,
+        url: image.url,
+        content_hash: image.content_hash,
         sort_order: firstSort + index,
       })),
     );
 
     if (imageError) throw imageError;
-    return uploaded;
+    return uploaded.map((image) => image.url);
   };
 
   const removeExistingImage = async (imageId: string, url: string) => {
@@ -1014,9 +892,11 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
         }));
       }
 
-      const uploaded = await Promise.all(item.imageFiles.map(async ({ key, file }, imageIndex) => {
-        const optimized = await optimizeProjectImage(file);
-        const extension = IMAGE_EXTENSIONS[optimized.full.type] ?? (optimized.full.type === "image/jpeg" ? "jpg" : "webp");
+      const existingHashes = new Set(oldImages.map((image) => (image as ProjectUnitTypeImageRow & { content_hash?: string | null }).content_hash).filter(Boolean));
+      const pendingImages = item.imageFiles.filter((image) => !existingHashes.has(image.contentHash));
+      if (pendingImages.length < item.imageFiles.length) toast.info(`${item.imageFiles.length - pendingImages.length} duplicate unit image${item.imageFiles.length - pendingImages.length === 1 ? " was" : "s were"} skipped`);
+      const uploaded = await Promise.all(pendingImages.map(async ({ key, file, thumbnail, contentHash }, imageIndex) => {
+        const extension = IMAGE_EXTENSIONS[file.type] ?? (file.type === "image/jpeg" ? "jpg" : "webp");
         const safeName = file.name
           .replace(/\.[^/.]+$/, "")
           .toLowerCase()
@@ -1026,28 +906,28 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
         const path = `${projectTenantId}/${projectId}/unit-types/${unitTypeId}/${Date.now()}-${imageIndex}-${safeName || "unit-image"}.${extension}`;
         const { error: uploadError } = await supabase.storage
           .from(PROJECT_MEDIA_BUCKET)
-          .upload(path, optimized.full, {
+          .upload(path, file, {
             cacheControl: "31536000",
-            contentType: optimized.full.type,
+            contentType: file.type,
             upsert: false,
           });
         if (uploadError) throw uploadError;
-        if (optimized.thumbnail) {
+        if (thumbnail) {
           const { error: thumbnailError } = await supabase.storage
             .from(PROJECT_MEDIA_BUCKET)
-            .upload(thumbnailPathFromStoragePath(path), optimized.thumbnail, {
+            .upload(thumbnailPathFromStoragePath(path), thumbnail, {
               cacheControl: "31536000",
-              contentType: optimized.thumbnail.type,
+              contentType: thumbnail.type,
               upsert: false,
             });
           if (thumbnailError) throw thumbnailError;
         }
         const { data } = supabase.storage.from(PROJECT_MEDIA_BUCKET).getPublicUrl(path);
-        return { key, url: data.publicUrl };
+        return { key, url: data.publicUrl, content_hash: contentHash };
       }));
 
-      const existingEntries: Array<{ key: string; id?: string; url: string }> = item.images.map((image) => ({ key: image.id, id: image.id, url: image.url }));
-      const allImages: Array<{ key: string; id?: string; url: string }> = [...existingEntries, ...uploaded];
+      const existingEntries: Array<{ key: string; id?: string; url: string; content_hash?: string }> = item.images.map((image) => ({ key: image.id, id: image.id, url: image.url, content_hash: (image as ProjectUnitTypeImageRow & { content_hash?: string }).content_hash }));
+      const allImages: Array<{ key: string; id?: string; url: string; content_hash?: string }> = [...existingEntries, ...uploaded];
       const selected = allImages.find((image) => image.key === item.floorPlanImageKey);
       const selectedUrl = selected?.url ?? item.floor_plan_url?.trim() ?? null;
 
@@ -1077,6 +957,7 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
             url: image.url,
             sort_order: imageIndex,
             is_floor_plan: image.key === item.floorPlanImageKey,
+            content_hash: image.content_hash ?? null,
           });
           if (error) throw error;
         }
@@ -1657,10 +1538,13 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
                                 return;
                               }
                             }
+                            const prepared = await Promise.all(files.map((file, fileIndex) => prepareImageUpload(file, keys[fileIndex])));
+                            const unique = prepared.filter((upload, uploadIndex) => prepared.findIndex((candidate) => candidate.contentHash === upload.contentHash) === uploadIndex);
+                            if (unique.length < prepared.length) toast.info(`${prepared.length - unique.length} duplicate image${prepared.length - unique.length === 1 ? " was" : "s were"} skipped`);
                             setUnitTypes((current) => current.map((row, rowIndex) => rowIndex === index ? {
                               ...row,
-                              imageFiles: [...row.imageFiles, ...files.map((file, fileIndex) => ({ key: keys[fileIndex], file }))],
-                              floorPlanImageKey: row.floorPlanImageKey ?? keys[0],
+                              imageFiles: [...row.imageFiles, ...unique.filter((upload) => !row.imageFiles.some((currentUpload) => currentUpload.contentHash === upload.contentHash))],
+                              floorPlanImageKey: row.floorPlanImageKey ?? unique[0]?.key ?? null,
                             } : row));
                           })();
                         }}
@@ -1695,9 +1579,10 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
                           </div>
                         </div>
                       ))}
-                      {item.imageFiles.map(({ key, file }) => (
+                      {item.imageFiles.map(({ key, file, originalSize }) => (
                         <div key={key} className="flex min-h-20 flex-col justify-between rounded-lg border border-dashed border-gold/30 bg-gold/5 p-2">
                           <span className="truncate text-[11px] text-cream" title={file.name}>{file.name}</span>
+                          <span className="text-[10px] text-muted-foreground">{formatImageBytes(originalSize)} → {formatImageBytes(file.size)}</span>
                           <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-gold">
                             <input
                               type="radio"
@@ -1913,8 +1798,26 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
                 e.target.value = "";
                 return;
               }
-              setImageFiles((current) => [...current, ...files]);
               e.target.value = "";
+              void (async () => {
+                for (const file of files) {
+                  if (!(await hasAllowedImageSignature(file))) {
+                    toast.error(`${file.name}: file contents do not match its image type`);
+                    return;
+                  }
+                }
+                const prepared = await Promise.all(files.map((file, index) => prepareImageUpload(file, `project-${Date.now()}-${index}`)));
+                setImageFiles((current) => {
+                  const hashes = new Set(current.map((upload) => upload.contentHash));
+                  const unique = prepared.filter((upload) => {
+                    if (hashes.has(upload.contentHash)) return false;
+                    hashes.add(upload.contentHash);
+                    return true;
+                  });
+                  if (unique.length < prepared.length) toast.info(`${prepared.length - unique.length} duplicate image${prepared.length - unique.length === 1 ? " was" : "s were"} skipped`);
+                  return [...current, ...unique];
+                });
+              })();
             }}
           />
         </label>
@@ -1955,6 +1858,7 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
                 <div className="flex items-center gap-2 p-2 text-xs text-muted-foreground">
                   <Upload className="h-3.5 w-3.5 text-gold" />
                   <span className="truncate">{preview.file.name}</span>
+                  <span className="shrink-0">{formatImageBytes(preview.originalSize)} → {formatImageBytes(preview.file.size)}</span>
                 </div>
               </div>
             ))}
@@ -2123,68 +2027,6 @@ export function PublicProjectsManager({ canManage }: { canManage: boolean }) {
           );
         })}
       </div>
-    </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <Label className="text-xs uppercase tracking-widest text-muted-foreground">{label}</Label>
-      <div className="mt-1">{children}</div>
-    </div>
-  );
-}
-
-// Paste a Google Maps link → pull lat/lng out of it and fill the location. Full
-// URLs are parsed client-side; short goo.gl links are resolved by the
-// `resolve-maps-link` edge function (which follows the redirect server-side).
-function LocationFromLink({ onCoords }: { onCoords: (c: { lat: number; lng: number }) => void }) {
-  const [url, setUrl] = useState("");
-  const [busy, setBusy] = useState(false);
-  const apply = async () => {
-    let c = parseLatLngFromGoogleMapsUrl(url);
-    if (!c && /goo\.gl|maps\.app\.goo\.gl/i.test(url)) {
-      setBusy(true);
-      try {
-        const { data, error } = await supabase.functions.invoke("resolve-maps-link", {
-          body: { url: url.trim() },
-        });
-        if (!error && data && typeof data.lat === "number" && typeof data.lng === "number") {
-          c = { lat: data.lat, lng: data.lng };
-        }
-      } catch {
-        /* fall through to the error toast below */
-      } finally {
-        setBusy(false);
-      }
-    }
-    if (!c) {
-      toast.error(
-        "Couldn't read coordinates from that link. Paste a full Google Maps URL that contains @lat,lng (or deploy the resolve-maps-link function for short goo.gl links).",
-      );
-      return;
-    }
-    onCoords(c);
-    toast.success(`Location set to ${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}`);
-    setUrl("");
-  };
-  return (
-    <div className="flex gap-2">
-      <Input
-        value={url}
-        onChange={(e) => setUrl(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            void apply();
-          }
-        }}
-        placeholder="Paste Google Maps link (…/@25.19,55.27,… or a goo.gl short link)"
-      />
-      <Button type="button" onClick={() => void apply()} disabled={!url.trim() || busy} className="shrink-0">
-        {busy ? "…" : "Set"}
-      </Button>
     </div>
   );
 }

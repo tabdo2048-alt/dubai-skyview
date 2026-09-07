@@ -8,6 +8,17 @@ export type OptimizedProjectImage = {
   thumbnail: File | null;
 };
 
+export async function imageContentHash(file: Blob): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export function formatImageBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+}
+
 /**
  * Convert an uploaded raster image to a reasonably sized WebP (or JPEG when
  * WebP encoding is unavailable), plus a small WebP thumbnail for lists/maps.

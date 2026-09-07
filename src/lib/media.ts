@@ -27,6 +27,8 @@ export const PROJECT_MEDIA_BUCKET = "project-media";
 // session never sees an image break. See the caveat in resolveMediaUrls about
 // what this means for og:image.
 export const SIGNED_URL_TTL_SECONDS = 3600;
+const SIGNED_URL_CACHE_MS = 50 * 60 * 1000;
+const signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
 
 const PUBLIC_MARKER = `/object/public/${PROJECT_MEDIA_BUCKET}/`;
 const SIGN_MARKER = `/object/sign/${PROJECT_MEDIA_BUCKET}/`;
@@ -101,7 +103,14 @@ async function resolveStorageUrls(
   for (const value of values) {
     if (!value || out.has(value) || pathByValue.has(value)) continue;
     const path = pathForValue(value);
-    if (path) pathByValue.set(value, path);
+    if (path) {
+      const cached = signedUrlCache.get(path);
+      if (cached && cached.expiresAt > Date.now()) out.set(value, cached.url);
+      else {
+        if (cached) signedUrlCache.delete(path);
+        pathByValue.set(value, path);
+      }
+    }
     else out.set(value, value);
   }
   if (pathByValue.size === 0) return out;
@@ -121,7 +130,11 @@ async function resolveStorageUrls(
 
   data.forEach((row, i) => {
     const original = values_[i];
-    if (row.signedUrl) out.set(original, row.signedUrl);
+    if (row.signedUrl) {
+      out.set(original, row.signedUrl);
+      const path = pathByValue.get(original);
+      if (path) signedUrlCache.set(path, { url: row.signedUrl, expiresAt: Date.now() + SIGNED_URL_CACHE_MS });
+    }
   });
   return out;
 }

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { withSignedProjectMedia } from "@/lib/media";
-import type { ProjectWithRelations, ProjectFilters, ProjectRow } from "@/lib/types";
+import { resolveMediaThumbnailUrls, resolveMediaUrls, withSignedProjectMedia } from "@/lib/media";
+import type { ProjectWithRelations, ProjectFilters, ProjectRow, ProjectUnitTypeImageRow } from "@/lib/types";
 import { lowestUnitPrice } from "@/lib/unit-types";
 
 export function projectsQueryKey() {
@@ -136,7 +136,9 @@ export function useProjects() {
 export async function fetchProjectBySlug(slug: string): Promise<ProjectWithRelations | null> {
   const { data, error } = await supabase
     .from("projects")
-    .select(PROJECT_DETAIL_SELECT_WITH_PLANS)
+    // Public project pages need unit prices/details, but unit photos belong to
+    // the selected unit page and are fetched there on demand.
+    .select(PROJECT_DETAIL_SELECT_WITH_PLANS_LEGACY_UNIT_IMAGES)
     .eq("slug", slug)
     .maybeSingle();
   if (!error && data) return signOne(normalizeProject(data));
@@ -147,38 +149,20 @@ export async function fetchProjectBySlug(slug: string): Promise<ProjectWithRelat
   if (isMissingRelation(error)) {
     const retry = await supabase
       .from("projects")
-      .select(PROJECT_DETAIL_SELECT_PLANS)
+      .select(PROJECT_DETAIL_SELECT_PLANS_LEGACY_UNIT_IMAGES)
       .eq("slug", slug)
       .maybeSingle();
     if (!retry.error && retry.data) return signOne(normalizeProject(retry.data));
     if (!retry.error) return fetchProjectByReadableSlug(slug);
 
-    // The payment-plan relation may exist while the optional unit-photo
-    // relation is not installed yet. Drop only that relation before falling
-    // back to the older plan query.
-    const plansWithoutUnitImages = await supabase
-      .from("projects")
-      .select(PROJECT_DETAIL_SELECT_WITH_PLANS_LEGACY_UNIT_IMAGES)
-      .eq("slug", slug)
-      .maybeSingle();
-    if (!plansWithoutUnitImages.error && plansWithoutUnitImages.data) return signOne(normalizeProject(plansWithoutUnitImages.data));
-    if (!plansWithoutUnitImages.error) return fetchProjectByReadableSlug(slug);
-
     const baseRetry = await supabase
       .from("projects")
-      .select(PROJECT_DETAIL_SELECT_BASE)
+      .select(PROJECT_DETAIL_SELECT_BASE_LEGACY_UNIT_IMAGES)
       .eq("slug", slug)
       .maybeSingle();
     if (!baseRetry.error && baseRetry.data) return signOne(normalizeProject(baseRetry.data));
     if (!baseRetry.error) return fetchProjectByReadableSlug(slug);
 
-    const baseWithoutUnitImages = await supabase
-      .from("projects")
-      .select(PROJECT_DETAIL_SELECT_BASE_LEGACY_UNIT_IMAGES)
-      .eq("slug", slug)
-      .maybeSingle();
-    if (!baseWithoutUnitImages.error && baseWithoutUnitImages.data) return signOne(normalizeProject(baseWithoutUnitImages.data));
-    if (!baseWithoutUnitImages.error) return fetchProjectByReadableSlug(slug);
   }
 
   console.warn("[Projects] full project query failed; falling back to legacy schema", error.message);
@@ -218,7 +202,43 @@ async function fetchProjectByReadableSlug(input: string): Promise<ProjectWithRel
     ].includes(requested);
   });
 
-  return candidate ? fetchProjectById(candidate.id) : null;
+  return candidate ? fetchPublicProjectById(candidate.id) : null;
+}
+
+async function fetchPublicProjectById(id: string): Promise<ProjectWithRelations | null> {
+  const attempts = [
+    PROJECT_DETAIL_SELECT_WITH_PLANS_LEGACY_UNIT_IMAGES,
+    PROJECT_DETAIL_SELECT_PLANS_LEGACY_UNIT_IMAGES,
+    PROJECT_DETAIL_SELECT_BASE_LEGACY_UNIT_IMAGES,
+  ];
+  for (const select of attempts) {
+    const { data, error } = await supabase.from("projects").select(select).eq("id", id).maybeSingle();
+    if (!error) return signOne(normalizeProject(data));
+    if (!isMissingRelation(error)) throw error;
+  }
+  return null;
+}
+
+export async function fetchUnitImages(unitTypeId: string): Promise<Array<ProjectUnitTypeImageRow & { src: string; thumb_src: string }>> {
+  const { data, error } = await supabase
+    .from("project_unit_type_images")
+    .select("*")
+    .eq("unit_type_id", unitTypeId)
+    .order("sort_order");
+  if (error) throw error;
+  const rows = (data ?? []) as ProjectUnitTypeImageRow[];
+  const values = rows.map((image) => image.url);
+  const [full, thumbs] = await Promise.all([resolveMediaUrls(values), resolveMediaThumbnailUrls(values)]);
+  return rows.map((image) => ({ ...image, src: full.get(image.url) ?? image.url, thumb_src: thumbs.get(image.url) ?? full.get(image.url) ?? image.url }));
+}
+
+export function useUnitImages(unitTypeId: string | null) {
+  return useQuery({
+    queryKey: ["unit-images", unitTypeId],
+    queryFn: () => fetchUnitImages(unitTypeId!),
+    enabled: Boolean(unitTypeId),
+    staleTime: 50 * 60 * 1000,
+  });
 }
 
 /** Full project fetch used by the admin editor without loading every project. */

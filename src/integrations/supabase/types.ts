@@ -147,6 +147,7 @@ export type Database = {
       }
       project_images: {
         Row: {
+          content_hash: string | null
           created_at: string
           id: string
           project_id: string
@@ -154,6 +155,7 @@ export type Database = {
           url: string
         }
         Insert: {
+          content_hash?: string | null
           created_at?: string
           id?: string
           project_id: string
@@ -161,6 +163,7 @@ export type Database = {
           url: string
         }
         Update: {
+          content_hash?: string | null
           created_at?: string
           id?: string
           project_id?: string
@@ -413,6 +416,7 @@ export type Database = {
       }
       project_unit_type_images: {
         Row: {
+          content_hash: string | null
           created_at: string
           id: string
           is_floor_plan: boolean
@@ -424,6 +428,7 @@ export type Database = {
           url: string
         }
         Insert: {
+          content_hash?: string | null
           created_at?: string
           id?: string
           is_floor_plan?: boolean
@@ -435,6 +440,7 @@ export type Database = {
           url: string
         }
         Update: {
+          content_hash?: string | null
           created_at?: string
           id?: string
           is_floor_plan?: boolean
@@ -690,6 +696,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      platform_media_missing_thumbnails: {
+        Args: { batch_limit?: number }
+        Returns: { object_path: string; size_bytes: number }[]
+      }
+      platform_media_storage_overview: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       is_current_user_blocked: {
         Args: Record<PropertyKey, never>
         Returns: boolean
