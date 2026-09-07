@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import mapboxgl from "mapbox-gl";
-import { DUBAI_BOUNDS } from "@/lib/dubai";
+import { ZOOM_OUT_BOUNDS } from "@/lib/dubai";
 
 type Props = {
   accessToken: string;
@@ -13,7 +13,8 @@ type Props = {
 /**
  * A small satellite map for the admin form: click anywhere (or drag the pin) to
  * set a project's location. Emits lat/lng back so the numeric fields stay in
- * sync. Locked to the Dubai bounds so admins can't place projects elsewhere.
+ * sync. Uses the same regional extent as the public map so admins can place
+ * projects anywhere visitors can browse, including the northern emirates.
  */
 export function AdminLocationPicker({ accessToken, lat, lng, onChange }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -36,8 +37,8 @@ export function AdminLocationPicker({ accessToken, lat, lng, onChange }: Props) 
       center: [lng, lat],
       zoom: 13,
       maxBounds: [
-        [DUBAI_BOUNDS.west, DUBAI_BOUNDS.south],
-        [DUBAI_BOUNDS.east, DUBAI_BOUNDS.north],
+        [ZOOM_OUT_BOUNDS.west, ZOOM_OUT_BOUNDS.south],
+        [ZOOM_OUT_BOUNDS.east, ZOOM_OUT_BOUNDS.north],
       ],
     });
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
