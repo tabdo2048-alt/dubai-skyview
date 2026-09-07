@@ -164,7 +164,9 @@ export async function withSignedProjectMedia<
     (project.unit_types ?? []).flatMap((unit) => (unit.images ?? []).map((image) => image.url)),
   );
   const fullValues = thumbnailsOnly ? [] : [...mainValues, ...galleryValues, ...headerValues];
-  const thumbValues = thumbnailsOnly ? mainValues : [...mainValues, ...galleryValues];
+  // Unit cards and galleries need the generated small variants too. Omitting
+  // them here made every unit thumbnail download the full-resolution object.
+  const thumbValues = thumbnailsOnly ? mainValues : [...mainValues, ...galleryValues, ...unitImageValues];
 
   const [resolved, thumbnails] = await Promise.all([
     [...fullValues, ...unitPlanValues, ...unitImageValues].some(Boolean)

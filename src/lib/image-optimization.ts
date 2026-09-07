@@ -1,7 +1,7 @@
-const FULL_MAX_DIMENSION = 1920;
-const THUMB_MAX_DIMENSION = 480;
-const FULL_QUALITY = 0.82;
-const THUMB_QUALITY = 0.72;
+const FULL_MAX_DIMENSION = 1600;
+const THUMB_MAX_DIMENSION = 360;
+const FULL_QUALITY = 0.78;
+const THUMB_QUALITY = 0.68;
 
 export type OptimizedProjectImage = {
   full: File;
