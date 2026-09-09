@@ -119,7 +119,7 @@ export function ProjectModelUpload({
           type="url"
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          placeholder="Or paste a Cloudinary HTTPS .glb URL"
+          placeholder="Paste an HTTPS .glb URL or a 3D Tiles tileset.json URL"
           aria-label="Project 3D model URL"
           disabled={uploading}
         />
@@ -149,8 +149,7 @@ export function ProjectModelUpload({
         </div>
       ) : null}
       <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Box className="h-3.5 w-3.5" /> GLB with embedded textures · up to 100 MB · keep building
-        names in the model for click labels
+        <Box className="h-3.5 w-3.5" /> Upload GLB with embedded textures (up to 100 MB), or paste a hosted 3D Tiles tileset.json URL
       </p>
     </div>
   );

@@ -1,0 +1,50 @@
+export const MASTERPLAN_THEME = {
+  land: "#d8cbb3",
+  sand: "#cbb997",
+  water: "#269aa2",
+  park: "#799379",
+  buildingResidential: "#eadfc9",
+  buildingCommercial: "#9eafb7",
+  buildingHotel: "#dfc899",
+  buildingUnknown: "#d8d0c0",
+  roadMotorway: "#31353a",
+  roadTrunk: "#444a50",
+  roadPrimary: "#596066",
+  roadSecondary: "#7e8382",
+  roadTertiary: "#a2a19b",
+  roadLocal: "#beb7aa",
+  roadService: "#cbc3b5",
+  roadBridge: "#2c3035",
+  roadTunnel: "#77756f",
+  projectBoundary: "#b98a31",
+  selected: "#f2bd51",
+  hovered: "#ffe2a0",
+  goldAccent: "#c9a84c",
+  label: "#102729",
+  labelOutline: "#f5f0e4",
+  sky: "#bdd8e1",
+} as const;
+
+export const MASTERPLAN_LAYOUT = {
+  defaultFloorHeightM: 3.2,
+  minimumBuildingHeightM: 3,
+  maximumBuildingHeightM: 500,
+  fallbackHeightByTypeM: {
+    residential: 15,
+    apartments: 24,
+    commercial: 20,
+    hotel: 28,
+    industrial: 9,
+    retail: 8,
+    unknown: 12,
+  },
+  bridgeBaseClearanceM: 7,
+  bridgeLayerStepM: 6,
+  roadGroundOffsetM: 0.35,
+  waterOffsetM: 0.15,
+  projectNearDistanceM: 65_000,
+  projectFarDistanceM: 500_000,
+} as const;
+
+export type MasterplanTheme = typeof MASTERPLAN_THEME;
+

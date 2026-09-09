@@ -11,6 +11,10 @@ import type { Json } from "@/integrations/supabase/types";
 const AdminZoneEditor = lazy(() =>
   import("@/components/map/AdminZoneEditor").then((m) => ({ default: m.AdminZoneEditor })),
 );
+const CesiumProjectPlacementEditor = lazy(async () => {
+  globalThis.CESIUM_BASE_URL = "/cesium/";
+  return import("@/components/map/cesium/CesiumProjectPlacementEditor");
+});
 import { useAuth, useIsAdmin } from "@/hooks/use-auth";
 import { useMapConfig } from "@/hooks/use-map-config";
 import { useProjects, useProjectById, useCommunities, useDevelopers } from "@/hooks/use-projects";
@@ -669,6 +673,7 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
   const [imageFiles, setImageFiles] = useState<PreparedImageUpload[]>([]);
   const [saving, setSaving] = useState(false);
   const [mapsAvailable, setMapsAvailable] = useState(false);
+  const [placementEditorOpen, setPlacementEditorOpen] = useState(false);
 
   useEffect(() => {
     try {
@@ -1508,7 +1513,42 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
               <Input type="number" min="-360" max="360" step="1" value={f.model_3d_rotation} onChange={(event) => setF((current) => ({ ...current, model_3d_rotation: Number(event.target.value) }))} />
             </Field>
           </div>
-          <p className="text-xs text-muted-foreground">Leave model latitude and longitude blank to use the project marker. GLB units should be metres; use scale and heading only for fine alignment.</p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">Leave model latitude and longitude blank to use the project marker. GLB units should be metres; use scale and heading only for fine alignment.</p>
+            {f.model_3d_url && mapsAvailable && (
+              <Button type="button" variant="outline" className="glass gold-hairline" onClick={() => setPlacementEditorOpen((open) => !open)}>
+                {placementEditorOpen ? "Close visual editor" : "Open visual placement editor"}
+              </Button>
+            )}
+          </div>
+          {placementEditorOpen && f.model_3d_url && (
+            <Suspense fallback={<div className="grid h-40 place-items-center text-sm text-muted-foreground">Loading Cesium editor…</div>}>
+              <CesiumProjectPlacementEditor
+                modelUrl={f.model_3d_url}
+                ionToken={import.meta.env.VITE_CESIUM_ION_TOKEN}
+                value={{
+                  latitude: f.model_3d_lat ?? f.lat,
+                  longitude: f.model_3d_lng ?? f.lng,
+                  altitude: f.model_3d_altitude,
+                  scale: f.model_3d_scale,
+                  heading: f.model_3d_rotation,
+                }}
+                onCancel={() => setPlacementEditorOpen(false)}
+                onSave={(placement) => {
+                  setF((current) => ({
+                    ...current,
+                    model_3d_lat: placement.latitude,
+                    model_3d_lng: placement.longitude,
+                    model_3d_altitude: placement.altitude,
+                    model_3d_scale: placement.scale,
+                    model_3d_rotation: placement.heading,
+                  }));
+                  setPlacementEditorOpen(false);
+                  toast.success("3D placement applied. Save the project to persist it.");
+                }}
+              />
+            </Suspense>
+          )}
         </div>
         <Field label="360 tour URL"><Input value={f.tour_360_url} onChange={(e) => setF({ ...f, tour_360_url: e.target.value })} /></Field>
         <Field label="Tags"><Input value={f.tags} onChange={(e) => setF({ ...f, tags: e.target.value })} placeholder="waterfront, luxury, family" /></Field>

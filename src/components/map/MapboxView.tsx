@@ -40,6 +40,7 @@ import {
   type ZoneRow,
   type ZoneCategory,
 } from "@/lib/zones";
+import type { LightPreset, MapCameraState } from "./mapTypes";
 
 // Satellite land tint — a warm-sepia grade over the Maxar imagery. The land is a
 // PHOTO, so this adjusts the image rather than painting a flat colour. To change
@@ -75,7 +76,7 @@ type TrainMotionState = {
   lastRotation?: number;
 };
 
-export type LightPreset = "dawn" | "day" | "dusk" | "night";
+export type { LightPreset } from "./mapTypes";
 
 type Props = {
   accessToken: string;
@@ -89,8 +90,8 @@ type Props = {
   zones?: ZoneRow[];
   /** Which RY/STR/HH highlight buttons are currently on. */
   zoneCategories?: Set<ZoneCategory>;
-  camera: { lat: number; lng: number; zoom: number };
-  onCameraChange: (c: { lat: number; lng: number; zoom: number }) => void;
+  camera: MapCameraState;
+  onCameraChange: (c: MapCameraState) => void;
   onReady?: () => void;
   /**
    * Fires with the live Mapbox map instance once it is ready (map + heavy layers

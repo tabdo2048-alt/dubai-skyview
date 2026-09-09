@@ -8,6 +8,8 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+data/geodata/raw/
+data/geodata/intermediate/
 dist
 dist-ssr
 .output

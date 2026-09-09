@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { emptyFilters, type ProjectFilters } from "@/lib/types";
-import type { LightPreset } from "@/components/map/MapboxView";
+import type { LightPreset } from "@/components/map/mapTypes";
 import type { ZoneCategory } from "@/lib/zones";
 
 type MapMode = "satellite" | "3d";

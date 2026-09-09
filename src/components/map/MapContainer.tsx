@@ -14,7 +14,8 @@ import {
   LocateFixed,
 } from "lucide-react";
 import type mapboxgl from "mapbox-gl";
-import { MapboxView, type LightPreset } from "./MapboxView";
+import { MapboxView } from "./MapboxView";
+import type { LightPreset, MapCameraState } from "./mapTypes";
 import { CloudLayer } from "./CloudLayer";
 import { CategoryPanel } from "./CategoryPanel";
 import { LayersMenu } from "./LayersMenu";
@@ -26,6 +27,10 @@ import { ProjectPopup } from "./ProjectPopup";
 const WaterDebugEditor = lazy(() =>
   import("./WaterDebugEditor").then((m) => ({ default: m.WaterDebugEditor })),
 );
+const CesiumView = lazy(async () => {
+  globalThis.CESIUM_BASE_URL = "/cesium/";
+  return import("./cesium/CesiumView");
+});
 import { shouldShowWaterDebugEditor } from "./waterDebugState";
 import { ROAD_GUIDE, setRouteHighlight } from "./roadsLayer";
 import { useMapConfig } from "@/hooks/use-map-config";
@@ -98,7 +103,7 @@ export function MapContainer() {
   usePoiRealtime();
   const { data: zones = [] } = useZones();
   useZonesRealtime();
-  const [camera, setCamera] = useState({
+  const [camera, setCamera] = useState<MapCameraState>({
     lat: DUBAI_CENTER.lat,
     lng: DUBAI_CENTER.lng,
     zoom: DEFAULT_ZOOM,
@@ -138,17 +143,8 @@ export function MapContainer() {
     projects.find((p) => p.id === selectedProjectId) ??
     null;
 
-  // Only the map(s) the user has actually visited get mounted. On first load
-  // that's a single Mapbox GL context (half the GPU/memory of mounting both);
-  // switching modes mounts the other one lazily and then keeps it alive, so
-  // re-switching stays instant with no expensive map re-creation.
-  const [mountedModes, setMountedModes] = useState<Set<"satellite" | "3d">>(
-    () => new Set([mapMode]),
-  );
-
   const switchMode = (mode: "satellite" | "3d") => {
     if (mode === mapMode) return;
-    setMountedModes((prev) => (prev.has(mode) ? prev : new Set(prev).add(mode)));
     setTransitioning(true);
     setMapReady(false); // Show loading overlay while new map loads
     setMapMode(mode);
@@ -166,14 +162,8 @@ export function MapContainer() {
       {cfg && (
         <>
           {/* Flat Mapbox satellite view (satellite-streets) with metro/train + water overlay */}
-          {mountedModes.has("satellite") && (
-            <div
-              className={
-                mapMode === "satellite"
-                  ? "absolute inset-0"
-                  : "absolute inset-0 opacity-0 pointer-events-none"
-              }
-            >
+          {mapMode === "satellite" && (
+            <div className="absolute inset-0">
               <MapboxView
                 accessToken={cfg.mapboxAccessToken}
                 projects={projectsToShow}
@@ -185,6 +175,7 @@ export function MapContainer() {
                 camera={camera}
                 onCameraChange={setCamera}
                 onReady={() => mapMode === "satellite" && setMapReady(true)}
+                onMapReady={waterEditorEnabled ? setEditorMap : undefined}
                 active={mapMode === "satellite"}
                 metroMode={visibleMetroMode}
                 trainMode={trainMode}
@@ -195,17 +186,18 @@ export function MapContainer() {
             </div>
           )}
 
-          {/* 3D Mapbox view (Standard style, buildings, animated water/boats/clouds) */}
-          {mountedModes.has("3d") && (
-            <div
-              className={
-                mapMode === "3d"
-                  ? "absolute inset-0"
-                  : "absolute inset-0 opacity-0 pointer-events-none"
-              }
-            >
-              <MapboxView
-                accessToken={cfg.mapboxAccessToken}
+          {/* Cesium is the sole WebGL engine in 3D mode; Mapbox is unmounted. */}
+          {mapMode === "3d" && (
+            <div className="absolute inset-0">
+              <Suspense
+                fallback={
+                  <div className="grid h-full place-items-center bg-[#d8cbb3]">
+                    <Loader2 className="h-7 w-7 animate-spin text-gold" />
+                  </div>
+                }
+              >
+              <CesiumView
+                ionToken={import.meta.env.VITE_CESIUM_ION_TOKEN}
                 projects={projectsToShow}
                 pois={pois}
                 flyToTarget={emirateTarget}
@@ -215,14 +207,13 @@ export function MapContainer() {
                 camera={camera}
                 onCameraChange={setCamera}
                 onReady={() => mapMode === "3d" && setMapReady(true)}
-                onMapReady={waterEditorEnabled ? setEditorMap : undefined}
                 active={mapMode === "3d"}
                 metroMode={visibleMetroMode}
                 trainMode={trainMode}
                 roadsMode={roadsMode}
                 lightPreset={lightPreset}
-                mode="3d"
               />
+              </Suspense>
             </div>
           )}
         </>
@@ -236,7 +227,7 @@ export function MapContainer() {
       <CategoryPanel />
 
       {/* Dev-only Water Debug Editor (3D mode) — never mounted in production. */}
-      {waterEditorEnabled && mapMode === "3d" && (
+      {waterEditorEnabled && mapMode === "satellite" && (
         <Suspense fallback={null}>
           <WaterDebugEditor map={editorMap} />
         </Suspense>
@@ -280,7 +271,7 @@ export function MapContainer() {
         <EmiratesMenu activeKey={selectedEmirate} onSelect={goToEmirate} />
         <LayersMenu
           canUseMetro={canUseMetro}
-          showWaterEditor={import.meta.env.DEV}
+          showWaterEditor={import.meta.env.DEV && mapMode === "satellite"}
           waterEditor={waterEditorEnabled}
           onToggleWaterEditor={() => setWaterEditorEnabled((on) => !on)}
         />
@@ -294,7 +285,7 @@ export function MapContainer() {
         </button>
       </div>
 
-      {/* Light preset switcher — Mapbox Standard's built-in day/dawn/dusk/night */}
+      {/* Light preset switcher — drives Cesium sun/scene lighting. */}
       {mapMode === "3d" && (
         <div className="pointer-events-auto glass gold-hairline absolute right-4 top-16 z-20 flex gap-1 rounded-full p-1">
           {LIGHT_PRESETS.map(({ value, label, Icon }) => (
@@ -350,8 +341,8 @@ export function MapContainer() {
                       initial={{ opacity: 0, x: -8 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: 0.15 + i * 0.06, duration: 0.3, ease: "easeOut" }}
-                      onPointerEnter={() => setRouteHighlight(r.key, true)}
-                      onPointerLeave={() => setRouteHighlight(r.key, false)}
+                      onPointerEnter={() => mapMode === "satellite" && setRouteHighlight(r.key, true)}
+                      onPointerLeave={() => mapMode === "satellite" && setRouteHighlight(r.key, false)}
                       className="flex cursor-pointer items-center gap-2 rounded-lg px-1.5 py-1 text-xs text-cream/90 transition-colors hover:bg-white/10"
                     >
                       <span

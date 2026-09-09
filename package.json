@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "test:unit-offers": "esbuild scripts/verify-unit-offers.tsx --bundle --platform=node --format=esm --packages=external --outfile=artifacts/unit-offer-check.mjs && node artifacts/unit-offer-check.mjs",
+    "test:cesium-geodata": "esbuild scripts/verify-cesium-geodata.ts --bundle --platform=node --format=esm --packages=external --outfile=artifacts/cesium-geodata-check.mjs && node artifacts/cesium-geodata-check.mjs",
     "generate:water": "esbuild scripts/generate-water-geometry.ts --bundle --platform=node --format=cjs --outfile=.output/generate-water.cjs && node .output/generate-water.cjs",
     "generate:roads": "esbuild scripts/generate-roads.ts --bundle --platform=node --format=cjs --outfile=.output/generate-roads.cjs && node .output/generate-roads.cjs",
     "generate:rail": "esbuild scripts/generate-rail.ts --bundle --platform=node --format=cjs --outfile=.output/generate-rail.cjs && node .output/generate-rail.cjs",
@@ -20,6 +21,11 @@
     "validate:metro": "esbuild scripts/validateMetro.ts --bundle --platform=node --format=cjs --outfile=.output/metro-validation.cjs && node .output/metro-validation.cjs",
     "verify:earcut": "esbuild scripts/earcut-check.ts --bundle --platform=node --format=cjs --outfile=.output/earcut-check.cjs && node .output/earcut-check.cjs",
     "verify:water": "esbuild scripts/screenshot-water.ts --bundle --platform=node --format=cjs --external:playwright --outfile=.output/screenshot-water.cjs && node .output/screenshot-water.cjs",
+    "geodata:download:pilot": "esbuild scripts/geodata/download-osm-dubai.ts --bundle --platform=node --format=esm --packages=external --outfile=.output/geodata-download.mjs && node .output/geodata-download.mjs",
+    "geodata:process:osm": "esbuild scripts/geodata/process-osm.ts --bundle --platform=node --format=esm --packages=external --outfile=.output/geodata-process-osm.mjs && node .output/geodata-process-osm.mjs",
+    "geodata:generate": "esbuild scripts/geodata/generate-runtime-geodata.ts --bundle --platform=node --format=esm --packages=external --outfile=.output/geodata-generate.mjs && node .output/geodata-generate.mjs",
+    "geodata:validate": "esbuild scripts/geodata/validate-geodata.ts --bundle --platform=node --format=esm --packages=external --outfile=.output/geodata-validate.mjs && node .output/geodata-validate.mjs",
+    "geodata:pilot": "npm run geodata:download:pilot && npm run geodata:process:osm && npm run geodata:generate && npm run geodata:validate",
     "format": "prettier --write ."
   },
   "dependencies": {
@@ -60,6 +66,7 @@
     "@tanstack/router-plugin": "^1.168.18",
     "@turf/turf": "^7.3.5",
     "@types/mapbox__mapbox-gl-draw": "^1.4.9",
+    "cesium": "1.145.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
@@ -96,6 +103,9 @@
     "@types/supercluster": "^7.1.3",
     "@types/three": "^0.180.0",
     "@vitejs/plugin-react": "^5.2.0",
+    "@xmldom/xmldom": "0.9.12",
+    "csv-parse": "7.0.2",
+    "esbuild": "0.28.2",
     "eslint": "^9.32.0",
     "eslint-config-prettier": "^10.1.1",
     "eslint-plugin-prettier": "^5.2.6",
@@ -104,12 +114,14 @@
     "globals": "^15.15.0",
     "lightningcss": "^1.30.0",
     "nitro": "3.0.260603-beta",
+    "osm-pbf-parser": "2.3.0",
     "osmtogeojson": "3.0.0-beta.5",
     "playwright": "^1.61.1",
     "prettier": "^3.7.3",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.56.1",
-    "vite": "^8.0.16"
+    "vite": "^8.0.16",
+    "vite-plugin-static-copy": "4.1.1"
   },
   "overrides": {
     "@xmldom/xmldom": "0.9.12"
