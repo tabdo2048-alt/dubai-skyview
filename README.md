@@ -66,6 +66,9 @@ Create a `.env` file in the project root:
 | `STRIPE_YEARLY_PRICE_ID` | server/Edge Function | Optional verified Stripe Price ID for 1,000 AED/year |
 | `APP_URL` | server | Canonical HTTPS application URL for Stripe redirects |
 | `GOOGLE_MAPS_API_KEY` | server | Optional, for Google geodata lookups |
+| `CLOUDINARY_CLOUD_NAME` | server | Cloudinary product-environment cloud name for project videos |
+| `CLOUDINARY_API_KEY` | server | Cloudinary API key used in signed video uploads |
+| `CLOUDINARY_API_SECRET` | server | Cloudinary API secret used only by the server-side signer — never expose to the client |
 | `VITE_WATER_DEBUG` | client | Optional: `true` enables the water debug editor |
 | `VITE_NAVIGATION_DEBUG_OVERLAY` | client | Optional: `true` shows the marine-navigation debug overlay |
 
@@ -77,6 +80,10 @@ Migrations and seed data live in `supabase/`:
 supabase db push                                  # apply migrations
 psql < supabase/seed_dubai_sample_projects.sql    # optional sample data
 ```
+
+### Project teaser videos
+
+Project managers can upload MP4 or WebM videos (up to 100 MB) from the project form. The browser uploads directly to Cloudinary using a short-lived server-generated signature; Supabase stores only the returned URL in `projects.video_url`. Configure the three server-only Cloudinary variables above in Vercel for Production, Preview, and Development. Map popups play at most the first 10 seconds, regardless of the uploaded video's full duration.
 
 ## Scripts
 

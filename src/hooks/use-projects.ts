@@ -19,6 +19,7 @@ const PROJECT_LIST_SELECT = `
   bedrooms_min,bedrooms_max,bathrooms,completion_date,payment_plan,status,category,
   tags,description,main_image_url,offer_primary_color,offer_accent_color,offer_header_image_url,
   video_url,tour_360_url,brochure_url,featured,
+  model_3d_url,model_3d_enabled,model_3d_lat,model_3d_lng,model_3d_altitude,model_3d_scale,model_3d_rotation,
   created_at,updated_at,plot_geometry,plot_color,is_public,tenant_id,
   developer:developers(*),
   community:communities(id,name,slug),

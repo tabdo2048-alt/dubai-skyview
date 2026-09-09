@@ -23,6 +23,7 @@ import {
 // the water layer is actually added — never in the initial page bundle.
 import type { createWaterLayer as CreateWaterLayer } from "./WaterLayer";
 import type { createStationModelLayer as CreateStationModelLayer } from "./StationModelLayer";
+import type { createProjectModelLayer as CreateProjectModelLayer } from "./ProjectModelLayer";
 import { addRoadsLayers, setRoadsVisible } from "./roadsLayer";
 import type { ProjectWithRelations } from "@/lib/types";
 import { useFiltersStore } from "@/store/filters";
@@ -158,6 +159,11 @@ const PROJECT_MARKER_CSS = `
   box-shadow:0 2px 8px rgba(0,0,0,.35);transition:background .28s ease,color .28s ease}
 .proj-lm:hover .proj-nm{background:#fff}
 .proj-lm:has(.proj-pin.selected) .proj-nm{background:linear-gradient(158deg,#e9c766,#c19a3c);color:#1a1206}
+.project-model-popup .mapboxgl-popup-content{padding:8px 12px;border:1px solid rgba(201,168,76,.65);
+  border-radius:10px;background:rgba(9,16,24,.94);color:#f7edd2;font:700 12px/1.3 'Work Sans',Arial,sans-serif;
+  box-shadow:0 12px 30px rgba(0,0,0,.4)}
+.project-model-popup .mapboxgl-popup-tip{border-top-color:rgba(9,16,24,.94);border-bottom-color:rgba(9,16,24,.94)}
+.project-model-popup .mapboxgl-popup-close-button{color:#c9a84c;padding:1px 4px}
 @media (prefers-reduced-motion:reduce){.proj-pin,.proj-nm{transition:none}}`;
 
 function ensureProjectMarkerStyles() {
@@ -199,6 +205,7 @@ export function MapboxView({
   const trainRafRef = useRef<number | null>(null);
   const trainMotionRef = useRef<Map<string, TrainMotionState>>(new globalThis.Map());
   const stationModelRef = useRef<ReturnType<typeof import("./StationModelLayer").createStationModelLayer> | null>(null);
+  const projectModelRef = useRef<ReturnType<typeof import("./ProjectModelLayer").createProjectModelLayer> | null>(null);
   const styleLoadedRef = useRef(false);
   const didFitWholeRef = useRef(false); // one-time: open framed on the whole map
   const tightMinZoomRef = useRef<number | null>(null); // fit zoom for MAP_MAX_BOUNDS (pan-clamp floor)
@@ -883,6 +890,32 @@ export function MapboxView({
       stationModelRef.current = handle;
     } catch (err) {
       console.error("Failed to add station model layer", err);
+    }
+  }
+
+  async function addProjectModelLayer(map: mapboxgl.Map, project: ProjectWithRelations) {
+    if (mode !== "3d" || !project.model_3d_enabled || !project.model_3d_url?.startsWith("https://")) return;
+    try {
+      const { createProjectModelLayer } = await import("./ProjectModelLayer");
+      if (!mapRef.current || mapRef.current !== map || selectedIdRef.current !== project.id) return;
+      const handle = (createProjectModelLayer as typeof CreateProjectModelLayer)(
+        makeRenderController(),
+        {
+          projectId: project.id,
+          projectName: project.name,
+          url: project.model_3d_url,
+          lat: project.model_3d_lat ?? project.lat,
+          lng: project.model_3d_lng ?? project.lng,
+          altitude: project.model_3d_altitude ?? 0,
+          scale: project.model_3d_scale ?? 1,
+          rotation: project.model_3d_rotation ?? 0,
+        },
+      );
+      map.addLayer(handle.layer);
+      stubCustomLayerPaint(map, "selected-project-digital-twin");
+      projectModelRef.current = handle;
+    } catch (err) {
+      console.error("Failed to add the selected project's 3D model", err);
     }
   }
 
@@ -1771,6 +1804,28 @@ export function MapboxView({
     recomputePlots(map);
   }, [selectedProjectId, pinnedPlotIds, projects, mapReady, recomputePlots]);
 
+  // Load only the selected project's detailed digital twin. Architectural GLB
+  // files are intentionally never loaded for the full project list: that keeps
+  // the overview fast even when many projects have high-detail models.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    const layerId = "selected-project-digital-twin";
+    if (map.getLayer(layerId)) map.removeLayer(layerId);
+    projectModelRef.current = null;
+    if (!active || mode !== "3d" || !selectedProjectId) return;
+    const project = projects.find((item) => item.id === selectedProjectId);
+    if (!project) return;
+    void addProjectModelLayer(map, project);
+
+    return () => {
+      if (mapRef.current === map && map.getLayer(layerId)) map.removeLayer(layerId);
+      projectModelRef.current = null;
+    };
+    // The helper intentionally reads the latest render-controller refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, mapReady, mode, projects, selectedProjectId]);
+
   // Landmark places (tourism / schools / hospitals) — ONE Mapbox symbol layer.
   // `pois` already holds only the active categories, so refreshing the layer's
   // data IS the toggle: empty pois → layer hidden, no orphaned nodes. Icon+label
@@ -1859,10 +1914,11 @@ export function MapboxView({
     if (!map || !active || !selectedProjectId) return;
     const p = projects.find((x) => x.id === selectedProjectId);
     if (!p) return;
+    const hasDigitalTwin = mode === "3d" && p.model_3d_enabled && Boolean(p.model_3d_url);
     map.flyTo({
       center: [p.lng, p.lat],
-      zoom: Math.max(map.getZoom(), 15.5),
-      pitch: mode === "3d" ? 55 : 0,
+      zoom: Math.max(map.getZoom(), hasDigitalTwin ? 17.2 : 15.5),
+      pitch: mode === "3d" ? (hasDigitalTwin ? 62 : 55) : 0,
       bearing: map.getBearing(),
       duration: 1500,
       essential: true,

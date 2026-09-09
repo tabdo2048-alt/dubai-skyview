@@ -36,7 +36,8 @@ const CSP = [
   "style-src 'self' 'unsafe-inline'",
   "script-src 'self' 'unsafe-inline' blob:",
   "worker-src 'self' blob:",
-  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.mapbox.com https://events.mapbox.com https://*.tiles.mapbox.com https://*.googleapis.com https://*.google.com",
+  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.cloudinary.com https://res.cloudinary.com https://api.mapbox.com https://events.mapbox.com https://*.tiles.mapbox.com https://*.googleapis.com https://*.google.com",
+  "media-src 'self' blob: https:",
   "manifest-src 'self'",
 ].join("; ");
 

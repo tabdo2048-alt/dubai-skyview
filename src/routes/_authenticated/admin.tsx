@@ -36,6 +36,8 @@ import { UnitGallery } from "@/components/units/UnitGallery";
 import { UnitOfferDialog } from "@/components/offers/UnitOfferDialog";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import type { ProjectWithRelations } from "@/lib/types";
+import { ProjectVideoUpload } from "@/components/admin/ProjectVideoUpload";
+import { ProjectModelUpload } from "@/components/admin/ProjectModelUpload";
 
 const PROJECT_MEDIA_BUCKET = "project-media";
 const MAX_PROJECT_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -647,6 +649,13 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
     featured: existing?.featured ?? false,
     plot_geometry: (existing?.plot_geometry as GeoJSON.Polygon | null) ?? null,
     plot_color: existing?.plot_color ?? "#c9a84c",
+    model_3d_url: existing?.model_3d_url ?? "",
+    model_3d_enabled: existing?.model_3d_enabled ?? false,
+    model_3d_lat: existing?.model_3d_lat ?? null,
+    model_3d_lng: existing?.model_3d_lng ?? null,
+    model_3d_altitude: existing?.model_3d_altitude ?? 0,
+    model_3d_scale: existing?.model_3d_scale ?? 1,
+    model_3d_rotation: existing?.model_3d_rotation ?? 0,
   });
   const [gallery, setGallery] = useState(existing?.images ?? []);
   const [unitTypes, setUnitTypes] = useState<UnitTypeDraft[]>(() => (existing?.unit_types ?? []).map(unitTypeDraft));
@@ -697,8 +706,15 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
       offer_primary_color: existing.offer_primary_color ?? "",
       offer_accent_color: existing.offer_accent_color ?? "",
       offer_header_image_url: existing.offer_header_image_url ?? "",
+      model_3d_url: existing.model_3d_url ?? "",
+      model_3d_enabled: existing.model_3d_enabled ?? false,
+      model_3d_lat: existing.model_3d_lat ?? null,
+      model_3d_lng: existing.model_3d_lng ?? null,
+      model_3d_altitude: existing.model_3d_altitude ?? 0,
+      model_3d_scale: existing.model_3d_scale ?? 1,
+      model_3d_rotation: existing.model_3d_rotation ?? 0,
     }));
-  }, [existing?.id, existing?.offer_primary_color, existing?.offer_accent_color, existing?.offer_header_image_url]);
+  }, [existing?.id, existing?.offer_primary_color, existing?.offer_accent_color, existing?.offer_header_image_url, existing?.model_3d_url, existing?.model_3d_enabled, existing?.model_3d_lat, existing?.model_3d_lng, existing?.model_3d_altitude, existing?.model_3d_scale, existing?.model_3d_rotation]);
 
   useEffect(() => {
     setUnitTypes((existing?.unit_types ?? []).map(unitTypeDraft));
@@ -1178,6 +1194,38 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
         return;
       }
     }
+    if (f.model_3d_enabled && !f.model_3d_url.trim()) {
+      toast.error("Upload a GLB model or disable the interactive 3D model");
+      return;
+    }
+    if (f.model_3d_url && !/^https:\/\//i.test(f.model_3d_url)) {
+      toast.error("The 3D model URL must use HTTPS");
+      return;
+    }
+    if (!Number.isFinite(f.model_3d_scale) || f.model_3d_scale <= 0) {
+      toast.error("The 3D model scale must be greater than zero");
+      return;
+    }
+    if (f.model_3d_scale > 10000) {
+      toast.error("The 3D model scale must be 10,000 or smaller");
+      return;
+    }
+    if (!Number.isFinite(f.model_3d_altitude)) {
+      toast.error("The 3D model altitude is invalid");
+      return;
+    }
+    if (!Number.isFinite(f.model_3d_rotation) || Math.abs(f.model_3d_rotation) > 360) {
+      toast.error("The 3D model heading must be between -360 and 360 degrees");
+      return;
+    }
+    if (f.model_3d_lat != null && (!Number.isFinite(f.model_3d_lat) || Math.abs(f.model_3d_lat) > 90)) {
+      toast.error("The 3D model latitude is invalid");
+      return;
+    }
+    if (f.model_3d_lng != null && (!Number.isFinite(f.model_3d_lng) || Math.abs(f.model_3d_lng) > 180)) {
+      toast.error("The 3D model longitude is invalid");
+      return;
+    }
     setSaving(true);
     try {
       const isEditing = Boolean(id);
@@ -1193,6 +1241,10 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
         brochure_url: f.brochure_url || null,
         video_url: f.video_url || null,
         tour_360_url: f.tour_360_url || null,
+        model_3d_url: f.model_3d_url || null,
+        model_3d_enabled: Boolean(f.model_3d_enabled && f.model_3d_url),
+        model_3d_lat: f.model_3d_lat,
+        model_3d_lng: f.model_3d_lng,
         tags: f.tags
           .split(",")
           .map((tag) => tag.trim())
@@ -1397,7 +1449,67 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
           <p className="text-xs text-muted-foreground">These colours are used in the sales offer only. Leave them at default to keep the standard navy and gold identity.</p>
         </div>
         <Field label="Brochure URL"><Input value={f.brochure_url} onChange={(e) => setF({ ...f, brochure_url: e.target.value })} /></Field>
-        <Field label="Video URL"><Input value={f.video_url} onChange={(e) => setF({ ...f, video_url: e.target.value })} /></Field>
+        <ProjectVideoUpload
+          tenantId={projectTenantId}
+          value={f.video_url}
+          onChange={(videoUrl) => setF((current) => ({ ...current, video_url: videoUrl }))}
+          onError={(message) => toast.error(message)}
+        />
+        <div className="space-y-3 rounded-2xl border border-gold/25 bg-black/15 p-4 sm:col-span-2">
+          <ProjectModelUpload
+            tenantId={projectTenantId}
+            value={f.model_3d_url}
+            onChange={(modelUrl) => setF((current) => ({
+              ...current,
+              model_3d_url: modelUrl,
+              model_3d_enabled: Boolean(modelUrl),
+            }))}
+            onError={(message) => toast.error(message)}
+          />
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-white/5 p-3">
+            <input
+              type="checkbox"
+              checked={f.model_3d_enabled}
+              disabled={!f.model_3d_url}
+              onChange={(event) => setF((current) => ({ ...current, model_3d_enabled: event.target.checked }))}
+              className="mt-0.5 h-4 w-4 accent-[#c9a84c]"
+            />
+            <span>
+              <span className="block text-sm font-medium text-cream">Show the detailed model when this project is selected</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">The normal city map stays lightweight; only this project model is loaded on demand.</span>
+            </span>
+          </label>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <Field label="Model latitude (optional)">
+              <Input
+                type="number"
+                step="0.000001"
+                value={f.model_3d_lat ?? ""}
+                placeholder={String(f.lat)}
+                onChange={(event) => setF((current) => ({ ...current, model_3d_lat: event.target.value ? Number(event.target.value) : null }))}
+              />
+            </Field>
+            <Field label="Model longitude (optional)">
+              <Input
+                type="number"
+                step="0.000001"
+                value={f.model_3d_lng ?? ""}
+                placeholder={String(f.lng)}
+                onChange={(event) => setF((current) => ({ ...current, model_3d_lng: event.target.value ? Number(event.target.value) : null }))}
+              />
+            </Field>
+            <Field label="Altitude (metres)">
+              <Input type="number" step="0.1" value={f.model_3d_altitude} onChange={(event) => setF((current) => ({ ...current, model_3d_altitude: Number(event.target.value) }))} />
+            </Field>
+            <Field label="Scale">
+              <Input type="number" min="0.001" max="10000" step="0.01" value={f.model_3d_scale} onChange={(event) => setF((current) => ({ ...current, model_3d_scale: Number(event.target.value) }))} />
+            </Field>
+            <Field label="Heading (degrees)">
+              <Input type="number" min="-360" max="360" step="1" value={f.model_3d_rotation} onChange={(event) => setF((current) => ({ ...current, model_3d_rotation: Number(event.target.value) }))} />
+            </Field>
+          </div>
+          <p className="text-xs text-muted-foreground">Leave model latitude and longitude blank to use the project marker. GLB units should be metres; use scale and heading only for fine alignment.</p>
+        </div>
         <Field label="360 tour URL"><Input value={f.tour_360_url} onChange={(e) => setF({ ...f, tour_360_url: e.target.value })} /></Field>
         <Field label="Tags"><Input value={f.tags} onChange={(e) => setF({ ...f, tags: e.target.value })} placeholder="waterfront, luxury, family" /></Field>
       </div>

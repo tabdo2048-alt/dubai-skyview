@@ -493,6 +493,13 @@ export type Database = {
           lat: number
           lng: number
           main_image_url: string | null
+          model_3d_altitude: number
+          model_3d_enabled: boolean
+          model_3d_lat: number | null
+          model_3d_lng: number | null
+          model_3d_rotation: number
+          model_3d_scale: number
+          model_3d_url: string | null
           name: string
           offer_accent_color: string | null
           offer_header_image_url: string | null
@@ -525,6 +532,13 @@ export type Database = {
           lat: number
           lng: number
           main_image_url?: string | null
+          model_3d_altitude?: number
+          model_3d_enabled?: boolean
+          model_3d_lat?: number | null
+          model_3d_lng?: number | null
+          model_3d_rotation?: number
+          model_3d_scale?: number
+          model_3d_url?: string | null
           name: string
           offer_accent_color?: string | null
           offer_header_image_url?: string | null
@@ -557,6 +571,13 @@ export type Database = {
           lat?: number
           lng?: number
           main_image_url?: string | null
+          model_3d_altitude?: number
+          model_3d_enabled?: boolean
+          model_3d_lat?: number | null
+          model_3d_lng?: number | null
+          model_3d_rotation?: number
+          model_3d_scale?: number
+          model_3d_url?: string | null
           name?: string
           offer_accent_color?: string | null
           offer_header_image_url?: string | null

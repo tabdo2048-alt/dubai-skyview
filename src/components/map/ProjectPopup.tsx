@@ -11,6 +11,8 @@ import { areaLabel, displayUnitTypes, pricedUnitTypes, projectDetailSlug, unitDe
 import { displayPaymentPlans, paymentPlanSummary } from "@/lib/payment-plans";
 import { Button } from "@/components/ui/button";
 import { UnitOfferDialog } from "@/components/offers/UnitOfferDialog";
+import { ProjectTeaserVideo } from "@/components/map/ProjectTeaserVideo";
+import { safeHttpUrl } from "@/lib/utils";
 
 export function ProjectPopup({ project, onClose }: { project: ProjectWithRelations | null; onClose: () => void }) {
   // Hero + gallery images (hero first, deduped) for the click-to-swap viewer.
@@ -40,8 +42,13 @@ export function ProjectPopup({ project, onClose }: { project: ProjectWithRelatio
   const whatsapp = project ? whatsappUrl(project.name) : null;
   const mailto = project ? viewingMailto(project.name) : null;
   const [offerOpen, setOfferOpen] = useState(false);
+  const safeVideoUrl = safeHttpUrl(project?.video_url);
+  const [teaserVisible, setTeaserVisible] = useState(Boolean(safeVideoUrl));
   // Reset the hero when a different project is selected.
-  useEffect(() => setActiveImage(images[0]?.full ?? null), [project?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    setActiveImage(images[0]?.full ?? null);
+    setTeaserVisible(Boolean(safeHttpUrl(project?.video_url)));
+  }, [project?.id, safeVideoUrl]); // eslint-disable-line react-hooks/exhaustive-deps
   // Close on Escape.
   useEffect(() => {
     if (!project) return;
@@ -80,9 +87,16 @@ export function ProjectPopup({ project, onClose }: { project: ProjectWithRelatio
             whileHover={{ y: -3 }}
             className="no-scrollbar pointer-events-auto md:max-h-[calc(100vh-9rem)] md:overflow-y-auto"
           >
-            <div className="glass-liquid gold-hairline overflow-hidden rounded-3xl shadow-2xl">
+              <div className="glass-liquid gold-hairline overflow-hidden rounded-3xl shadow-2xl">
               <div className="relative h-40 w-full overflow-hidden">
-                {activeImage ? (
+                {teaserVisible && safeVideoUrl ? (
+                  <ProjectTeaserVideo
+                    src={safeVideoUrl}
+                    poster={activeImage}
+                    projectName={project.name}
+                    onDone={() => setTeaserVisible(false)}
+                  />
+                ) : activeImage ? (
                   <img
                     key={activeImage}
                     src={activeImage}
