@@ -59,7 +59,7 @@ export type RuntimeAssetMetadata = {
   bounds?: [number, number, number, number];
 };
 
-export type RuntimeLayerName = "buildings" | "roads" | "water" | "communities";
+export type RuntimeLayerName = "parks" | "buildings" | "roads" | "water" | "communities";
 
 export type RuntimeGeodataChunk = {
   id: string;
@@ -73,4 +73,3 @@ export type RuntimeGeodataManifest = {
   metadata: RuntimeAssetMetadata;
   chunks: RuntimeGeodataChunk[];
 };
-

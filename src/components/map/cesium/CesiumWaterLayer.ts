@@ -1,17 +1,17 @@
 import {
+  buildModuleUrl,
   Color,
-  ColorGeometryInstanceAttribute,
+  EllipsoidSurfaceAppearance,
   GeometryInstance,
-  GroundPrimitive,
-  PerInstanceColorAppearance,
+  Material,
   PolygonGeometry,
+  Primitive,
 } from "cesium";
 import { featurePolygons, polygonHierarchy } from "./geojson";
-import { MASTERPLAN_LAYOUT, MASTERPLAN_THEME } from "./theme";
+import { MASTERPLAN_LAYOUT, MASTERPLAN_THEME, MASTERPLAN_VISUALS } from "./theme";
 import type { RuntimeGeoJson } from "./types";
 
 export function createCesiumWaterLayer(data: RuntimeGeoJson) {
-  const color = Color.fromCssColorString(MASTERPLAN_THEME.water).withAlpha(0.94);
   const instances: GeometryInstance[] = [];
   for (const feature of data.features) {
     for (const polygon of featurePolygons(feature)) {
@@ -22,17 +22,29 @@ export function createCesiumWaterLayer(data: RuntimeGeoJson) {
           id: { kind: "water", featureId: feature.id, properties: feature.properties },
           geometry: new PolygonGeometry({
             polygonHierarchy: hierarchy,
-            vertexFormat: PerInstanceColorAppearance.VERTEX_FORMAT,
+            perPositionHeight: true,
+            vertexFormat: EllipsoidSurfaceAppearance.VERTEX_FORMAT,
           }),
-          attributes: { color: ColorGeometryInstanceAttribute.fromColor(color) },
         }),
       );
     }
   }
   if (!instances.length) return null;
-  return new GroundPrimitive({
+  const material = Material.fromType(Material.WaterType, {
+    baseWaterColor: Color.fromCssColorString(MASTERPLAN_THEME.water),
+    blendColor: Color.fromCssColorString(MASTERPLAN_THEME.waterBlend),
+    normalMap: buildModuleUrl("Assets/Textures/waterNormalsSmall.jpg"),
+    ...MASTERPLAN_VISUALS.water,
+  });
+  return new Primitive({
     geometryInstances: instances,
-    appearance: new PerInstanceColorAppearance({ flat: true, translucent: false }),
+    appearance: new EllipsoidSurfaceAppearance({
+      aboveGround: true,
+      faceForward: true,
+      flat: false,
+      material,
+      translucent: false,
+    }),
     asynchronous: true,
     allowPicking: false,
   });

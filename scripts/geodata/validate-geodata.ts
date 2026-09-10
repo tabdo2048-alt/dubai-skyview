@@ -29,7 +29,7 @@ function validateCollection(name: string, collection: FeatureCollection) {
     }
     if (name === "buildings") {
       const height = Number(feature.properties.height_m);
-      if (!Number.isFinite(height) || height < 3 || height > 500) errors.push(`${name}/${id}: impossible height ${height}`);
+      if (!Number.isFinite(height) || height < 3 || height > 900) errors.push(`${name}/${id}: impossible height ${height}`);
     }
     if (name === "roads" && feature.properties.bridge === true) {
       const layer = Number(feature.properties.layer);
@@ -42,12 +42,12 @@ function validateCollection(name: string, collection: FeatureCollection) {
 const directory = path.posix.join(GEODATA_PATHS.outputRoot, PILOT_AREA.id);
 const layers = Object.fromEntries(
   await Promise.all(
-    (["buildings", "roads", "water", "communities"] as const).map(async (name) => [
+    (["buildings", "roads", "water", "parks", "communities"] as const).map(async (name) => [
       name,
       await readJson<FeatureCollection>(path.posix.join(directory, `${name}.geojson`)),
     ]),
   ),
-) as Record<"buildings" | "roads" | "water" | "communities", FeatureCollection>;
+) as Record<"buildings" | "roads" | "water" | "parks" | "communities", FeatureCollection>;
 
 for (const [name, collection] of Object.entries(layers)) validateCollection(name, collection);
 const buildingSources = layers.buildings.features.reduce<Record<string, number>>((summary, feature) => {
@@ -66,9 +66,9 @@ console.log(JSON.stringify({
   bridges: bridgeCount,
   tunnels: tunnelCount,
   waterFeatures: layers.water.features.length,
+  parks: layers.parks.features.length,
   communities: layers.communities.features.length,
   warnings,
   errors,
 }, null, 2));
 if (errors.length) process.exitCode = 1;
-

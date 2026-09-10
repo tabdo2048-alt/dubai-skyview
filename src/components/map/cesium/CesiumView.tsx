@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { GroundPrimitive, Viewer } from "cesium";
+import type { ImageryLayer, Primitive, Viewer } from "cesium";
 import "cesium/Build/Cesium/Widgets/widgets.css";
 import { useFiltersStore } from "@/store/filters";
 import {
@@ -16,6 +16,8 @@ import { CesiumPoiLayer } from "./CesiumPoiLayer";
 import { CesiumRailLayer } from "./CesiumRailLayer";
 import { CesiumZonesLayer } from "./CesiumZonesLayer";
 import { createCesiumDubaiCoastlineLayer } from "./CesiumWaterLayer";
+import { addCesiumSatelliteImagery } from "./CesiumImageryController";
+import { MASTERPLAN_THEME } from "./theme";
 import { applyCesiumLightPreset, createCesiumScene } from "./CesiumSceneController";
 import type { CesiumViewProps, ProjectPick } from "./types";
 
@@ -27,7 +29,8 @@ type Runtime = {
   pois: CesiumPoiLayer;
   rail: CesiumRailLayer;
   zones: CesiumZonesLayer;
-  coastline: GroundPrimitive | null;
+  coastline: Primitive | null;
+  imagery: ImageryLayer | null;
 };
 
 export function CesiumView(props: CesiumViewProps) {
@@ -36,6 +39,7 @@ export function CesiumView(props: CesiumViewProps) {
   const propsRef = useRef(props);
   propsRef.current = props;
   const [geodataMessage, setGeodataMessage] = useState<string | null>(null);
+  const [imageryMessage, setImageryMessage] = useState<string | null>(null);
   const [featurePick, setFeaturePick] = useState<ProjectPick | null>(null);
   const selectedProjectId = useFiltersStore((state) => state.selectedProjectId);
   const hoveredProjectId = useFiltersStore((state) => state.hoveredProjectId);
@@ -55,19 +59,62 @@ export function CesiumView(props: CesiumViewProps) {
     const pois = new CesiumPoiLayer(viewer);
     const rail = new CesiumRailLayer(viewer);
     const zones = new CesiumZonesLayer(viewer);
-    const geodata = new CesiumRuntimeGeodata(
+    let geodata = new CesiumRuntimeGeodata(viewer, () => propsRef.current.projects, setGeodataMessage);
+    const runtime: Runtime = {
       viewer,
-      () => propsRef.current.projects,
-      setGeodataMessage,
-    );
-    const runtime: Runtime = { viewer, projects: projectLayer, boundaries, geodata, pois, rail, zones, coastline: null };
+      projects: projectLayer,
+      boundaries,
+      geodata,
+      pois,
+      rail,
+      zones,
+      coastline: null,
+      imagery: null,
+    };
     runtimeRef.current = runtime;
     let cancelled = false;
-    void createCesiumDubaiCoastlineLayer().then((coastline) => {
-      if (!coastline || cancelled || viewer.isDestroyed()) return;
-      runtime.coastline = viewer.scene.primitives.add(coastline);
-      viewer.scene.requestRender();
-    }).catch((error) => console.warn("[Cesium] Dubai coastline failed to load", error));
+
+    const startMasterplanFallback = () => {
+      void createCesiumDubaiCoastlineLayer().then((coastline) => {
+        if (!coastline || cancelled || viewer.isDestroyed()) return;
+        runtime.coastline = viewer.scene.primitives.add(coastline);
+        viewer.scene.requestRender();
+      }).catch((error) => console.warn("[Cesium] Dubai coastline failed to load", error));
+    };
+
+    const startGeodata = (satelliteReady: boolean) => {
+      if (cancelled || viewer.isDestroyed()) return;
+      geodata = new CesiumRuntimeGeodata(
+        viewer,
+        () => propsRef.current.projects,
+        setGeodataMessage,
+        "/geodata/dubai-pilot/manifest.json",
+        satelliteReady ? "satellite-hybrid" : "masterplan",
+      );
+      runtime.geodata = geodata;
+      if (!satelliteReady) startMasterplanFallback();
+      void geodata.start();
+    };
+
+    if (propsRef.current.ionToken) {
+      setImageryMessage("Loading satellite imagery…");
+      void addCesiumSatelliteImagery(viewer)
+        .then((layer) => {
+          if (cancelled || viewer.isDestroyed()) return;
+          runtime.imagery = layer;
+          setImageryMessage(null);
+          startGeodata(Boolean(layer));
+        })
+        .catch((error) => {
+          console.warn("[Cesium] Satellite imagery failed; using masterplan fallback", error);
+          if (cancelled || viewer.isDestroyed()) return;
+          setImageryMessage("Satellite imagery is unavailable. Showing the masterplan fallback.");
+          startGeodata(false);
+        });
+    } else {
+      setImageryMessage("Add VITE_CESIUM_ION_TOKEN to enable satellite imagery in 3D.");
+      startGeodata(false);
+    }
 
     const disconnectCamera = connectCesiumCamera(viewer, (camera) =>
       propsRef.current.onCameraChange(camera),
@@ -96,7 +143,6 @@ export function CesiumView(props: CesiumViewProps) {
       viewer.scene.postRender.removeEventListener(ready);
     };
     viewer.scene.postRender.addEventListener(ready);
-    void geodata.start();
 
     return () => {
       cancelled = true;
@@ -105,6 +151,7 @@ export function CesiumView(props: CesiumViewProps) {
       viewer.scene.postRender.removeEventListener(ready);
       geodata.destroy();
       if (runtime.coastline) viewer.scene.primitives.remove(runtime.coastline);
+      if (runtime.imagery) viewer.imageryLayers.remove(runtime.imagery, true);
       zones.destroy();
       rail.destroy();
       pois.destroy();
@@ -145,10 +192,6 @@ export function CesiumView(props: CesiumViewProps) {
   }, [hoveredProjectId, pinnedPlotIds, props.projects, selectedProjectId]);
 
   useEffect(() => {
-    runtimeRef.current?.geodata.setRoadsVisible(props.roadsMode && !props.browsingPois);
-  }, [props.browsingPois, props.roadsMode]);
-
-  useEffect(() => {
     const runtime = runtimeRef.current;
     if (runtime) applyCesiumLightPreset(runtime.viewer, props.lightPreset);
   }, [props.lightPreset]);
@@ -159,12 +202,12 @@ export function CesiumView(props: CesiumViewProps) {
   }, [props.flyToTarget]);
 
   return (
-    <div className="relative h-full w-full bg-[#d8cbb3]">
+    <div className="relative h-full w-full" style={{ backgroundColor: MASTERPLAN_THEME.land }}>
       <div ref={containerRef} className="absolute inset-0" aria-label="Interactive 3D Dubai map" />
 
-      {!props.ionToken && (
+      {imageryMessage && (
         <div className="pointer-events-none absolute left-4 top-4 z-10 max-w-xs rounded-lg border border-amber-300/30 bg-slate-950/75 px-3 py-2 text-[11px] leading-snug text-amber-100 backdrop-blur">
-          Local masterplan data is active. Set VITE_CESIUM_ION_TOKEN only for scoped ion-hosted assets.
+          {imageryMessage}
         </div>
       )}
 

@@ -2,6 +2,7 @@ import type { Viewer } from "cesium";
 import type { ProjectWithRelations } from "@/lib/types";
 import { createCesiumCityBuildings } from "./CesiumCityBuildings";
 import { createCesiumCommunitiesLayer } from "./CesiumCommunitiesLayer";
+import { createCesiumParksLayer } from "./CesiumParksLayer";
 import { createCesiumRoadsLayer } from "./CesiumRoadsLayer";
 import { createCesiumWaterLayer } from "./CesiumWaterLayer";
 import type {
@@ -17,6 +18,8 @@ type LoadedChunk = {
   definition: RuntimeGeodataChunk;
   primitives: Array<{ layer: RuntimeLayerName; value: ScenePrimitive }>;
 };
+
+export type CesiumSurfaceMode = "masterplan" | "satellite-hybrid";
 
 function nearChunk(
   chunk: RuntimeGeodataChunk,
@@ -50,13 +53,13 @@ export class CesiumRuntimeGeodata {
   private readonly loaded = new Map<string, LoadedChunk>();
   private readonly pending = new Map<string, Promise<void>>();
   private destroyed = false;
-  private roadsVisible = true;
 
   constructor(
     private readonly viewer: Viewer,
     private readonly getProjects: () => ProjectWithRelations[],
     private readonly onStatus?: (message: string | null) => void,
     private readonly manifestUrl = "/geodata/dubai-pilot/manifest.json",
+    private readonly surfaceMode: CesiumSurfaceMode = "masterplan",
   ) {}
 
   async start() {
@@ -71,16 +74,6 @@ export class CesiumRuntimeGeodata {
       console.warn("[Cesium] Runtime Dubai geodata is unavailable", error);
       this.onStatus?.("Dubai pilot data is not generated yet. Run npm run geodata:pilot.");
     }
-  }
-
-  setRoadsVisible(visible: boolean) {
-    this.roadsVisible = visible;
-    for (const chunk of this.loaded.values()) {
-      for (const primitive of chunk.primitives) {
-        if (primitive.layer === "roads" && "show" in primitive.value) primitive.value.show = visible;
-      }
-    }
-    this.viewer.scene.requestRender();
   }
 
   async reloadBuildings() {
@@ -138,16 +131,24 @@ export class CesiumRuntimeGeodata {
       const primitive = createCesiumCityBuildings(data, this.getProjects());
       if (primitive) this.addPrimitive(loaded, layer, primitive);
     } else if (layer === "water") {
+      if (this.surfaceMode === "satellite-hybrid") return;
       const primitive = createCesiumWaterLayer(data);
       if (primitive) this.addPrimitive(loaded, layer, primitive);
+    } else if (layer === "parks") {
+      if (this.surfaceMode === "satellite-hybrid") return;
+      const primitive = createCesiumParksLayer(data);
+      if (primitive) this.addPrimitive(loaded, layer, primitive);
     } else if (layer === "communities") {
-      const { fill, outline } = createCesiumCommunitiesLayer(data);
+      const { fill, outline } = createCesiumCommunitiesLayer(data, {
+        showFill: this.surfaceMode === "masterplan",
+      });
       if (fill) this.addPrimitive(loaded, layer, fill);
       if (outline) this.addPrimitive(loaded, layer, outline);
     } else if (layer === "roads") {
-      const { ground, elevated } = createCesiumRoadsLayer(data);
+      const { ground, elevated } = createCesiumRoadsLayer(data, {
+        showGround: this.surfaceMode === "masterplan",
+      });
       for (const primitive of [...ground, ...elevated]) {
-        primitive.show = this.roadsVisible;
         this.addPrimitive(loaded, layer, primitive);
       }
     }
@@ -172,4 +173,3 @@ export class CesiumRuntimeGeodata {
     this.pending.clear();
   }
 }
-

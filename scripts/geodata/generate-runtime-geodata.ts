@@ -8,6 +8,7 @@ import { mergeBuildingMetadata } from "./merge-building-metadata";
 import { processBuildings } from "./process-buildings";
 import { importCommunityKml, processOsmCommunities } from "./process-communities";
 import { processRoads } from "./process-roads";
+import { processParks } from "./process-parks";
 import { processWater } from "./process-water";
 
 function withMetadata(collection: FeatureCollection, source: string | string[]) {
@@ -51,6 +52,7 @@ const { buildings: mergedBuildings, statistics: matchStatistics } = await mergeB
 const buildings = withMetadata(processBuildings(mergedBuildings), ["OpenStreetMap", "Dubai Municipality metadata when explicitly matched"]);
 const roads = withMetadata(mergeRtaRoads(processRoads(osm), importedRta), importedRta ? ["RTA", "OpenStreetMap"] : "OpenStreetMap");
 const water = withMetadata(processWater(osm), "OpenStreetMap");
+const parks = withMetadata(processParks(osm), "OpenStreetMap");
 const communities = officialCommunities ?? withMetadata(processOsmCommunities(osm), "OpenStreetMap");
 
 const chunkDirectory = path.posix.join(GEODATA_PATHS.outputRoot, PILOT_AREA.id);
@@ -58,6 +60,7 @@ await Promise.all([
   writeJson(path.posix.join(chunkDirectory, "buildings.geojson"), buildings),
   writeJson(path.posix.join(chunkDirectory, "roads.geojson"), roads),
   writeJson(path.posix.join(chunkDirectory, "water.geojson"), water),
+  writeJson(path.posix.join(chunkDirectory, "parks.geojson"), parks),
   writeJson(path.posix.join(chunkDirectory, "communities.geojson"), communities),
 ]);
 
@@ -73,6 +76,7 @@ await writeJson(path.posix.join(GEODATA_PATHS.outputRoot, "manifest.json"), {
         buildings: `/geodata/dubai-pilot/${PILOT_AREA.id}/buildings.geojson`,
         roads: `/geodata/dubai-pilot/${PILOT_AREA.id}/roads.geojson`,
         water: `/geodata/dubai-pilot/${PILOT_AREA.id}/water.geojson`,
+        parks: `/geodata/dubai-pilot/${PILOT_AREA.id}/parks.geojson`,
         communities: `/geodata/dubai-pilot/${PILOT_AREA.id}/communities.geojson`,
       },
     },
@@ -83,7 +87,7 @@ console.log(JSON.stringify({
   buildings: buildings.features.length,
   roads: roads.features.length,
   water: water.features.length,
+  parks: parks.features.length,
   communities: communities.features.length,
   municipalityMatches: matchStatistics,
 }, null, 2));
-

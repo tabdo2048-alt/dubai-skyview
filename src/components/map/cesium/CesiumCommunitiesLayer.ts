@@ -15,7 +15,10 @@ import { featurePolygons, polygonHierarchy } from "./geojson";
 import { MASTERPLAN_THEME } from "./theme";
 import type { RuntimeGeoJson } from "./types";
 
-export function createCesiumCommunitiesLayer(data: RuntimeGeoJson) {
+export function createCesiumCommunitiesLayer(
+  data: RuntimeGeoJson,
+  options: { showFill?: boolean } = {},
+) {
   const fills: GeometryInstance[] = [];
   const outlines: GeometryInstance[] = [];
   for (const feature of data.features) {
@@ -51,7 +54,7 @@ export function createCesiumCommunitiesLayer(data: RuntimeGeoJson) {
       }
     }
   }
-  const fill = fills.length
+  const fill = fills.length && options.showFill !== false
     ? new GroundPrimitive({
         geometryInstances: fills,
         appearance: new PerInstanceColorAppearance({ flat: true, translucent: true }),
