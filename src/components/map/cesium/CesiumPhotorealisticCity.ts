@@ -57,11 +57,9 @@ export class CesiumPhotorealisticCity {
     if (!this.config.enabled) return this.fallback(null);
     if (!this.config.googleKey && !this.config.ionToken)
       return this.fallback("Photorealistic credentials are missing. Showing Masterplan.");
-    if (!this.dependencies.clippingSupported(this.viewer.scene))
-      return this.fallback("This device cannot support building inserts. Showing Masterplan.");
     this.onState("loading", "Loading photorealistic city…");
     this.timeout = setTimeout(
-      () => this.queueFallback("Photorealistic tiles did not arrive in time. Showing Masterplan."),
+      () => this.queueFallback("Photorealistic service did not respond in time. Showing Masterplan."),
       30_000,
     );
     try {
@@ -80,16 +78,22 @@ export class CesiumPhotorealisticCity {
       // factory's documented asset 2275207 with an explicit per-request token;
       // this avoids global default-token / cached-resource cross-viewer leakage.
       const tileset = await this.dependencies.load(this.config, options);
+      // The provider root is reachable. The watchdog protects only the root
+      // request; slow child streaming must not replace Google with Masterplan.
+      clearTimeout(this.timeout);
       if (this.destroyed || this.state === "masterplan" || this.viewer.isDestroyed()) {
         tileset.destroy();
         return;
       }
       this.tileset = this.viewer.scene.primitives.add(tileset);
-      this.inserts = new CesiumBuildingInserts(
-        this.viewer,
-        tileset,
-        this.config.projectInsertPaddingMeters,
-      );
+      const clippingSupported = this.dependencies.clippingSupported(this.viewer.scene);
+      this.inserts = clippingSupported
+        ? new CesiumBuildingInserts(
+            this.viewer,
+            tileset,
+            this.config.projectInsertPaddingMeters,
+          )
+        : null;
       this.removers.push(
         tileset.tileVisible.addEventListener(() => {
           if (this.state !== "loading") return;
@@ -99,7 +103,12 @@ export class CesiumPhotorealisticCity {
             clearTimeout(this.timeout);
             this.state = "photorealistic";
             this.viewer.scene.globe.show = false;
-            this.onState(this.state, null);
+            this.onState(
+              this.state,
+              clippingSupported
+                ? null
+                : "Google city loaded. Building inserts require polygon clipping support on this device.",
+            );
             this.viewer.scene.requestRender();
           });
         }),
@@ -128,8 +137,8 @@ export class CesiumPhotorealisticCity {
   }
   activate(project: { id: string; plot_geometry: unknown }) {
     if (this.state === "masterplan") return true;
-    if (this.state !== "photorealistic") return false;
-    const activated = Boolean(this.inserts?.activate(project));
+    if (this.state !== "photorealistic" || !this.inserts) return false;
+    const activated = this.inserts.activate(project);
     if (!activated && !this.invalidPlots.has(project.id)) {
       this.invalidPlots.add(project.id);
       this.onState(
