@@ -24,10 +24,24 @@ export const DUBAI_BOUNDS = {
   east: 55.65,
 };
 
-// Product navigation extent, not an administrative boundary dataset.
-// Shared by Satellite, Cesium and admin map surfaces.
-export const MAP_MAX_BOUNDS = { ...DUBAI_BOUNDS };
-export const ZOOM_OUT_BOUNDS = { ...DUBAI_BOUNDS };
+// Regional navigation extent. Keep this wider than the Dubai opening frame so
+// Mapbox can zoom out naturally instead of treating the Dubai rectangle as a
+// hard minimum-zoom constraint.
+export const MAP_MAX_BOUNDS = {
+  south: 24.48,
+  west: 54.57,
+  north: 26.15,
+  east: 56.35,
+};
+
+// Native Mapbox bounds and zoom-out extent. This restores the working zoom
+// range used before the Dubai-only Cesium experiment narrowed both rectangles.
+export const ZOOM_OUT_BOUNDS = {
+  south: 24.46,
+  west: 54.55,
+  north: 26.20,
+  east: 56.40,
+};
 
 export function clampToDubai(lng: number, lat: number) {
   return {

@@ -70,7 +70,9 @@ export const useFiltersStore = create<FiltersStore>((set) => ({
   hoveredProjectId: null,
   setHoveredProjectId: (id) => set({ hoveredProjectId: id }),
 
-  mapMode: "3d",
+  // Open on the reliable Mapbox satellite view. Cesium remains available from
+  // the 3D toggle, but it should never replace the product's default map.
+  mapMode: "satellite",
   setMapMode: (mode) => set({ mapMode: mode }),
 
   metroMode: false,
