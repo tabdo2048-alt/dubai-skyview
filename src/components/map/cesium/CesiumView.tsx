@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import type { GroundPrimitive, Viewer } from "cesium";
+import type { ImageryLayer, Primitive, Viewer } from "cesium";
 import "cesium/Build/Cesium/Widgets/widgets.css";
+import "./credits.css";
 import { useFiltersStore } from "@/store/filters";
 import {
   connectCesiumCamera,
@@ -15,7 +16,10 @@ import { CesiumRuntimeGeodata } from "./CesiumRuntimeGeodata";
 import { CesiumPoiLayer } from "./CesiumPoiLayer";
 import { CesiumRailLayer } from "./CesiumRailLayer";
 import { CesiumZonesLayer } from "./CesiumZonesLayer";
-import { createCesiumDubaiCoastlineLayer } from "./CesiumWaterLayer";
+import { createCesiumDubaiCoastlineLayer, connectCesiumWaterAnimation } from "./CesiumWaterLayer";
+import { CesiumPhotorealisticCity, type CityState } from "./CesiumPhotorealisticCity";
+import { readPhotorealisticConfig } from "./photorealisticConfig";
+import { MASTERPLAN_THEME } from "./theme";
 import { applyCesiumLightPreset, createCesiumScene } from "./CesiumSceneController";
 import type { CesiumViewProps, ProjectPick } from "./types";
 
@@ -27,15 +31,20 @@ type Runtime = {
   pois: CesiumPoiLayer;
   rail: CesiumRailLayer;
   zones: CesiumZonesLayer;
-  coastline: GroundPrimitive | null;
+  coastline: Primitive | null;
+  imagery: ImageryLayer | null;
 };
 
 export function CesiumView(props: CesiumViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const creditRef = useRef<HTMLDivElement>(null);
+  const [cityState, setCityState] = useState<CityState>("loading");
+  const [sceneError, setSceneError] = useState<string | null>(null);
   const runtimeRef = useRef<Runtime | null>(null);
   const propsRef = useRef(props);
   propsRef.current = props;
   const [geodataMessage, setGeodataMessage] = useState<string | null>(null);
+  const [imageryMessage, setImageryMessage] = useState<string | null>(null);
   const [featurePick, setFeaturePick] = useState<ProjectPick | null>(null);
   const selectedProjectId = useFiltersStore((state) => state.selectedProjectId);
   const hoveredProjectId = useFiltersStore((state) => state.hoveredProjectId);
@@ -46,28 +55,119 @@ export function CesiumView(props: CesiumViewProps) {
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    const viewer = createCesiumScene(container, propsRef.current.ionToken);
+    let viewer: Viewer;
+    try {
+      viewer = createCesiumScene(
+        container,
+        propsRef.current.ionToken,
+        creditRef.current ?? undefined,
+      );
+    } catch {
+      setSceneError(
+        "3D graphics could not start on this device. Switch to Satellite, or enable hardware acceleration and reload.",
+      );
+      propsRef.current.onReady?.();
+      return;
+    }
     setInitialCesiumCamera(viewer, propsRef.current.camera);
     applyCesiumLightPreset(viewer, propsRef.current.lightPreset);
 
-    const projectLayer = new CesiumProjectLayer(viewer);
+    let fallbackStarted = false;
+    let reloadTimer: ReturnType<typeof setTimeout> | undefined;
+    const scheduleBuildings = () => {
+      if (!fallbackStarted) return;
+      clearTimeout(reloadTimer);
+      reloadTimer = setTimeout(() => {
+        if (!viewer.isDestroyed()) void runtimeRef.current?.geodata.reloadBuildings();
+      }, 150);
+    };
+    const projectLayer = new CesiumProjectLayer(viewer, {
+      activate: (project) => {
+        const allowed = city?.activate(project) ?? false;
+        if (allowed) scheduleBuildings();
+        return allowed;
+      },
+      deactivate: (projectId) => {
+        city?.deactivate(projectId);
+        scheduleBuildings();
+      },
+      onError: setGeodataMessage,
+    });
     const boundaries = new CesiumProjectBoundaries(viewer);
     const pois = new CesiumPoiLayer(viewer);
     const rail = new CesiumRailLayer(viewer);
     const zones = new CesiumZonesLayer(viewer);
-    const geodata = new CesiumRuntimeGeodata(
+    let geodata = new CesiumRuntimeGeodata(
       viewer,
       () => propsRef.current.projects,
       setGeodataMessage,
     );
-    const runtime: Runtime = { viewer, projects: projectLayer, boundaries, geodata, pois, rail, zones, coastline: null };
+    const runtime: Runtime = {
+      viewer,
+      projects: projectLayer,
+      boundaries,
+      geodata,
+      pois,
+      rail,
+      zones,
+      coastline: null,
+      imagery: null,
+    };
     runtimeRef.current = runtime;
     let cancelled = false;
-    void createCesiumDubaiCoastlineLayer().then((coastline) => {
-      if (!coastline || cancelled || viewer.isDestroyed()) return;
-      runtime.coastline = viewer.scene.primitives.add(coastline);
-      viewer.scene.requestRender();
-    }).catch((error) => console.warn("[Cesium] Dubai coastline failed to load", error));
+    let disconnectWaterAnimation = () => {};
+
+    const startWater = () => {
+      disconnectWaterAnimation = connectCesiumWaterAnimation(viewer);
+      void createCesiumDubaiCoastlineLayer()
+        .then((coastline) => {
+          if (!coastline) return;
+          if (cancelled || viewer.isDestroyed()) {
+            coastline.destroy();
+            return;
+          }
+          runtime.coastline = viewer.scene.primitives.add(coastline);
+          viewer.scene.requestRender();
+        })
+        .catch((error) => console.warn("[Cesium] Dubai coastline failed to load", error));
+    };
+
+    const startGeodata = (satelliteReady: boolean) => {
+      if (cancelled || viewer.isDestroyed()) return;
+      geodata = new CesiumRuntimeGeodata(
+        viewer,
+        () => projectLayer.getVisibleProjects(),
+        setGeodataMessage,
+        "/geodata/dubai-pilot/manifest.json",
+        satelliteReady ? "satellite-hybrid" : "masterplan",
+      );
+      runtime.geodata = geodata;
+      startWater();
+      void geodata.start();
+    };
+
+    const startFallback = () => {
+      if (fallbackStarted || cancelled) return;
+      fallbackStarted = true;
+      startGeodata(false);
+    };
+    const city: CesiumPhotorealisticCity = new CesiumPhotorealisticCity(
+      viewer,
+      readPhotorealisticConfig(import.meta.env, propsRef.current.ionToken),
+      (state, message) => {
+        if (cancelled) return;
+        setCityState(state);
+        setImageryMessage(message);
+        if (state === "masterplan") startFallback();
+        projectLayer.refreshModels();
+      },
+    );
+    void city.start();
+    const contextLost = () => {
+      setSceneError("3D graphics were interrupted. Switch to Satellite or reload to recover.");
+      propsRef.current.onReady?.();
+    };
+    viewer.canvas.addEventListener("webglcontextlost", contextLost);
 
     const disconnectCamera = connectCesiumCamera(viewer, (camera) =>
       propsRef.current.onCameraChange(camera),
@@ -78,7 +178,9 @@ export function CesiumView(props: CesiumViewProps) {
       (pick) => {
         setHoveredProjectId(pick?.projectId ?? null);
         setFeaturePick((current) =>
-          current?.kind === "project-feature" && current.projectId === pick?.projectId ? current : null,
+          current?.kind === "project-feature" && current.projectId === pick?.projectId
+            ? current
+            : null,
         );
       },
       (pick) => {
@@ -96,20 +198,25 @@ export function CesiumView(props: CesiumViewProps) {
       viewer.scene.postRender.removeEventListener(ready);
     };
     viewer.scene.postRender.addEventListener(ready);
-    void geodata.start();
 
     return () => {
       cancelled = true;
+      fallbackStarted = false;
+      clearTimeout(reloadTimer);
+      disconnectWaterAnimation();
+      viewer.canvas.removeEventListener("webglcontextlost", contextLost);
       disconnectInteraction();
       disconnectCamera();
       viewer.scene.postRender.removeEventListener(ready);
       geodata.destroy();
       if (runtime.coastline) viewer.scene.primitives.remove(runtime.coastline);
+      if (runtime.imagery) viewer.imageryLayers.remove(runtime.imagery, true);
       zones.destroy();
       rail.destroy();
       pois.destroy();
       boundaries.destroy();
       projectLayer.destroy();
+      city.destroy();
       runtimeRef.current = null;
       if (!viewer.isDestroyed()) viewer.destroy();
     };
@@ -127,11 +234,17 @@ export function CesiumView(props: CesiumViewProps) {
   }, [props.pois]);
 
   useEffect(() => {
-    runtimeRef.current?.rail.update(props.metroMode && !props.browsingPois, props.trainMode && !props.browsingPois);
+    runtimeRef.current?.rail.update(
+      props.metroMode && !props.browsingPois,
+      props.trainMode && !props.browsingPois,
+    );
   }, [props.browsingPois, props.metroMode, props.trainMode]);
 
   useEffect(() => {
-    runtimeRef.current?.zones.update(props.zones ?? [], props.browsingPois ? new Set() : (props.zoneCategories ?? new Set()));
+    runtimeRef.current?.zones.update(
+      props.zones ?? [],
+      props.browsingPois ? new Set() : (props.zoneCategories ?? new Set()),
+    );
   }, [props.browsingPois, props.zoneCategories, props.zones]);
 
   useEffect(() => {
@@ -145,10 +258,6 @@ export function CesiumView(props: CesiumViewProps) {
   }, [hoveredProjectId, pinnedPlotIds, props.projects, selectedProjectId]);
 
   useEffect(() => {
-    runtimeRef.current?.geodata.setRoadsVisible(props.roadsMode && !props.browsingPois);
-  }, [props.browsingPois, props.roadsMode]);
-
-  useEffect(() => {
     const runtime = runtimeRef.current;
     if (runtime) applyCesiumLightPreset(runtime.viewer, props.lightPreset);
   }, [props.lightPreset]);
@@ -159,12 +268,38 @@ export function CesiumView(props: CesiumViewProps) {
   }, [props.flyToTarget]);
 
   return (
-    <div className="relative h-full w-full bg-[#d8cbb3]">
-      <div ref={containerRef} className="absolute inset-0" aria-label="Interactive 3D Dubai map" />
+    <div
+      className="relative flex h-full w-full flex-col"
+      style={{ backgroundColor: MASTERPLAN_THEME.land }}
+    >
+      <div
+        ref={containerRef}
+        className="relative min-h-0 flex-1"
+        aria-label="Interactive 3D Dubai map"
+      />
+      <div className="relative z-[60] shrink-0 bg-slate-950 px-2 py-1 text-xs text-white">
+        <div ref={creditRef} className="keyora-cesium-credits" aria-label="Map data attribution" />
+        <a
+          href="https://www.openstreetmap.org/copyright"
+          target="_blank"
+          rel="noreferrer"
+          className="text-[10px] hover:underline"
+        >
+          © OpenStreetMap contributors (overlays{cityState === "masterplan" ? " and fallback" : ""})
+        </a>
+      </div>
+      {sceneError && (
+        <div
+          role="alert"
+          className="absolute inset-x-4 top-24 z-20 rounded-lg bg-slate-950/90 p-4 text-sm text-amber-100"
+        >
+          {sceneError}
+        </div>
+      )}
 
-      {!props.ionToken && (
+      {imageryMessage && (
         <div className="pointer-events-none absolute left-4 top-4 z-10 max-w-xs rounded-lg border border-amber-300/30 bg-slate-950/75 px-3 py-2 text-[11px] leading-snug text-amber-100 backdrop-blur">
-          Local masterplan data is active. Set VITE_CESIUM_ION_TOKEN only for scoped ion-hosted assets.
+          {imageryMessage}
         </div>
       )}
 
@@ -176,19 +311,12 @@ export function CesiumView(props: CesiumViewProps) {
 
       {featurePick?.featureName && (
         <div className="pointer-events-none absolute bottom-16 right-4 z-10 rounded-xl border border-[#c9a84c]/40 bg-[#102729]/90 px-4 py-3 text-sm text-[#f5f0e4] shadow-xl backdrop-blur">
-          <span className="block text-[10px] uppercase tracking-[0.18em] text-[#c9a84c]">3D feature</span>
+          <span className="block text-[10px] uppercase tracking-[0.18em] text-[#c9a84c]">
+            3D feature
+          </span>
           {featurePick.featureName}
         </div>
       )}
-
-      <a
-        href="https://www.openstreetmap.org/copyright"
-        target="_blank"
-        rel="noreferrer"
-        className="absolute bottom-1 right-2 z-10 rounded bg-white/80 px-1.5 py-0.5 text-[10px] text-slate-700 hover:underline"
-      >
-        © OpenStreetMap contributors
-      </a>
     </div>
   );
 }

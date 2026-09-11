@@ -1,20 +1,28 @@
+import { SATELLITE_WATER } from "@/lib/waterAppearance";
+
 export const MASTERPLAN_THEME = {
-  land: "#d8cbb3",
-  sand: "#cbb997",
-  water: "#269aa2",
-  park: "#799379",
-  buildingResidential: "#eadfc9",
-  buildingCommercial: "#9eafb7",
-  buildingHotel: "#dfc899",
-  buildingUnknown: "#d8d0c0",
-  roadMotorway: "#31353a",
-  roadTrunk: "#444a50",
-  roadPrimary: "#596066",
-  roadSecondary: "#7e8382",
-  roadTertiary: "#a2a19b",
-  roadLocal: "#beb7aa",
-  roadService: "#cbc3b5",
-  roadBridge: "#2c3035",
+  land: "#c9ad78",
+  sand: "#b9935b",
+  water: SATELLITE_WATER.deep,
+  waterBlend: SATELLITE_WATER.shallow,
+  park: "#728f70",
+  buildingResidential: "#efe4cf",
+  buildingCommercial: "#9eafb6",
+  buildingLandmark: "#7896a3",
+  buildingHotel: "#dfc58f",
+  buildingUnknown: "#d9d0bf",
+  roadMotorway: "#292f34",
+  roadTrunk: "#3b4248",
+  roadPrimary: "#555d62",
+  roadSecondary: "#767d7d",
+  roadTertiary: "#999b96",
+  roadLocal: "#b9b3a7",
+  roadService: "#c9c0b0",
+  roadCasing: "#eee3cf",
+  roadCenterLine: "#d8ad55",
+  roadBridge: "#242b30",
+  roadBridgeCasing: "#c9a24f",
+  roadBridgeShadow: "#10282b",
   roadTunnel: "#77756f",
   projectBoundary: "#b98a31",
   selected: "#f2bd51",
@@ -22,13 +30,38 @@ export const MASTERPLAN_THEME = {
   goldAccent: "#c9a84c",
   label: "#102729",
   labelOutline: "#f5f0e4",
-  sky: "#bdd8e1",
+  sky: "#b9d5dd",
+} as const;
+
+/** Rendering values shared by the masterplan layers. Keep visual tuning here. */
+export const MASTERPLAN_VISUALS = {
+  water: {
+    frequency: 850,
+    animationSpeed: 0.006,
+    amplitude: 1.25,
+    specularIntensity: 0.42,
+    fadeFactor: 1.35,
+  },
+  roads: {
+    casingExtraWidthPx: 2.2,
+    bridgeCasingExtraWidthPx: 3.8,
+    bridgeShadowExtraWidthPx: 6,
+    bridgeShadowDropM: 1.5,
+    centerLineWidthPx: 1,
+  },
+  scene: {
+    desktopMaximumScreenSpaceError: 2,
+    mobileMaximumScreenSpaceError: 3.5,
+    desktopTileCacheSize: 180,
+    mobileTileCacheSize: 90,
+    fogDensity: 0.00018,
+  },
 } as const;
 
 export const MASTERPLAN_LAYOUT = {
   defaultFloorHeightM: 3.2,
   minimumBuildingHeightM: 3,
-  maximumBuildingHeightM: 500,
+  maximumBuildingHeightM: 900,
   fallbackHeightByTypeM: {
     residential: 15,
     apartments: 24,
@@ -47,4 +80,3 @@ export const MASTERPLAN_LAYOUT = {
 } as const;
 
 export type MasterplanTheme = typeof MASTERPLAN_THEME;
-

@@ -1,17 +1,19 @@
 import {
+  buildModuleUrl,
   Color,
-  ColorGeometryInstanceAttribute,
+  EllipsoidSurfaceAppearance,
   GeometryInstance,
-  GroundPrimitive,
-  PerInstanceColorAppearance,
+  Material,
   PolygonGeometry,
+  Primitive,
+  type Viewer,
 } from "cesium";
+import { SATELLITE_WATER } from "@/lib/waterAppearance";
 import { featurePolygons, polygonHierarchy } from "./geojson";
-import { MASTERPLAN_LAYOUT, MASTERPLAN_THEME } from "./theme";
+import { MASTERPLAN_LAYOUT, MASTERPLAN_THEME, MASTERPLAN_VISUALS } from "./theme";
 import type { RuntimeGeoJson } from "./types";
 
 export function createCesiumWaterLayer(data: RuntimeGeoJson) {
-  const color = Color.fromCssColorString(MASTERPLAN_THEME.water).withAlpha(0.94);
   const instances: GeometryInstance[] = [];
   for (const feature of data.features) {
     for (const polygon of featurePolygons(feature)) {
@@ -22,17 +24,31 @@ export function createCesiumWaterLayer(data: RuntimeGeoJson) {
           id: { kind: "water", featureId: feature.id, properties: feature.properties },
           geometry: new PolygonGeometry({
             polygonHierarchy: hierarchy,
-            vertexFormat: PerInstanceColorAppearance.VERTEX_FORMAT,
+            perPositionHeight: true,
+            vertexFormat: EllipsoidSurfaceAppearance.VERTEX_FORMAT,
           }),
-          attributes: { color: ColorGeometryInstanceAttribute.fromColor(color) },
         }),
       );
     }
   }
   if (!instances.length) return null;
-  return new GroundPrimitive({
+  const opacity = data.features.some((feature) => feature.properties?.water === "sea")
+    ? SATELLITE_WATER.seaOpacity : SATELLITE_WATER.inlandOpacity;
+  const material = Material.fromType(Material.WaterType, {
+    baseWaterColor: Color.fromCssColorString(MASTERPLAN_THEME.water).withAlpha(opacity),
+    blendColor: Color.fromCssColorString(MASTERPLAN_THEME.waterBlend).withAlpha(opacity),
+    normalMap: buildModuleUrl("Assets/Textures/waterNormalsSmall.jpg"),
+    ...MASTERPLAN_VISUALS.water,
+  });
+  return new Primitive({
     geometryInstances: instances,
-    appearance: new PerInstanceColorAppearance({ flat: true, translucent: false }),
+    appearance: new EllipsoidSurfaceAppearance({
+      aboveGround: true,
+      faceForward: true,
+      flat: false,
+      material,
+      translucent: true,
+    }),
     asynchronous: true,
     allowPicking: false,
   });
@@ -58,4 +74,16 @@ export async function createCesiumDubaiCoastlineLayer() {
       license: "ODbL-1.0",
     },
   });
+}
+
+/** Request-render scenes need explicit frames for water even when the camera is idle.
+ * Bound the refresh rate and stop requests in hidden tabs / distant globe views.
+ */
+export function connectCesiumWaterAnimation(viewer: Viewer) {
+  const mobile = window.matchMedia("(pointer: coarse)").matches;
+  const timer = window.setInterval(() => {
+    if (viewer.isDestroyed() || document.hidden || viewer.camera.positionCartographic.height > 150_000) return;
+    viewer.scene.requestRender();
+  }, 1000 / (mobile ? 20 : 30));
+  return () => window.clearInterval(timer);
 }

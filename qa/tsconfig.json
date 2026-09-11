@@ -1,0 +1,5 @@
+{
+  "extends": "../tsconfig.json",
+  "include": ["./photorealistic.ts", "../src/types/**/*.d.ts"],
+  "compilerOptions": { "types": ["vite/client", "node"], "paths": { "@/*": ["../src/*"] } }
+}

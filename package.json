@@ -26,7 +26,8 @@
     "geodata:generate": "esbuild scripts/geodata/generate-runtime-geodata.ts --bundle --platform=node --format=esm --packages=external --outfile=.output/geodata-generate.mjs && node .output/geodata-generate.mjs",
     "geodata:validate": "esbuild scripts/geodata/validate-geodata.ts --bundle --platform=node --format=esm --packages=external --outfile=.output/geodata-validate.mjs && node .output/geodata-validate.mjs",
     "geodata:pilot": "npm run geodata:download:pilot && npm run geodata:process:osm && npm run geodata:generate && npm run geodata:validate",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "test:photorealistic": "esbuild scripts/verify-photorealistic.ts --bundle --platform=node --format=esm --packages=external --outfile=artifacts/photorealistic-check.mjs && node artifacts/photorealistic-check.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

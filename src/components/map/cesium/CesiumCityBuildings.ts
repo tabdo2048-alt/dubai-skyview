@@ -42,6 +42,8 @@ function buildingHeight(properties: RuntimeGeoJson["features"][number]["properti
 
 function buildingColor(properties: RuntimeGeoJson["features"][number]["properties"]) {
   const kind = String(properties?.building_usage ?? properties?.building ?? "").toLowerCase();
+  const material = String(properties?.["building:material"] ?? "").toLowerCase();
+  if (properties?.landmark || material.includes("glass")) return MASTERPLAN_THEME.buildingLandmark;
   if (kind.includes("hotel")) return MASTERPLAN_THEME.buildingHotel;
   if (kind.includes("commercial") || kind.includes("office")) return MASTERPLAN_THEME.buildingCommercial;
   if (kind.includes("residential") || kind.includes("apart")) return MASTERPLAN_THEME.buildingResidential;
@@ -77,10 +79,9 @@ export function createCesiumCityBuildings(
   if (!instances.length) return null;
   return new Primitive({
     geometryInstances: instances,
-    appearance: new PerInstanceColorAppearance({ flat: true, closed: true, translucent: false }),
+    appearance: new PerInstanceColorAppearance({ flat: false, closed: true, translucent: false }),
     shadows: ShadowMode.ENABLED,
     asynchronous: true,
     allowPicking: true,
   });
 }
-

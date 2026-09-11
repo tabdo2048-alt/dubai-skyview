@@ -21,12 +21,38 @@ import {
 import type { ProjectWithRelations } from "@/lib/types";
 import type { ProjectPick } from "./types";
 import { MASTERPLAN_LAYOUT, MASTERPLAN_THEME } from "./theme";
+import { detectProjectModelType, tilesetPlacementBasis } from "./projectModelTransforms";
+import { PROJECT_STREAMING, modelDistanceState } from "./photorealisticConfig";
+import { isConstrainedCesiumDevice } from "./CesiumSceneController";
 import { CesiumTilesetManager } from "./CesiumTilesetManager";
 
 type ProjectModelResource = Model | Cesium3DTileset;
-
-function detectModelType(url: string) {
-  return /(?:tileset\.json|\.3dtiles(?:\?|$))/i.test(url) ? "3d-tiles" : "glb";
+type LoadEntry = {
+  signature: string;
+  cancelled: boolean;
+  ready: boolean;
+  visible: boolean;
+  started: number;
+  cleanup: Array<() => void>;
+};
+export type InsertLifecycle = {
+  activate: (project: ProjectWithRelations) => boolean;
+  deactivate: (projectId: string) => void;
+  onError?: (message: string) => void;
+};
+function modelSignature(project: ProjectWithRelations) {
+  return JSON.stringify([
+    project.model_3d_url,
+    project.model_3d_enabled,
+    project.model_3d_lat,
+    project.model_3d_lng,
+    project.lat,
+    project.lng,
+    project.model_3d_altitude,
+    project.model_3d_scale,
+    project.model_3d_rotation,
+    project.plot_geometry,
+  ]);
 }
 
 function projectPosition(project: ProjectWithRelations) {
@@ -68,16 +94,39 @@ export class CesiumProjectLayer {
   private projects: ProjectWithRelations[] = [];
   private selectedId: string | null = null;
   private hoveredId: string | null = null;
-  private generation = 0;
+  private readonly entries = new Map<string, LoadEntry>();
+  private readonly failedUntil = new Map<string, number>();
+  private destroyed = false;
+  private lastRefresh = 0;
+  private readonly timer: ReturnType<typeof setInterval>;
 
-  constructor(private readonly viewer: Viewer) {
+  constructor(
+    private readonly viewer: Viewer,
+    private readonly insertion?: InsertLifecycle,
+  ) {
     this.points = viewer.scene.primitives.add(new PointPrimitiveCollection());
     this.labels = viewer.scene.primitives.add(new LabelCollection());
     this.tilesets = new CesiumTilesetManager(viewer);
     viewer.camera.moveEnd.addEventListener(this.refreshModels);
+    viewer.camera.changed.addEventListener(this.cameraChanged);
+    this.timer = setInterval(() => {
+      if (
+        !this.destroyed &&
+        !document.hidden &&
+        [...this.entries.values()].some((entry) => !entry.ready)
+      ) {
+        this.refreshModels();
+        viewer.scene.requestRender();
+      }
+    }, 250);
   }
 
   setProjects(projects: ProjectWithRelations[]) {
+    for (const [id, entry] of this.entries) {
+      const next = projects.find((project) => project.id === id);
+      if (!next || modelSignature(next) !== entry.signature) this.unloadProjectModel(id);
+    }
+    this.failedUntil.clear();
     this.projects = projects;
     this.projectById.clear();
     this.points.removeAll();
@@ -94,7 +143,10 @@ export class CesiumProjectLayer {
         color: Color.fromCssColorString(MASTERPLAN_THEME.goldAccent),
         outlineColor: Color.fromCssColorString("#102729"),
         outlineWidth: 3,
-        distanceDisplayCondition: new DistanceDisplayCondition(0, MASTERPLAN_LAYOUT.projectFarDistanceM),
+        distanceDisplayCondition: new DistanceDisplayCondition(
+          0,
+          MASTERPLAN_LAYOUT.projectFarDistanceM,
+        ),
       });
       this.markerByProject.set(project.id, point);
       this.labels.add({
@@ -112,13 +164,20 @@ export class CesiumProjectLayer {
         disableDepthTestDistance: 15_000,
       });
     }
-    this.updateSelection(this.selectedId, this.hoveredId);
-    void this.refreshModels();
+    this.applySelection();
+    this.refreshModels();
   }
 
   updateSelection(selectedId: string | null, hoveredId: string | null) {
+    const changed = this.selectedId !== selectedId;
     this.selectedId = selectedId;
     this.hoveredId = hoveredId;
+    this.applySelection();
+    if (changed) this.refreshModels();
+  }
+
+  private applySelection() {
+    const { selectedId, hoveredId } = this;
     for (const [projectId, point] of this.markerByProject) {
       const active = projectId === selectedId || projectId === hoveredId;
       point.pixelSize = active ? 18 : 13;
@@ -140,46 +199,138 @@ export class CesiumProjectLayer {
       }
     }
     this.viewer.scene.requestRender();
-    void this.refreshModels();
   }
 
-  private refreshModels = async () => {
-    const generation = ++this.generation;
-    const cameraPosition = this.viewer.camera.positionWC;
-    const desired = new Set<string>();
-    for (const project of this.projects) {
-      if (!project.model_3d_enabled || !project.model_3d_url) continue;
-      const position = projectPosition(project);
-      const distance = Cartesian3.distance(
-        cameraPosition,
-        Cartesian3.fromDegrees(position.longitude, position.latitude, position.altitude),
-      );
-      if (distance <= MASTERPLAN_LAYOUT.projectNearDistanceM || project.id === this.selectedId) {
-        desired.add(project.id);
-        if (!this.modelByProject.has(project.id)) await this.loadProjectModel(project, generation);
-      }
-    }
-    if (generation !== this.generation) return;
-    for (const projectId of [...this.modelByProject.keys()]) {
-      if (!desired.has(projectId)) this.unloadProjectModel(projectId);
-    }
-    this.updateSelection(this.selectedId, this.hoveredId);
+  private cameraChanged = () => {
+    if (performance.now() - this.lastRefresh < 200) return;
+    this.lastRefresh = performance.now();
+    this.refreshModels();
   };
 
-  private async loadProjectModel(project: ProjectWithRelations, generation: number) {
+  /** Public for city state transitions; never re-enters selection or reloads on hover. */
+  refreshModels = () => {
+    if (this.destroyed) return;
+    const candidates = this.projects
+      .filter((p) => p.model_3d_enabled && p.model_3d_url)
+      .map((project) => {
+        const p = projectPosition(project);
+        const distance = Cartesian3.distance(
+          this.viewer.camera.positionWC,
+          Cartesian3.fromDegrees(p.longitude, p.latitude, p.altitude),
+        );
+        const entry = this.entries.get(project.id);
+        return {
+          project,
+          distance,
+          state: modelDistanceState(
+            distance,
+            project.id === this.selectedId,
+            Boolean(entry),
+            Boolean(entry?.visible),
+          ),
+        };
+      })
+      .filter((candidate) => candidate.state.load)
+      .sort(
+        (a, b) =>
+          Number(b.project.id === this.selectedId) - Number(a.project.id === this.selectedId) ||
+          a.distance - b.distance,
+      )
+      .slice(
+        0,
+        isConstrainedCesiumDevice()
+          ? PROJECT_STREAMING.mobileModels
+          : PROJECT_STREAMING.desktopModels,
+      );
+    const desired = new Set(candidates.map(({ project }) => project.id));
+    for (const id of this.entries.keys()) if (!desired.has(id)) this.unloadProjectModel(id);
+    let pending = [...this.entries.values()].filter((entry) => !entry.ready).length;
+    for (const { project, state } of candidates) {
+      const entry = this.entries.get(project.id);
+      if (!entry) {
+        if (
+          pending < PROJECT_STREAMING.concurrentLoads &&
+          Date.now() >= (this.failedUntil.get(project.id) ?? 0)
+        ) {
+          pending++;
+          void this.loadProjectModel(project);
+        }
+        continue;
+      }
+      if (!entry.ready && Date.now() - entry.started > PROJECT_STREAMING.loadTimeoutMs) {
+        this.fail(project.id);
+        continue;
+      }
+      const resource = this.modelByProject.get(project.id);
+      if (!resource || !entry.ready) continue;
+      if (state.show && !entry.visible) {
+        // Clip first and show in the same JS turn; no rendered frame with duplicate buildings.
+        if (this.insertion && !this.insertion.activate(project)) continue;
+        entry.visible = true;
+        resource.show = true;
+      } else if (!state.show && entry.visible) {
+        resource.show = false;
+        entry.visible = false;
+        this.insertion?.deactivate(project.id);
+      }
+    }
+    this.applySelection();
+  };
+
+  getVisibleProjects() {
+    return this.projects.filter((project) => this.entries.get(project.id)?.visible);
+  }
+
+  private fail(projectId: string) {
+    this.failedUntil.set(projectId, Date.now() + PROJECT_STREAMING.retryDelayMs);
+    this.unloadProjectModel(projectId);
+    const message = `Project model ${projectId} could not be loaded. Original city remains visible.`;
+    console.warn(`[Cesium] ${message}`);
+    this.insertion?.onError?.(message);
+  }
+
+  private async loadProjectModel(project: ProjectWithRelations) {
     const url = project.model_3d_url;
-    if (!url) return;
+    if (!url || this.destroyed) return;
+    const entry: LoadEntry = {
+      signature: modelSignature(project),
+      cancelled: false,
+      ready: false,
+      visible: false,
+      started: Date.now(),
+      cleanup: [],
+    };
+    this.entries.set(project.id, entry);
+    const ready = () => {
+      if (entry.cancelled || this.destroyed) return;
+      entry.ready = true;
+      queueMicrotask(() => this.refreshModels());
+      this.viewer.scene.requestRender();
+    };
+    const failed = () =>
+      queueMicrotask(() => {
+        if (!entry.cancelled && !this.destroyed) this.fail(project.id);
+      });
     try {
-      if (detectModelType(url) === "3d-tiles") {
+      if (detectProjectModelType(url) === "3d-tiles") {
         const tileset = await this.tilesets.load(project.id, url);
-        if (generation !== this.generation) return;
-        tileset.modelMatrix = Matrix4.multiplyByUniformScale(
+        if (entry.cancelled || this.destroyed) return;
+        const placement = Matrix4.multiplyByUniformScale(
           modelMatrix(project),
           project.model_3d_scale ?? 1,
           new Matrix4(),
         );
+        tileset.modelMatrix = Matrix4.multiply(
+          placement,
+          tilesetPlacementBasis(tileset),
+          new Matrix4(),
+        );
         this.tilesetProject.set(tileset, project.id);
         this.modelByProject.set(project.id, tileset);
+        entry.cleanup.push(
+          tileset.initialTilesLoaded.addEventListener(ready),
+          tileset.tileFailed.addEventListener(failed),
+        );
       } else {
         const model = await Model.fromGltfAsync({
           url,
@@ -187,19 +338,23 @@ export class CesiumProjectLayer {
           scale: project.model_3d_scale ?? 1,
           id: { kind: "project", projectId: project.id, source: "glb" } satisfies ProjectPick,
           allowPicking: true,
-          incrementallyLoadTextures: true,
-          distanceDisplayCondition: new DistanceDisplayCondition(0, MASTERPLAN_LAYOUT.projectFarDistanceM),
+          incrementallyLoadTextures: false,
+          show: false,
         });
-        if (generation !== this.generation) {
+        if (entry.cancelled || this.destroyed) {
           model.destroy();
           return;
         }
-        this.viewer.scene.primitives.add(model);
-        this.modelByProject.set(project.id, model);
+        this.modelByProject.set(project.id, this.viewer.scene.primitives.add(model));
+        entry.cleanup.push(
+          model.readyEvent.addEventListener(ready),
+          model.errorEvent.addEventListener(failed),
+        );
+        if (model.ready) ready();
       }
       this.viewer.scene.requestRender();
-    } catch (error) {
-      console.error(`[Cesium] Failed to load 3D model for project ${project.id}`, error);
+    } catch {
+      if (!entry.cancelled && !this.destroyed) this.fail(project.id);
     }
   }
 
@@ -208,7 +363,10 @@ export class CesiumProjectLayer {
     const candidate = picked as { id?: unknown; primitive?: unknown };
     if (candidate.id && typeof candidate.id === "object") {
       const id = candidate.id as Partial<ProjectPick>;
-      if ((id.kind === "project" || id.kind === "project-feature") && typeof id.projectId === "string") {
+      if (
+        (id.kind === "project" || id.kind === "project-feature") &&
+        typeof id.projectId === "string"
+      ) {
         return id as ProjectPick;
       }
     }
@@ -233,17 +391,27 @@ export class CesiumProjectLayer {
   }
 
   private unloadProjectModel(projectId: string) {
+    const entry = this.entries.get(projectId);
+    if (entry) {
+      entry.cancelled = true;
+      entry.cleanup.forEach((remove) => remove());
+    }
     const resource = this.modelByProject.get(projectId);
-    if (!resource) return;
-    if (resource instanceof Cesium3DTileset) this.tilesets.unload(projectId);
-    else this.viewer.scene.primitives.remove(resource);
+    if (resource) resource.show = false;
+    this.insertion?.deactivate(projectId);
+    this.tilesets.unload(projectId);
+    if (resource instanceof Model && !this.viewer.isDestroyed())
+      this.viewer.scene.primitives.remove(resource);
     this.modelByProject.delete(projectId);
+    this.entries.delete(projectId);
   }
 
   destroy() {
-    this.generation += 1;
+    this.destroyed = true;
+    clearInterval(this.timer);
     this.viewer.camera.moveEnd.removeEventListener(this.refreshModels);
-    for (const projectId of [...this.modelByProject.keys()]) this.unloadProjectModel(projectId);
+    this.viewer.camera.changed.removeEventListener(this.cameraChanged);
+    for (const projectId of [...this.entries.keys()]) this.unloadProjectModel(projectId);
     this.tilesets.destroy();
     this.viewer.scene.primitives.remove(this.points);
     this.viewer.scene.primitives.remove(this.labels);

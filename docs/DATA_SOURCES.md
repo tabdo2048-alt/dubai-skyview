@@ -6,7 +6,7 @@ The Cesium renderer consumes generated runtime GeoJSON/3D Tiles. Raw geographic 
 
 | Dataset | Organization | Purpose | Expected input | Processing entry point | Access / license | Fallback |
 | --- | --- | --- | --- | --- | --- | --- |
-| OpenStreetMap | OpenStreetMap contributors | Building footprints, general roads, bridges, tunnels, water and optional administrative boundaries | Pilot Overpass JSON at `data/geodata/raw/osm/business-bay-downtown.overpass.json`, or production PBF at `data/geodata/raw/osm/uae-latest.osm.pbf` | `download-osm-dubai.ts`, `process-osm.ts` | ODbL 1.0; visible attribution and derived-database obligations apply | Required primary general geometry source |
+| OpenStreetMap | OpenStreetMap contributors | Building footprints, general roads, bridges, tunnels, water, parks and optional administrative boundaries | Pilot Overpass JSON at `data/geodata/raw/osm/business-bay-downtown.overpass.json`, or production PBF at `data/geodata/raw/osm/uae-latest.osm.pbf` | `download-osm-dubai.ts`, `process-osm.ts` | ODbL 1.0; visible attribution and derived-database obligations apply | Required primary general geometry source |
 | `dm_building_summary_information-open` | Dubai Municipality / Dubai Pulse | Official building metadata and verified height where a reliable match exists | `data/geodata/raw/dubai-pulse/Building_Summary_Information.csv` | `import-dubai-municipality-buildings.ts`, `merge-building-metadata.ts` | Download/permission may be required; retain source attribution and portal terms | OSM height, OSM levels estimate, then documented type estimate |
 | `dm_community-open` | Dubai Municipality / Dubai Pulse | Official community polygons | `data/geodata/raw/dubai-pulse/Community.kml` | `process-communities.ts` | Download/permission may be required; retain source attribution and portal terms | OSM administrative polygons only when present; otherwise omit rather than fabricate |
 | `rta_major_roads-open` | Roads and Transport Authority / Dubai Pulse | Priority geometry for major roads | `data/geodata/raw/dubai-pulse/Major_Roads.kml` | `import-rta-major-roads.ts`, `generate-runtime-geodata.ts` | Download/permission may be required; retain source attribution and portal terms | OSM road network |
@@ -19,14 +19,16 @@ The committed Business Bay / Downtown pilot was generated from OpenStreetMap on 
 - 1,157 road segments;
 - 24 bridge segments;
 - 7 tunnel segments (marked with the hidden-below-ground render policy);
-- 9 water features.
+- 9 water features;
+- 10 park polygons.
 
 No Dubai Pulse CSV/KML file was available during this generation. Consequently:
 
 - zero buildings claim an official Dubai Municipality height;
 - 386 buildings use `height=*` from OSM;
-- 81 use `building:levels × 3.2 m` and are marked estimated;
+- 80 use `building:levels × 3.2 m` and are marked estimated;
 - 735 use the documented conservative type default and are marked estimated;
+- Burj Khalifa uses its OSM landmark `maxheight=828` value rather than being capped at 500 m;
 - no community polygon is emitted, because neither official KML nor a suitable OSM administrative polygon was present in the pilot response;
 - RTA geometry is not mixed into the committed road output.
 
@@ -70,4 +72,3 @@ The 3D view displays “© OpenStreetMap contributors” linked to the OSM copyr
 - Publish large runtime chunks or 3D Tiles to suitable static/object storage with CORS and caching.
 - Point the runtime manifest at those immutable versioned assets.
 - Never download large source files during `vite build` or a Vercel deployment.
-

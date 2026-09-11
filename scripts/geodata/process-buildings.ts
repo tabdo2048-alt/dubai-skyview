@@ -25,16 +25,22 @@ export function processBuildings(input: FeatureCollection): FeatureCollection {
     .map((feature) => {
       const official = numeric(feature.properties.official_height_m);
       const osmHeight = numeric(feature.properties.height);
+      const osmLandmarkHeight = feature.properties.landmark
+        ? numeric(feature.properties.maxheight)
+        : null;
       const levels = numeric(feature.properties["building:levels"]);
       const kind = fallbackType(feature.properties);
       const height =
         official ??
         osmHeight ??
+        osmLandmarkHeight ??
         (levels ? levels * HEIGHT_FALLBACKS.floorHeightM : HEIGHT_FALLBACKS.byTypeM[kind]);
       const heightSource = official
         ? "official"
         : osmHeight
           ? "osm-height"
+          : osmLandmarkHeight
+            ? "osm-landmark-maxheight"
           : levels
             ? "osm-levels-estimate"
             : "type-estimate";
@@ -42,7 +48,7 @@ export function processBuildings(input: FeatureCollection): FeatureCollection {
         ...feature,
         properties: {
           ...feature.properties,
-          height_m: Math.max(3, Math.min(500, height)),
+          height_m: Math.max(3, Math.min(HEIGHT_FALLBACKS.maximumHeightM, height)),
           height_source: heightSource,
           height_is_estimated: heightSource.includes("estimate"),
         },
@@ -50,4 +56,3 @@ export function processBuildings(input: FeatureCollection): FeatureCollection {
     });
   return { ...input, features };
 }
-

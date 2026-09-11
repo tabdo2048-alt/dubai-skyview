@@ -4,6 +4,7 @@
 import * as THREE from "three";
 import mapboxgl from "mapbox-gl";
 import { DUBAI_CENTER } from "@/lib/dubai";
+import { SATELLITE_WATER } from "@/lib/waterAppearance";
 import { WATER_AREAS } from "@/lib/water";
 import { SHORELINE_PATHS, type ShorelinePath } from "@/lib/shorelines";
 import {
@@ -949,7 +950,7 @@ function makeWaterMaterial({
   // Satellite water opacity: enough that the deep Gulf reads azure (not dark navy
   // imagery through a thin overlay), but dialled back so it isn't an overpowering
   // flat wash — some real sea still shows through.
-  const opacity = satellite ? (openSea ? 0.42 : 0.36) : openSea ? 0.34 : 0.3;
+  const opacity = satellite ? (openSea ? SATELLITE_WATER.seaOpacity : SATELLITE_WATER.inlandOpacity) : openSea ? 0.34 : 0.3;
   return new THREE.ShaderMaterial({
     vertexShader: WATER_VERTEX,
     fragmentShader: WATER_FRAGMENT,
@@ -972,9 +973,9 @@ function makeWaterMaterial({
       uSunDir: { value: new THREE.Vector3(-0.5, -0.35, 0.79).normalize() },
       // Satellite water pushed to a vivid azure/cyan to match the reference map
       // (was a muted teal). 3D keeps its richer, darker sea.
-      uDeepColor: { value: new THREE.Color(satellite ? 0x1785ad : 0x11536a) },
-      uShallowColor: { value: new THREE.Color(satellite ? 0x5cc8e4 : 0x57adbf) },
-      uSkyColor: { value: new THREE.Color(satellite ? 0x9fdcee : 0x8bc7d2) },
+      uDeepColor: { value: new THREE.Color(satellite ? SATELLITE_WATER.deep : 0x11536a) },
+      uShallowColor: { value: new THREE.Color(satellite ? SATELLITE_WATER.shallow : 0x57adbf) },
+      uSkyColor: { value: new THREE.Color(satellite ? SATELLITE_WATER.sky : 0x8bc7d2) },
       uFoamColor: { value: new THREE.Color(0xffffff) },
       uOpacity: { value: opacity },
       // Satellite view is top-down (pitch 0) — turn on the wave-legibility terms

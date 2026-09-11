@@ -6,7 +6,7 @@ import {
   Viewer,
 } from "cesium";
 import type { LightPreset } from "../mapTypes";
-import { MASTERPLAN_THEME } from "./theme";
+import { MASTERPLAN_THEME, MASTERPLAN_VISUALS } from "./theme";
 
 const LIGHT_TIMES: Record<LightPreset, string> = {
   dawn: "2026-01-15T02:30:00Z",
@@ -15,17 +15,18 @@ const LIGHT_TIMES: Record<LightPreset, string> = {
   night: "2026-01-15T20:00:00Z",
 };
 
-function isConstrainedDevice() {
+export function isConstrainedCesiumDevice() {
   if (typeof window === "undefined") return false;
   return window.matchMedia("(max-width: 767px)").matches || (navigator.hardwareConcurrency ?? 8) <= 4;
 }
 
-export function createCesiumScene(container: HTMLElement, ionToken?: string) {
+export function createCesiumScene(container: HTMLElement, ionToken?: string, creditContainer?: HTMLElement) {
   if (ionToken) Ion.defaultAccessToken = ionToken;
 
-  const constrained = isConstrainedDevice();
+  const constrained = isConstrainedCesiumDevice();
   const viewer = new Viewer(container, {
     baseLayer: false,
+    creditContainer,
     terrainProvider: new EllipsoidTerrainProvider(),
     animation: false,
     baseLayerPicker: false,
@@ -50,12 +51,22 @@ export function createCesiumScene(container: HTMLElement, ionToken?: string) {
   viewer.scene.globe.baseColor = Color.fromCssColorString(MASTERPLAN_THEME.land);
   viewer.scene.globe.depthTestAgainstTerrain = true;
   viewer.scene.globe.enableLighting = true;
+  viewer.scene.globe.maximumScreenSpaceError = constrained
+    ? MASTERPLAN_VISUALS.scene.mobileMaximumScreenSpaceError
+    : MASTERPLAN_VISUALS.scene.desktopMaximumScreenSpaceError;
+  viewer.scene.globe.tileCacheSize = constrained
+    ? MASTERPLAN_VISUALS.scene.mobileTileCacheSize
+    : MASTERPLAN_VISUALS.scene.desktopTileCacheSize;
   viewer.scene.fog.enabled = true;
+  viewer.scene.fog.density = MASTERPLAN_VISUALS.scene.fogDensity;
   viewer.scene.highDynamicRange = !constrained;
+  viewer.scene.postProcessStages.fxaa.enabled = true;
+  viewer.shadows = !constrained;
+  if (!constrained) viewer.shadowMap.softShadows = true;
   if (viewer.scene.skyAtmosphere) {
-    viewer.scene.skyAtmosphere.hueShift = -0.03;
-    viewer.scene.skyAtmosphere.saturationShift = -0.15;
-    viewer.scene.skyAtmosphere.brightnessShift = 0.08;
+    viewer.scene.skyAtmosphere.hueShift = 0;
+    viewer.scene.skyAtmosphere.saturationShift = 0;
+    viewer.scene.skyAtmosphere.brightnessShift = 0;
   }
 
   return viewer;
@@ -66,4 +77,3 @@ export function applyCesiumLightPreset(viewer: Viewer, preset: LightPreset) {
   viewer.scene.globe.enableLighting = preset !== "day";
   viewer.scene.requestRender();
 }
-

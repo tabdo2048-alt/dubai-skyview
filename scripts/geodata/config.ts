@@ -24,6 +24,7 @@ export const GEODATA_PATHS = {
 
 export const HEIGHT_FALLBACKS = {
   floorHeightM: 3.2,
+  maximumHeightM: 900,
   byTypeM: {
     residential: 15,
     apartments: 24,
