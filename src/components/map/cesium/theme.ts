@@ -1,8 +1,10 @@
+import { SATELLITE_WATER } from "@/lib/waterAppearance";
+
 export const MASTERPLAN_THEME = {
   land: "#c9ad78",
   sand: "#b9935b",
-  water: "#0d8798",
-  waterBlend: "#49c6c2",
+  water: SATELLITE_WATER.deep,
+  waterBlend: SATELLITE_WATER.shallow,
   park: "#728f70",
   buildingResidential: "#efe4cf",
   buildingCommercial: "#9eafb6",

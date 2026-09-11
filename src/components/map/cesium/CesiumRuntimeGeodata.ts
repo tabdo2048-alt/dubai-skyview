@@ -67,16 +67,19 @@ export class CesiumRuntimeGeodata {
       const response = await fetch(this.manifestUrl);
       if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
       this.manifest = (await response.json()) as RuntimeGeodataManifest;
+      if (this.destroyed) return;
       this.viewer.camera.moveEnd.addEventListener(this.refresh);
       await this.refresh();
       this.onStatus?.(null);
     } catch (error) {
+      if (this.destroyed) return;
       console.warn("[Cesium] Runtime Dubai geodata is unavailable", error);
       this.onStatus?.("Dubai pilot data is not generated yet. Run npm run geodata:pilot.");
     }
   }
 
   async reloadBuildings() {
+    if (this.destroyed) return;
     for (const [chunkId, loaded] of this.loaded) {
       for (const item of loaded.primitives.filter((primitive) => primitive.layer === "buildings")) {
         this.viewer.scene.primitives.remove(item.value);
@@ -84,6 +87,7 @@ export class CesiumRuntimeGeodata {
       loaded.primitives = loaded.primitives.filter((primitive) => primitive.layer !== "buildings");
       const url = loaded.definition.files.buildings;
       if (url) await this.addLayer(loaded, "buildings", url);
+      if (this.destroyed) return;
       this.loaded.set(chunkId, loaded);
     }
   }
@@ -101,7 +105,14 @@ export class CesiumRuntimeGeodata {
 
     for (const chunk of this.manifest.chunks) {
       if (desired.has(chunk.id) && !this.loaded.has(chunk.id) && !this.pending.has(chunk.id)) {
-        const task = this.loadChunk(chunk).finally(() => this.pending.delete(chunk.id));
+        const task = this.loadChunk(chunk)
+          .catch(() => {
+            if (!this.destroyed)
+              this.onStatus?.(
+                "Some masterplan data could not load. Other map features remain available.",
+              );
+          })
+          .finally(() => this.pending.delete(chunk.id));
         this.pending.set(chunk.id, task);
       }
     }
@@ -115,9 +126,15 @@ export class CesiumRuntimeGeodata {
   private async loadChunk(definition: RuntimeGeodataChunk) {
     const loaded: LoadedChunk = { definition, primitives: [] };
     const entries = Object.entries(definition.files) as Array<[RuntimeLayerName, string]>;
-    await Promise.all(entries.map(([layer, url]) => this.addLayer(loaded, layer, url)));
+    const results = await Promise.allSettled(
+      entries.map(([layer, url]) => this.addLayer(loaded, layer, url)),
+    );
+    if (!this.destroyed && results.some((result) => result.status === "rejected")) {
+      this.onStatus?.("Some masterplan layers could not load. Available layers remain visible.");
+    }
     if (this.destroyed) {
-      for (const item of loaded.primitives) this.viewer.scene.primitives.remove(item.value);
+      if (!this.viewer.isDestroyed())
+        for (const item of loaded.primitives) this.viewer.scene.primitives.remove(item.value);
       return;
     }
     this.loaded.set(definition.id, loaded);
@@ -131,7 +148,6 @@ export class CesiumRuntimeGeodata {
       const primitive = createCesiumCityBuildings(data, this.getProjects());
       if (primitive) this.addPrimitive(loaded, layer, primitive);
     } else if (layer === "water") {
-      if (this.surfaceMode === "satellite-hybrid") return;
       const primitive = createCesiumWaterLayer(data);
       if (primitive) this.addPrimitive(loaded, layer, primitive);
     } else if (layer === "parks") {

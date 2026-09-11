@@ -20,12 +20,13 @@ export function isConstrainedCesiumDevice() {
   return window.matchMedia("(max-width: 767px)").matches || (navigator.hardwareConcurrency ?? 8) <= 4;
 }
 
-export function createCesiumScene(container: HTMLElement, ionToken?: string) {
+export function createCesiumScene(container: HTMLElement, ionToken?: string, creditContainer?: HTMLElement) {
   if (ionToken) Ion.defaultAccessToken = ionToken;
 
   const constrained = isConstrainedCesiumDevice();
   const viewer = new Viewer(container, {
     baseLayer: false,
+    creditContainer,
     terrainProvider: new EllipsoidTerrainProvider(),
     animation: false,
     baseLayerPicker: false,
@@ -63,9 +64,9 @@ export function createCesiumScene(container: HTMLElement, ionToken?: string) {
   viewer.shadows = !constrained;
   if (!constrained) viewer.shadowMap.softShadows = true;
   if (viewer.scene.skyAtmosphere) {
-    viewer.scene.skyAtmosphere.hueShift = -0.03;
-    viewer.scene.skyAtmosphere.saturationShift = -0.15;
-    viewer.scene.skyAtmosphere.brightnessShift = 0.08;
+    viewer.scene.skyAtmosphere.hueShift = 0;
+    viewer.scene.skyAtmosphere.saturationShift = 0;
+    viewer.scene.skyAtmosphere.brightnessShift = 0;
   }
 
   return viewer;

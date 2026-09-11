@@ -6,7 +6,9 @@ import {
   Material,
   PolygonGeometry,
   Primitive,
+  type Viewer,
 } from "cesium";
+import { SATELLITE_WATER } from "@/lib/waterAppearance";
 import { featurePolygons, polygonHierarchy } from "./geojson";
 import { MASTERPLAN_LAYOUT, MASTERPLAN_THEME, MASTERPLAN_VISUALS } from "./theme";
 import type { RuntimeGeoJson } from "./types";
@@ -30,9 +32,11 @@ export function createCesiumWaterLayer(data: RuntimeGeoJson) {
     }
   }
   if (!instances.length) return null;
+  const opacity = data.features.some((feature) => feature.properties?.water === "sea")
+    ? SATELLITE_WATER.seaOpacity : SATELLITE_WATER.inlandOpacity;
   const material = Material.fromType(Material.WaterType, {
-    baseWaterColor: Color.fromCssColorString(MASTERPLAN_THEME.water),
-    blendColor: Color.fromCssColorString(MASTERPLAN_THEME.waterBlend),
+    baseWaterColor: Color.fromCssColorString(MASTERPLAN_THEME.water).withAlpha(opacity),
+    blendColor: Color.fromCssColorString(MASTERPLAN_THEME.waterBlend).withAlpha(opacity),
     normalMap: buildModuleUrl("Assets/Textures/waterNormalsSmall.jpg"),
     ...MASTERPLAN_VISUALS.water,
   });
@@ -43,7 +47,7 @@ export function createCesiumWaterLayer(data: RuntimeGeoJson) {
       faceForward: true,
       flat: false,
       material,
-      translucent: false,
+      translucent: true,
     }),
     asynchronous: true,
     allowPicking: false,
@@ -70,4 +74,16 @@ export async function createCesiumDubaiCoastlineLayer() {
       license: "ODbL-1.0",
     },
   });
+}
+
+/** Request-render scenes need explicit frames for water even when the camera is idle.
+ * Bound the refresh rate and stop requests in hidden tabs / distant globe views.
+ */
+export function connectCesiumWaterAnimation(viewer: Viewer) {
+  const mobile = window.matchMedia("(pointer: coarse)").matches;
+  const timer = window.setInterval(() => {
+    if (viewer.isDestroyed() || document.hidden || viewer.camera.positionCartographic.height > 150_000) return;
+    viewer.scene.requestRender();
+  }, 1000 / (mobile ? 20 : 30));
+  return () => window.clearInterval(timer);
 }

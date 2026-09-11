@@ -23,13 +23,25 @@ export function connectProjectInteraction(
 
   const restoreHover = () => {
     if (hoveredFeature && hoveredFeature !== selectedFeature && hoveredOriginal) {
-      hoveredFeature.color = hoveredOriginal;
+      if (!hoveredFeature.tileset.isDestroyed()) {
+        try {
+          hoveredFeature.color = hoveredOriginal;
+        } catch {
+          /* Feature content may have been evicted. */
+        }
+      }
     }
     hoveredFeature = null;
     hoveredOriginal = null;
   };
   const restoreSelection = () => {
-    if (selectedFeature && selectedOriginal) selectedFeature.color = selectedOriginal;
+    if (selectedFeature && selectedOriginal && !selectedFeature.tileset.isDestroyed()) {
+      try {
+        selectedFeature.color = selectedOriginal;
+      } catch {
+        /* Feature content may have been evicted. */
+      }
+    }
     selectedFeature = null;
     selectedOriginal = null;
   };
@@ -37,24 +49,28 @@ export function connectProjectInteraction(
   handler.setInputAction((movement: { endPosition: Cartesian2 }) => {
     const picked = viewer.scene.pick(movement.endPosition);
     restoreHover();
-    if (picked instanceof Cesium3DTileFeature && picked !== selectedFeature) {
+    const resolved = resolvePick(picked);
+    if (resolved && picked instanceof Cesium3DTileFeature && picked !== selectedFeature) {
       hoveredFeature = picked;
       hoveredOriginal = picked.color.clone();
       picked.color = Color.fromCssColorString(MASTERPLAN_THEME.hovered).withAlpha(0.72);
     }
-    const resolved = resolvePick(picked);
     viewer.scene.canvas.style.cursor = resolved ? "pointer" : "grab";
     onHover(resolved);
+    viewer.scene.requestRender();
   }, ScreenSpaceEventType.MOUSE_MOVE);
   handler.setInputAction((click: { position: Cartesian2 }) => {
     const picked = viewer.scene.pick(click.position);
+    restoreHover();
     restoreSelection();
-    if (picked instanceof Cesium3DTileFeature) {
+    const resolved = resolvePick(picked);
+    if (resolved && picked instanceof Cesium3DTileFeature) {
       selectedFeature = picked;
       selectedOriginal = picked.color.clone();
       picked.color = Color.fromCssColorString(MASTERPLAN_THEME.selected).withAlpha(0.82);
     }
-    onSelect(resolvePick(picked));
+    onSelect(resolved);
+    viewer.scene.requestRender();
   }, ScreenSpaceEventType.LEFT_CLICK);
   return () => {
     restoreHover();

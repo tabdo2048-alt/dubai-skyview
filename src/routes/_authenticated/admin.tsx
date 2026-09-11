@@ -1525,6 +1525,7 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
             <Suspense fallback={<div className="grid h-40 place-items-center text-sm text-muted-foreground">Loading Cesium editor…</div>}>
               <CesiumProjectPlacementEditor
                 modelUrl={f.model_3d_url}
+                plotGeometry={f.plot_geometry}
                 ionToken={import.meta.env.VITE_CESIUM_ION_TOKEN}
                 value={{
                   latitude: f.model_3d_lat ?? f.lat,

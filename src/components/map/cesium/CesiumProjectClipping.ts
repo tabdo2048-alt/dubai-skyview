@@ -3,7 +3,9 @@ import type { ProjectWithRelations } from "@/lib/types";
 export type GeographicPolygon = number[][][];
 
 function isCoordinate(value: unknown): value is number[] {
-  return Array.isArray(value) && value.length >= 2 && value.every((part) => typeof part === "number");
+  return (
+    Array.isArray(value) && value.length >= 2 && value.every((part) => typeof part === "number")
+  );
 }
 
 export function projectPlot(project: ProjectWithRelations): GeographicPolygon | null {
@@ -44,3 +46,32 @@ export function isInsideAnyProjectPlot(
   });
 }
 
+/** Only client-owned parcel geometry is buffered; Google geometry is never extracted. */
+export function validPlotGeometry(value: unknown): GeographicPolygon | null {
+  if (!value || typeof value !== "object") return null;
+  const geometry = value as { type?: string; coordinates?: unknown };
+  if (
+    geometry.type !== "Polygon" ||
+    !Array.isArray(geometry.coordinates) ||
+    !geometry.coordinates.length
+  )
+    return null;
+  for (const ring of geometry.coordinates) {
+    if (!Array.isArray(ring) || ring.length < 4) return null;
+    if (
+      !ring.every(
+        (p) =>
+          isCoordinate(p) &&
+          Number.isFinite(p[0]) &&
+          Number.isFinite(p[1]) &&
+          Math.abs(p[0]) <= 180 &&
+          Math.abs(p[1]) <= 90,
+      )
+    )
+      return null;
+    if (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1])
+      return null;
+    if (new Set(ring.slice(0, -1).map((p) => `${p[0]},${p[1]}`)).size < 3) return null;
+  }
+  return geometry.coordinates as GeographicPolygon;
+}
