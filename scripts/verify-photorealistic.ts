@@ -219,6 +219,34 @@ const missing = new CesiumPhotorealisticCity(
 await missing.start();
 assert.equal(requests, 0);
 missing.destroy();
+const unsupportedHarness = sceneHarness();
+const unsupportedStates: string[] = [];
+const unsupported = new CesiumPhotorealisticCity(
+  unsupportedHarness.viewer,
+  { enabled: true, googleKey: "test", projectInsertPaddingMeters: 2 },
+  (s) => unsupportedStates.push(s),
+  {
+    load: async () => {
+      requests++;
+      return unsupportedHarness.tileset;
+    },
+    clippingSupported: () => false,
+  },
+);
+await unsupported.start();
+unsupportedHarness.tileset.tileVisible.raiseEvent();
+await tick();
+assert.equal(
+  unsupportedStates.at(-1),
+  "photorealistic",
+  "lack of polygon clipping must not replace the Google city with Masterplan",
+);
+assert.equal(unsupportedHarness.viewer.scene.globe.show, false);
+assert.equal(unsupportedHarness.resources.size, 1);
+assert.equal(unsupported.activate({ id: "test", plot_geometry: plot }), false);
+unsupported.destroy();
+assert.equal(unsupportedHarness.resources.size, 0);
+
 const h = sceneHarness();
 const states: string[] = [];
 const city = new CesiumPhotorealisticCity(
@@ -287,7 +315,7 @@ await task;
 assert.equal(late.resources.size, 0);
 assert(late.isDestroyed(), "late result destroyed rather than mounted after navigation");
 console.log(
-  "Photorealistic checks passed: zero-request disable, missing credential, concave/hole/padded clipping, model-distance hysteresis, child-tile resilience, one-root lifetime, late-result cleanup.",
+  "Photorealistic checks passed: zero-request disable, missing credential, concave/hole/padded clipping, model-distance hysteresis, clipping-capability isolation, child-tile resilience, one-root lifetime, late-result cleanup.",
 );
 
 // Exercise actual project loading orchestration with engine I/O stubbed. This is
