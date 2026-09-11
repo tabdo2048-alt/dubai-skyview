@@ -12,7 +12,7 @@ export function readPhotorealisticConfig(
 ): PhotorealisticConfig {
   const padding = Number(env.VITE_PROJECT_INSERT_PADDING_METERS ?? 2);
   return {
-    enabled: env.VITE_ENABLE_GOOGLE_PHOTOREALISTIC === "true",
+    enabled: String(env.VITE_ENABLE_GOOGLE_PHOTOREALISTIC ?? "false").trim().toLowerCase() === "true",
     googleKey:
       typeof env.VITE_GOOGLE_MAP_TILES_API_KEY === "string"
         ? env.VITE_GOOGLE_MAP_TILES_API_KEY.trim() || undefined
