@@ -257,10 +257,15 @@ city.activate({ id: "test", plot_geometry: withHole });
 assert.equal(h.tileset.clippingPolygons.get(0).holes.length, 1);
 h.tileset.tileFailed.raiseEvent({ message: "403 key=must-not-log" });
 await tick();
-assert.equal(states.at(-1), "masterplan");
-assert.equal(h.resources.size, 0);
-assert.equal(h.viewer.scene.globe.show, true);
+assert.equal(
+  states.at(-1),
+  "photorealistic",
+  "one failed child tile must not tear down an otherwise visible Google city",
+);
+assert.equal(h.resources.size, 1);
+assert.equal(h.viewer.scene.globe.show, false);
 city.destroy();
+assert.equal(h.resources.size, 0);
 const late = sceneHarness();
 let resolveLoad!: (value: Cesium3DTileset) => void;
 const pending = new CesiumPhotorealisticCity(
@@ -282,7 +287,7 @@ await task;
 assert.equal(late.resources.size, 0);
 assert(late.isDestroyed(), "late result destroyed rather than mounted after navigation");
 console.log(
-  "Photorealistic checks passed: zero-request disable, missing credential, concave/hole/padded clipping, model-distance hysteresis, city fallback, one-root lifetime, late-result cleanup.",
+  "Photorealistic checks passed: zero-request disable, missing credential, concave/hole/padded clipping, model-distance hysteresis, child-tile resilience, one-root lifetime, late-result cleanup.",
 );
 
 // Exercise actual project loading orchestration with engine I/O stubbed. This is
