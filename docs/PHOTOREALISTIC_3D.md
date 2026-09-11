@@ -106,3 +106,26 @@ Automated provider/modeled I/O tests are not geographic visual tests.
 | Real-device mobile memory, persisted placement, normal-app switching | Not manually verified |
 
 **Review gate remains open.** The requested final visual acceptance—an aligned developer project without city intersections—requires a WebGL-capable browser, approved source access, coverage inspection and a correctly prepared developer asset. Do not merge or call this visually accepted on the strength of compilation.
+
+
+## Dubai production correction (2026-09-11)
+
+The public viewer now opens in Cesium 3D. Satellite remains selectable. The
+emirates menu is removed from the main map; navigation uses the existing Dubai
+view rectangle (a product extent, not official administrative geometry). Cesium
+limits camera height to 60 km and returns an out-of-range camera to that extent
+when movement finishes; it does not crop Google's data to an administrative border.
+Decorative HTML clouds are Satellite-only. OSM buildings and opaque water remain
+fallback-only and do not render over an active Google city.
+
+When both credentials exist, Cesium ion is preferred. Direct Google is used only
+without an ion token. This prevents a stale Google key from overriding a working
+ion asset. `VITE_ENABLE_GOOGLE_PHOTOREALISTIC=true` is still required; explicit
+false causes zero photorealistic requests. Values are trimmed and case-normalized.
+Keep the ion token configured. A direct Google key is optional with ion.
+
+Live checks before this correction: the production ion asset endpoint and its
+Google root JSON returned HTTP 200; the separately configured direct Google key
+returned 404. Root availability is not proof of usable Dubai coverage. Browser
+WebGL initialization failed, so no facade/insert screenshot is claimed. Existing
+fictional demo projects were not deleted from Supabase.

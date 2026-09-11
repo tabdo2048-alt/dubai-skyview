@@ -6,7 +6,7 @@ import {
   Math as CesiumMath,
   Viewer,
 } from "cesium";
-import type { EmirateView } from "@/lib/dubai";
+import { clampToDubai, type EmirateView } from "@/lib/dubai";
 import type { MapCameraState } from "../mapTypes";
 
 const EARTH_CIRCUMFERENCE_M = 40_075_016.686;
@@ -31,7 +31,8 @@ export function cameraHeightToZoom(height: number, latitude: number, viewportHei
 function destinationFromState(viewer: Viewer, camera: MapCameraState) {
   const height =
     camera.height ?? zoomToCameraHeight(camera.zoom, camera.lat, viewer.canvas.clientHeight || 800);
-  return Cartesian3.fromDegrees(camera.lng, camera.lat, height);
+  const position = clampToDubai(camera.lng, camera.lat);
+  return Cartesian3.fromDegrees(position.lng, position.lat, Math.min(height, 60_000));
 }
 
 export function setInitialCesiumCamera(viewer: Viewer, camera: MapCameraState) {
@@ -99,7 +100,25 @@ export function connectCesiumCamera(
     lastUpdate = now;
     onChange(readCesiumCamera(viewer));
   };
+  const constrain = () => {
+    const camera = viewer.camera;
+    const position = camera.positionCartographic;
+    const lng = CesiumMath.toDegrees(position.longitude);
+    const lat = CesiumMath.toDegrees(position.latitude);
+    const bounded = clampToDubai(lng, lat);
+    if (Math.abs(bounded.lng - lng) < 0.00001 && Math.abs(bounded.lat - lat) < 0.00001) return;
+    camera.setView({
+      destination: Cartesian3.fromDegrees(bounded.lng, bounded.lat, position.height),
+      orientation: { heading: camera.heading, pitch: camera.pitch, roll: camera.roll },
+    });
+    onChange(readCesiumCamera(viewer));
+  };
+  viewer.scene.screenSpaceCameraController.maximumZoomDistance = 60_000;
+  viewer.camera.moveEnd.addEventListener(constrain);
   viewer.camera.percentageChanged = 0.01;
   viewer.camera.changed.addEventListener(listener);
-  return () => viewer.camera.changed.removeEventListener(listener);
+  return () => {
+    viewer.camera.changed.removeEventListener(listener);
+    viewer.camera.moveEnd.removeEventListener(constrain);
+  };
 }

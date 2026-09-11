@@ -70,7 +70,7 @@ export const useFiltersStore = create<FiltersStore>((set) => ({
   hoveredProjectId: null,
   setHoveredProjectId: (id) => set({ hoveredProjectId: id }),
 
-  mapMode: "satellite",
+  mapMode: "3d",
   setMapMode: (mode) => set({ mapMode: mode }),
 
   metroMode: false,

@@ -14,14 +14,16 @@ type CityLoader = (
   config: PhotorealisticConfig,
   options: Cesium3DTileset.ConstructorOptions,
 ) => Promise<Cesium3DTileset>;
+// Prefer the configured ion account, matching the official Building Insert flow.
+// A stale direct Google key must not override an authorized ion asset.
 const loadCity: CityLoader = async (config, options) =>
-  config.googleKey
-    ? createGooglePhotorealistic3DTileset(
-        { key: config.googleKey, onlyUsingWithGoogleGeocoder: true },
+  config.ionToken
+    ? Cesium3DTileset.fromUrl(
+        await IonResource.fromAssetId(2275207, { accessToken: config.ionToken }),
         options,
       )
-    : Cesium3DTileset.fromUrl(
-        await IonResource.fromAssetId(2275207, { accessToken: config.ionToken }),
+    : createGooglePhotorealistic3DTileset(
+        { key: config.googleKey, onlyUsingWithGoogleGeocoder: true },
         options,
       );
 

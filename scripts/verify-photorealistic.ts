@@ -1,3 +1,4 @@
+import { clampToDubai, DUBAI_BOUNDS } from "../src/lib/dubai";
 import assert from "node:assert/strict";
 import {
   Event,
@@ -445,3 +446,8 @@ try {
 console.log(
   "Project lifecycle checks passed: no recursive reloads, in-flight dedupe, GPU-readiness gating, clipping rollback, unload hysteresis, late GLB/tileset cleanup, failure backoff.",
 );
+
+assert.deepEqual(clampToDubai(56, 26), { lng: DUBAI_BOUNDS.east, lat: DUBAI_BOUNDS.north });
+assert.deepEqual(clampToDubai(55.27, 25.19), { lng: 55.27, lat: 25.19 });
+assert.equal(readPhotorealisticConfig({ VITE_ENABLE_GOOGLE_PHOTOREALISTIC: " true\n" }).enabled, true);
+assert.equal(readPhotorealisticConfig({ VITE_ENABLE_GOOGLE_PHOTOREALISTIC: "false" }, "configured").enabled, false);
