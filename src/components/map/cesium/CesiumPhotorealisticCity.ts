@@ -38,6 +38,7 @@ export class CesiumPhotorealisticCity {
   private removers: Array<() => void> = [];
   private timeout: ReturnType<typeof setTimeout> | undefined;
   private failureQueued = false;
+  private tileFailureWarned = false;
   private started = false;
   private readonly invalidPlots = new Set<string>();
   constructor(
@@ -104,11 +105,17 @@ export class CesiumPhotorealisticCity {
         }),
       );
       this.removers.push(
-        tileset.tileFailed.addEventListener(() =>
-          this.queueFallback(
-            "Photorealistic streaming failed (access, quota or network). Showing Masterplan.",
-          ),
-        ),
+        tileset.tileFailed.addEventListener(() => {
+          // A streamed city contains many independent child tiles. One missing or
+          // transiently failed child must not tear down an otherwise healthy city.
+          // If no tile ever becomes visible, the startup timeout below still
+          // switches to Masterplan after 30 seconds.
+          if (this.destroyed || this.state === "masterplan" || this.tileFailureWarned) return;
+          this.tileFailureWarned = true;
+          console.warn(
+            "[Cesium] A photorealistic child tile failed; keeping the available Google city.",
+          );
+        }),
       );
       this.viewer.scene.requestRender();
     } catch {
