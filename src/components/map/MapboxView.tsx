@@ -4,6 +4,9 @@ import {
   DUBAI_BOUNDS,
   MAP_MAX_BOUNDS,
   ZOOM_OUT_BOUNDS,
+  MAP_MAX_ZOOM,
+  MAP_MIN_ZOOM_OFFSET,
+  MAP_PAN_CLAMP_EPSILON,
   DEFAULT_PITCH,
   DEFAULT_BEARING,
   DUBAI_CENTER,
@@ -295,7 +298,7 @@ export function MapboxView({
         [ZOOM_OUT_BOUNDS.west, ZOOM_OUT_BOUNDS.south],
         [ZOOM_OUT_BOUNDS.east, ZOOM_OUT_BOUNDS.north],
       ],
-      maxZoom: 18, // deep zoom-in to street/building level
+      maxZoom: MAP_MAX_ZOOM, // deep zoom-in to street/building level
 
       // MSAA sharpens 3D building edges but costs fill-rate, most painfully on
       // high-DPI phones. Keep it on desktop, drop it on mobile for smoother frames.
@@ -323,7 +326,7 @@ export function MapboxView({
       const open = fitZoomFor(DUBAI_BOUNDS); // OPENING frame — Dubai only, not the whole region
       // +1: hold the zoom-out floor one level tighter than the full ZOOM_OUT_BOUNDS
       // fit, so the user can't pull back quite as far.
-      if (typeof wide?.zoom === "number") map.setMinZoom(wide.zoom + 1);
+      if (typeof wide?.zoom === "number") map.setMinZoom(wide.zoom + MAP_MIN_ZOOM_OFFSET);
       if (typeof tight?.zoom === "number") tightMinZoomRef.current = tight.zoom;
       if (open && typeof open.zoom === "number") {
         openZoomRef.current = open.zoom;
@@ -401,7 +404,7 @@ export function MapboxView({
     function syncPanBounds() {
       if (clamping) return;
       const floor = tightMinZoomRef.current;
-      if (floor != null && map.getZoom() >= floor + 0.05) {
+      if (floor != null && map.getZoom() >= floor + MAP_PAN_CLAMP_EPSILON) {
         clamping = true;
         // finally: never leave the flag stuck true if setCenter throws, or the
         // clamp would silently stop working for the rest of the session.
