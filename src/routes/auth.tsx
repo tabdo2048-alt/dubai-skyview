@@ -7,9 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { clearSessionWindow, startSessionWindow } from "@/lib/auth-session";
 
 const BLOCKED_MESSAGE = "أنت محظور من دخول الموقع.";
 const SUBSCRIPTION_ENDED_MESSAGE = "Your subscription has ended. Sign in to renew it.";
+const SESSION_EXPIRED_MESSAGE = "Your 12-hour session ended. Please sign in again.";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({ meta: [{ title: "Sign in — Dubai Residences" }] }),
@@ -27,6 +29,7 @@ function AuthPage() {
   // Same idea for a subscription that ran out: the guard signs the session out,
   // this explains why.
   const [endedNotice, setEndedNotice] = useState(false);
+  const [sessionExpiredNotice, setSessionExpiredNotice] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -37,6 +40,10 @@ function AuthPage() {
     if (sessionStorage.getItem("dubai:subscription-ended")) {
       sessionStorage.removeItem("dubai:subscription-ended");
       setEndedNotice(true);
+    }
+    if (sessionStorage.getItem("dubai:session-expired")) {
+      sessionStorage.removeItem("dubai:session-expired");
+      setSessionExpiredNotice(true);
     }
   }, []);
 
@@ -49,7 +56,7 @@ function AuthPage() {
         toast.error("Too many failed attempts from your network. Try again in 5 minutes.");
         return;
       }
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { data: authData, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
         // A blocked account also carries a Supabase Auth ban, so Auth rejects it
         // before any RPC runs. Report the block, not "invalid credentials".
@@ -58,13 +65,19 @@ function AuthPage() {
         throw error;
       }
 
+      if (authData.session) startSessionWindow(authData.session);
+
       // Second gate for a block applied while a session already existed. Tolerates
       // the RPC being absent (see isCurrentUserBlocked) so an unapplied migration
       // cannot lock everyone out; any other failure signs the session back out.
       if (await isCurrentUserBlocked()) {
-        await supabase.auth.signOut();
+        if (authData.session) clearSessionWindow(authData.session);
+        await supabase.auth.signOut({ scope: "local" });
         throw new Error(BLOCKED_MESSAGE);
       }
+
+      const { error: auditError } = await sbAny.rpc("record_login_success");
+      if (auditError) console.error("Could not record login audit event", auditError);
 
       toast.success("Welcome back.");
       // Land a lapsed account on the pay page instead of /admin. The guard on
@@ -99,6 +112,11 @@ function AuthPage() {
           {blockedNotice && (
             <div role="alert" className="mt-4 rounded-xl border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
               {BLOCKED_MESSAGE}
+            </div>
+          )}
+          {sessionExpiredNotice && (
+            <div role="alert" className="mt-4 rounded-xl border border-gold/50 bg-gold/10 p-3 text-sm text-cream">
+              {SESSION_EXPIRED_MESSAGE}
             </div>
           )}
           {endedNotice && (

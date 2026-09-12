@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { Activity, ArrowLeft, Loader2 } from "lucide-react";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { Button } from "@/components/ui/button";
 import { useAuth, useIsAdmin } from "@/hooks/use-auth";
@@ -44,9 +44,16 @@ function PlatformPage() {
         ) : (
           <>
             {!canManage ? <div className="glass gold-hairline mt-6 rounded-2xl p-4 text-sm text-muted-foreground">Read-only access. Management actions are available only to the platform owner.</div> : null}
+            {canManage ? (
+              <div className="mt-6">
+                <Button asChild variant="outline" className="glass gold-hairline text-cream">
+                  <Link to="/admin/activity-log"><Activity className="mr-2 h-4 w-4" /> Activity log</Link>
+                </Button>
+              </div>
+            ) : null}
             <PublicProjectsManager canManage={canManage} />
             <SubscribersManager canManage={canManage} />
-            <UsersManager canManage={canManage} />
+            <UsersManager canManage={canManage} currentUserId={user?.id ?? null} />
             <MediaStorageManager canManage={canManage} />
             <PoiManager canManage={canManage} />
           </>
