@@ -43,6 +43,11 @@ export const ZOOM_OUT_BOUNDS = {
   east: 56.40,
 };
 
+// Shared navigation/zoom rules for both Mapbox Satellite and Cesium 3D.
+export const MAP_MAX_ZOOM = 18;
+export const MAP_MIN_ZOOM_OFFSET = 1;
+export const MAP_PAN_CLAMP_EPSILON = 0.05;
+
 export function clampToDubai(lng: number, lat: number) {
   return {
     lng: Math.max(DUBAI_BOUNDS.west, Math.min(DUBAI_BOUNDS.east, lng)),
