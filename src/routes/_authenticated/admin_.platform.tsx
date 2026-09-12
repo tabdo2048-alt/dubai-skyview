@@ -8,6 +8,7 @@ import { PoiManager } from "@/components/admin/PoiManager";
 import { SubscribersManager, UsersManager } from "@/components/admin/PlatformAccountManagers";
 import { MediaStorageManager } from "@/components/admin/MediaStorageManager";
 import { isPlatformOwner } from "@/lib/platform-owner";
+import { AuditLogManager } from "@/components/admin/AuditLogManager";
 
 // `admin_` (trailing underscore) un-nests this to a standalone /admin/platform
 // page. Platform-admin (has_role 'admin') ONLY — separate from the per-org
@@ -44,6 +45,7 @@ function PlatformPage() {
         ) : (
           <>
             {!canManage ? <div className="glass gold-hairline mt-6 rounded-2xl p-4 text-sm text-muted-foreground">Read-only access. Management actions are available only to the platform owner.</div> : null}
+            <AuditLogManager canView={canManage} />
             <PublicProjectsManager canManage={canManage} />
             <SubscribersManager canManage={canManage} />
             <UsersManager canManage={canManage} />
