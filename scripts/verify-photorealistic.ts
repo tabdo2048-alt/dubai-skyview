@@ -1,4 +1,9 @@
-import { clampToDubai, DUBAI_BOUNDS } from "../src/lib/dubai";
+import {
+  clampToDubai,
+  DUBAI_BOUNDS,
+  MAP_MAX_BOUNDS,
+  ZOOM_OUT_BOUNDS,
+} from "../src/lib/dubai";
 import assert from "node:assert/strict";
 import {
   Event,
@@ -22,6 +27,10 @@ import {
   validPlotGeometry,
 } from "../src/components/map/cesium/CesiumProjectClipping";
 import { detectProjectModelType } from "../src/components/map/cesium/projectModelTransforms";
+import {
+  boundsFitZoom,
+  viewBoundsNudge,
+} from "../src/components/map/cesium/CesiumCameraController";
 
 const plot = {
   type: "Polygon",
@@ -484,3 +493,23 @@ assert.deepEqual(clampToDubai(56, 26), { lng: DUBAI_BOUNDS.east, lat: DUBAI_BOUN
 assert.deepEqual(clampToDubai(55.27, 25.19), { lng: 55.27, lat: 25.19 });
 assert.equal(readPhotorealisticConfig({ VITE_ENABLE_GOOGLE_PHOTOREALISTIC: " true\n" }).enabled, true);
 assert.equal(readPhotorealisticConfig({ VITE_ENABLE_GOOGLE_PHOTOREALISTIC: "false" }, "configured").enabled, false);
+
+const wideFit = boundsFitZoom(ZOOM_OUT_BOUNDS, 1200, 800);
+const tightFit = boundsFitZoom(MAP_MAX_BOUNDS, 1200, 800);
+assert(tightFit > wideFit, "the tighter pan extent must engage above the overview zoom");
+assert.deepEqual(
+  viewBoundsNudge(
+    { west: 54.4, south: 24.8, east: 54.8, north: 25.2 },
+    MAP_MAX_BOUNDS,
+  ),
+  { longitude: MAP_MAX_BOUNDS.west - 54.4, latitude: 0 },
+);
+assert.deepEqual(
+  viewBoundsNudge(
+    { west: 54.8, south: 24.7, east: 56.0, north: 25.7 },
+    MAP_MAX_BOUNDS,
+  ),
+  { longitude: 0, latitude: 0 },
+  "an axis wider than the tight extent is left to the shared overview limit",
+);
+console.log("Cesium camera checks passed: Satellite-equivalent regional bounds and zoom thresholds.");
