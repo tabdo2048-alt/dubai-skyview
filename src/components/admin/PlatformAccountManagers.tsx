@@ -73,7 +73,13 @@ export function SubscribersManager({ canManage }: { canManage: boolean }) {
   </div>;
 }
 
-export function UsersManager({ canManage }: { canManage: boolean }) {
+export function UsersManager({
+  canManage,
+  currentUserId,
+}: {
+  canManage: boolean;
+  currentUserId: string | null;
+}) {
   const [rows, setRows] = useState<PlatformUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -105,13 +111,19 @@ export function UsersManager({ canManage }: { canManage: boolean }) {
     finally { setBusyId(null); }
   }
 
+  // Defense in depth: the RPC applies this rule server-side too. Keeping the
+  // UI filter prevents stale/cached data from exposing another admin account.
+  const visibleRows = rows.filter(
+    (row) => canManage || !row.is_platform_admin || row.user_id === currentUserId,
+  );
+
   return <div id="admin-users" className="mt-10 scroll-mt-24">
     <h2 className="font-display text-3xl text-cream">Users</h2>
-    <p className="mt-1 text-sm text-muted-foreground">{rows.length} account{rows.length === 1 ? "" : "s"}</p>
+    <p className="mt-1 text-sm text-muted-foreground">{visibleRows.length} account{visibleRows.length === 1 ? "" : "s"}</p>
     <div className="mt-4 grid gap-2">
       {loading ? <div className="p-4 text-center text-sm text-muted-foreground">Loading…</div> : null}
-      {!loading && rows.length === 0 ? <div className="glass gold-hairline rounded-2xl p-4 text-center text-sm text-muted-foreground">No users.</div> : null}
-      {rows.map(user => {
+      {!loading && visibleRows.length === 0 ? <div className="glass gold-hairline rounded-2xl p-4 text-center text-sm text-muted-foreground">No users.</div> : null}
+      {visibleRows.map(user => {
         const period = formatSubscriptionPeriod(user.current_period_end, user.subscription_status);
         return <div key={user.user_id} className="glass gold-hairline flex items-center gap-3 rounded-2xl p-3">
           <div className="min-w-0 flex-1">
