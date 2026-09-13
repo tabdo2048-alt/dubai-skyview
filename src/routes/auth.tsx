@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { sbAny, isCurrentUserBlocked, fetchMyTenants, canAccessTenant } from "@/integrations/supabase/saas";
+import { sbAny, isCurrentUserBlocked, fetchMyTenants, canAccessTenant, hasLifetimeAdminAccess } from "@/integrations/supabase/saas";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -80,6 +80,12 @@ function AuthPage() {
       if (auditError) console.error("Could not record login audit event", auditError);
 
       toast.success("Welcome back.");
+
+      if (await hasLifetimeAdminAccess()) {
+        navigate({ to: "/admin" });
+        return;
+      }
+
       // Land a lapsed account on the pay page instead of /admin. The guard on
       // /admin signs an account with no live subscription straight back out, so
       // sending them there would bounce them to /auth and they could never reach
