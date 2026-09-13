@@ -86,6 +86,9 @@ async function deleteCloudinaryPrefix(resourceType: "video" | "raw", prefix: str
 
 async function purgeTenant(tenantId: string) {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  // The generated database type is intentionally behind additive migrations.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const admin = supabaseAdmin as any;
 
   const [storageCount, videoCount, modelCount] = await Promise.all([
     deleteSupabaseMedia(tenantId),
@@ -93,13 +96,13 @@ async function purgeTenant(tenantId: string) {
     deleteCloudinaryPrefix("raw", `${MODEL_FOLDER_ROOT}/${tenantId}/`),
   ]);
 
-  const { error: deleteError, count } = await supabaseAdmin
+  const { error: deleteError, count } = await admin
     .from("projects")
     .delete({ count: "exact" })
     .eq("tenant_id", tenantId);
   if (deleteError) throw deleteError;
 
-  const { error: markError } = await supabaseAdmin.rpc("mark_tenant_data_purged", {
+  const { error: markError } = await admin.rpc("mark_tenant_data_purged", {
     _tenant: tenantId,
   });
   if (markError) throw markError;
@@ -120,7 +123,9 @@ export const Route = createFileRoute("/api/retention")({
         if (!authorized(request)) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        const { data, error } = await supabaseAdmin.rpc("retention_tenants_due_for_purge", {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const admin = supabaseAdmin as any;
+        const { data, error } = await admin.rpc("retention_tenants_due_for_purge", {
           _limit: 10,
         });
         if (error) {
