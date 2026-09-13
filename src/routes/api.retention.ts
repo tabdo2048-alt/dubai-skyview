@@ -119,7 +119,7 @@ async function purgeTenant(tenantId: string) {
 export const Route = createFileRoute("/api/retention")({
   server: {
     handlers: {
-      POST: async ({ request }) => {
+      GET: async ({ request }) => {
         if (!authorized(request)) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
