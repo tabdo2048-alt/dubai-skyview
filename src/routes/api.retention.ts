@@ -7,9 +7,10 @@ const STORAGE_BUCKET = "project-media";
 const VIDEO_FOLDER_ROOT = "dubai-skyview/project-videos";
 const MODEL_FOLDER_ROOT = "dubai-skyview/project-models";
 
-function authorized(request: Request): boolean {
+function cronAuthState(request: Request): "ok" | "missing" | "invalid" {
   const secret = process.env.CRON_SECRET?.trim();
-  return !!secret && request.headers.get("authorization") === `Bearer ${secret}`;
+  if (!secret) return "missing";
+  return request.headers.get("authorization") === `Bearer ${secret}` ? "ok" : "invalid";
 }
 
 async function listStoragePaths(
@@ -120,7 +121,13 @@ export const Route = createFileRoute("/api/retention")({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        if (!authorized(request)) return Response.json({ error: "Unauthorized" }, { status: 401 });
+        const authState = cronAuthState(request);
+        if (authState === "missing") {
+          return Response.json({ error: "Retention job is not configured" }, { status: 503 });
+        }
+        if (authState === "invalid") {
+          return Response.json({ error: "Unauthorized" }, { status: 401 });
+        }
 
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
