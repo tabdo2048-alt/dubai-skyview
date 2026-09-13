@@ -2,7 +2,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { Search, LogIn, LogOut, LayoutDashboard, UserPlus, UserRound } from "lucide-react";
 import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/use-auth";
+import { useAuth, useIsAdmin } from "@/hooks/use-auth";
 import { useFiltersStore } from "@/store/filters";
 import { useTenantStore } from "@/store/tenant";
 import { Input } from "@/components/ui/input";
@@ -19,6 +19,7 @@ export function AppNavbar() {
   const path = useRouterState({ select: (r) => r.location.pathname });
   const { filters, setFilters } = useFiltersStore();
   const { user } = useAuth();
+  const { data: isPlatformAdmin = false } = useIsAdmin(user);
   const { tenants, currentTenantId, loaded: tenantLoaded, load: loadTenants } = useTenantStore();
 
   // The workspace is tenant-membership based. The old user_roles check only
@@ -42,6 +43,7 @@ export function AppNavbar() {
   const period = currentTenant
     ? formatSubscriptionPeriod(currentTenant.current_period_end, currentTenant.subscription_status, {
         suspended: currentTenant.suspended,
+        lifetime: isPlatformAdmin,
       })
     : null;
 

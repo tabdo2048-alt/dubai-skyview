@@ -1,6 +1,6 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
-import { fetchMyTenants, canAccessTenant, isCurrentUserBlocked, expireMySubscriptions } from "@/integrations/supabase/saas";
+import { fetchMyTenants, canAccessTenant, isCurrentUserBlocked, expireMySubscriptions, hasLifetimeAdminAccess } from "@/integrations/supabase/saas";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
@@ -19,6 +19,16 @@ export const Route = createFileRoute("/_authenticated")({
       }
     } catch (e) {
       if (e && typeof e === "object" && "to" in e) throw e;
+      await supabase.auth.signOut();
+      throw redirect({ to: "/auth" });
+    }
+
+    // Platform administrators have an account-level lifetime entitlement. It is
+    // derived from their role on every request, so existing and future admins do
+    // not depend on a tenant's Stripe period.
+    try {
+      if (await hasLifetimeAdminAccess()) return { user: data.user };
+    } catch {
       await supabase.auth.signOut();
       throw redirect({ to: "/auth" });
     }

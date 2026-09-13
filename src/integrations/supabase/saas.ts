@@ -22,6 +22,7 @@ export type Tenant = {
   subscription_status: SubscriptionStatus;
   current_period_end: string | null;
   suspended?: boolean | null;
+  data_purged_at?: string | null;
   created_at: string;
 };
 
@@ -82,6 +83,15 @@ export const canAccessTenant = (t: {
 // rows were cancelled. Tolerates the function being absent (unapplied migration)
 // so a stale database cannot break the sign-in path — the client-side date check
 // in canAccessTenant already blocks access either way.
+export async function hasLifetimeAdminAccess(): Promise<boolean> {
+  const { data, error } = await sbAny.rpc("current_user_has_lifetime_access");
+  if (error) {
+    if (isMissingFunction(error)) return false;
+    throw error;
+  }
+  return Boolean(data);
+}
+
 export async function expireMySubscriptions(): Promise<number> {
   const { data, error } = await sbAny.rpc("expire_my_subscriptions");
   if (error) {

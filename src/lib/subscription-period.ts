@@ -30,8 +30,17 @@ const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDat
 export function formatSubscriptionPeriod(
   periodEnd: string | null | undefined,
   status?: string | null,
-  options?: { suspended?: boolean | null },
+  options?: { suspended?: boolean | null; lifetime?: boolean },
 ): PeriodDisplay | null {
+  if (options?.lifetime) {
+    return {
+      label: "Lifetime",
+      detail: null,
+      cls: "text-emerald-400",
+      title: "Platform administrator access never expires",
+    };
+  }
+
   if (options?.suspended) {
     return {
       label: "Suspended",

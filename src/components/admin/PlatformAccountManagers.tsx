@@ -124,7 +124,7 @@ export function UsersManager({
       {loading ? <div className="p-4 text-center text-sm text-muted-foreground">Loading…</div> : null}
       {!loading && visibleRows.length === 0 ? <div className="glass gold-hairline rounded-2xl p-4 text-center text-sm text-muted-foreground">No users.</div> : null}
       {visibleRows.map(user => {
-        const period = formatSubscriptionPeriod(user.current_period_end, user.subscription_status);
+        const period = formatSubscriptionPeriod(user.current_period_end, user.subscription_status, { lifetime: user.is_platform_admin });
         return <div key={user.user_id} className="glass gold-hairline flex items-center gap-3 rounded-2xl p-3">
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1"><span className="truncate font-display text-lg text-cream">{user.email ?? "—"}</span>{period ? <span title={period.title} className={`glass gold-hairline shrink-0 rounded-full px-2 py-0.5 text-[11px] leading-tight ${period.cls}`}>{period.label}{period.detail ? ` · ${period.detail}` : ""}</span> : null}</div>
