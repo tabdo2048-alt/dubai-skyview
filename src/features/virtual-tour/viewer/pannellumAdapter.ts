@@ -3,6 +3,7 @@ export interface PannellumViewer {
   getYaw(): number;
   getPitch(): number;
   getHfov(): number;
+  mouseEventToCoords(event: MouseEvent): [number, number];
   loadScene(sceneId: string, pitch?: number, yaw?: number, hfov?: number): PannellumViewer;
   toggleFullscreen(): PannellumViewer;
   addHotSpot(config: Record<string, unknown>, sceneId?: string): PannellumViewer;
@@ -13,10 +14,7 @@ export interface PannellumViewer {
 }
 
 interface PannellumApi {
-  viewer(
-    container: HTMLElement,
-    config: Record<string, unknown>,
-  ): PannellumViewer;
+  viewer(container: HTMLElement, config: Record<string, unknown>): PannellumViewer;
 }
 
 declare global {
@@ -62,15 +60,18 @@ export interface PannellumHotspot {
   onActivate: () => void;
 }
 
+export interface PannellumCameraState {
+  yaw: number;
+  pitch: number;
+  hfov: number;
+}
+
 interface AccessibleHotspotArgs {
   label: string;
   ariaLabel: string;
 }
 
-function createAccessibleHotspot(
-  element: HTMLDivElement,
-  args: AccessibleHotspotArgs,
-): void {
+function createAccessibleHotspot(element: HTMLDivElement, args: AccessibleHotspotArgs): void {
   element.tabIndex = 0;
   element.setAttribute("role", "button");
   element.setAttribute("aria-label", args.ariaLabel);
@@ -113,10 +114,7 @@ export async function createPannellumViewer(
   return viewer;
 }
 
-export function setPannellumHotspots(
-  viewer: PannellumViewer,
-  hotspots: PannellumHotspot[],
-): void {
+export function setPannellumHotspots(viewer: PannellumViewer, hotspots: PannellumHotspot[]): void {
   const previousIds = renderedHotspotIds.get(viewer) ?? new Set<string>();
   for (const id of previousIds) viewer.removeHotSpot(id);
 
@@ -146,6 +144,21 @@ export function clearPannellumHotspots(viewer: PannellumViewer): void {
   ids.clear();
 }
 
+export function getPannellumCamera(viewer: PannellumViewer): PannellumCameraState {
+  return { yaw: viewer.getYaw(), pitch: viewer.getPitch(), hfov: viewer.getHfov() };
+}
+
+export function pannellumCoordinatesFromMouseEvent(
+  viewer: PannellumViewer,
+  event: MouseEvent,
+): { pitch: number; yaw: number } {
+  const [pitch, yaw] = viewer.mouseEventToCoords(event);
+  if (!Number.isFinite(pitch) || !Number.isFinite(yaw)) {
+    throw new Error("تعذر تحديد موضع Hotspot.");
+  }
+  return { pitch, yaw };
+}
+
 export function destroyPannellumViewer(viewer: PannellumViewer | null): void {
   if (!viewer) return;
   clearPannellumHotspots(viewer);
@@ -159,5 +172,7 @@ export function supportsFullscreen(): boolean {
   const element = document.documentElement as HTMLElement & {
     webkitRequestFullscreen?: () => Promise<void> | void;
   };
-  return Boolean(document.fullscreenEnabled || element.requestFullscreen || element.webkitRequestFullscreen);
+  return Boolean(
+    document.fullscreenEnabled || element.requestFullscreen || element.webkitRequestFullscreen,
+  );
 }

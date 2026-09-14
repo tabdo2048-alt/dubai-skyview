@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, Orbit } from "lucide-react";
 import { AppNavbar } from "@/components/layout/AppNavbar";
 import { Button } from "@/components/ui/button";
 import { useEffect } from "react";
@@ -21,12 +21,19 @@ function EditProjectPage() {
   const navigate = useNavigate();
   const { data: project, isLoading } = useProjectById(id);
   const { currentTenantId, loaded: tenantLoaded, load: loadTenants } = useTenantStore();
-  useEffect(() => { void loadTenants(); }, [loadTenants]);
+  useEffect(() => {
+    void loadTenants();
+  }, [loadTenants]);
   return (
     <div className="min-h-screen">
       <AppNavbar />
       <div className="mx-auto max-w-6xl px-4 py-8">
-        <Button asChild variant="ghost" size="sm" className="text-muted-foreground hover:text-cream">
+        <Button
+          asChild
+          variant="ghost"
+          size="sm"
+          className="text-muted-foreground hover:text-cream"
+        >
           <Link to="/admin">
             <ArrowLeft className="mr-1 h-4 w-4" /> Back to projects
           </Link>
@@ -44,9 +51,28 @@ function EditProjectPage() {
         ) : !project ? (
           <div className="mt-6 text-muted-foreground">Project not found.</div>
         ) : (
-          <div className="mt-4">
-            <ProjectForm id={id} tenantId={currentTenantId} onClose={() => navigate({ to: "/admin" })} />
-          </div>
+          <>
+            <div className="glass gold-hairline mt-5 flex flex-wrap items-center justify-between gap-4 rounded-2xl p-5">
+              <div>
+                <h2 className="font-display text-xl text-cream">360 Virtual Tours</h2>
+                <p className="text-sm text-muted-foreground">
+                  أنشئ الجولات والطوابق والمشاهد والـHotspots لهذا المشروع.
+                </p>
+              </div>
+              <Button asChild className="bg-gold text-gold-foreground">
+                <Link to="/admin/projects/$id/tours" params={{ id }}>
+                  <Orbit className="mr-1 size-4" /> Manage Tours
+                </Link>
+              </Button>
+            </div>
+            <div className="mt-4">
+              <ProjectForm
+                id={id}
+                tenantId={currentTenantId}
+                onClose={() => navigate({ to: "/admin" })}
+              />
+            </div>
+          </>
         )}
       </div>
     </div>
