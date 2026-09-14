@@ -50,6 +50,9 @@ jobs:
       - name: Verify virtual tour viewer and hotspots
         run: npm run test:virtual-tour-viewer
 
+      - name: Verify virtual tour floors and floor plans
+        run: npm run test:virtual-tour-floors
+
       - name: Build
         run: npm run build
 

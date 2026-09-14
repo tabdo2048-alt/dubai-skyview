@@ -1,7 +1,8 @@
 import { queryOptions, useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { ProjectRow } from "@/lib/types";
-import type { TourHotspotRow, TourSceneRow, VirtualTourRow } from "./types";
+import { sortTourFloors } from "./floorData";
+import type { TourFloorRow, TourHotspotRow, TourSceneRow, VirtualTourRow } from "./types";
 
 export type VirtualTourProject = Pick<ProjectRow, "id" | "slug" | "name" | "tour_360_url">;
 
@@ -76,6 +77,30 @@ export function useSceneHotspots(sceneId: string) {
   return useQuery(sceneHotspotsQueryOptions(sceneId));
 }
 
+export async function fetchTourFloors(tourId: string): Promise<TourFloorRow[]> {
+  const { data, error } = await supabase
+    .from("tour_floors")
+    .select("*")
+    .eq("tour_id", tourId)
+    .order("sort_order", { ascending: true })
+    .order("floor_number", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return sortTourFloors(data ?? []);
+}
+
+export function tourFloorsQueryOptions(tourId: string) {
+  return queryOptions({
+    queryKey: ["virtual-tours", "tour", tourId, "floors"],
+    queryFn: () => fetchTourFloors(tourId),
+    staleTime: 60_000,
+  });
+}
+
+export function useTourFloors(tourId: string) {
+  return useQuery(tourFloorsQueryOptions(tourId));
+}
+
 export function selectDefaultTourScene(scenes: TourSceneRow[]): TourSceneRow | null {
   return scenes[0] ?? null;
 }
@@ -84,7 +109,9 @@ export function findTourScene(scenes: TourSceneRow[], sceneId: string): TourScen
   return scenes.find((scene) => scene.id === sceneId) ?? null;
 }
 
-export async function fetchFirstPublishedProjectTour(projectId: string): Promise<VirtualTourRow | null> {
+export async function fetchFirstPublishedProjectTour(
+  projectId: string,
+): Promise<VirtualTourRow | null> {
   const { data, error } = await supabase
     .from("virtual_tours")
     .select("*")
