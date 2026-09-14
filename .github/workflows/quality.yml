@@ -38,6 +38,18 @@ jobs:
       - name: Verify unit offers and PDF layouts
         run: npm run test:unit-offers
 
+      - name: Verify Cesium geodata
+        run: npm run test:cesium-geodata
+
+      - name: Verify Google photorealistic provider
+        run: npm run test:photorealistic
+
+      - name: Verify virtual tour data layer
+        run: npm run test:virtual-tour-data
+
+      - name: Verify virtual tour viewer and hotspots
+        run: npm run test:virtual-tour-viewer
+
       - name: Build
         run: npm run build
 
