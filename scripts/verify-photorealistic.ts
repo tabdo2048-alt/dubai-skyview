@@ -256,6 +256,9 @@ assert.equal(unsupported.activate({ id: "test", plot_geometry: plot }), false);
 unsupported.destroy();
 assert.equal(unsupportedHarness.resources.size, 0);
 
+// Scope the provider-root assertion to the next Viewer. The unsupported
+// harness above is a separate Viewer and is expected to make its own request.
+requests = 0;
 const h = sceneHarness();
 const states: string[] = [];
 const city = new CesiumPhotorealisticCity(

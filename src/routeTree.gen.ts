@@ -19,8 +19,10 @@ import { Route as BillingIndexRouteImport } from './routes/billing.index'
 import { Route as ProjectsSlugRouteImport } from './routes/projects.$slug'
 import { Route as BillingSuccessRouteImport } from './routes/billing.success'
 import { Route as BillingCancelRouteImport } from './routes/billing.cancel'
+import { Route as ApiRetentionRouteImport } from './routes/api.retention'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as AuthenticatedAdminPlatformRouteImport } from './routes/_authenticated/admin_.platform'
+import { Route as AuthenticatedAdminActivityLogRouteImport } from './routes/_authenticated/admin_.activity-log'
 import { Route as ProjectsSlugUnitsUnitTypeIdRouteImport } from './routes/projects.$slug.units.$unitTypeId'
 import { Route as AuthenticatedAdminProjectsIdRouteImport } from './routes/_authenticated/admin_.projects.$id'
 
@@ -73,6 +75,11 @@ const BillingCancelRoute = BillingCancelRouteImport.update({
   path: '/billing/cancel',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiRetentionRoute = ApiRetentionRouteImport.update({
+  id: '/api/retention',
+  path: '/api/retention',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
   id: '/admin',
   path: '/admin',
@@ -82,6 +89,12 @@ const AuthenticatedAdminPlatformRoute =
   AuthenticatedAdminPlatformRouteImport.update({
     id: '/admin_/platform',
     path: '/admin/platform',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminActivityLogRoute =
+  AuthenticatedAdminActivityLogRouteImport.update({
+    id: '/admin_/activity-log',
+    path: '/admin/activity-log',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const ProjectsSlugUnitsUnitTypeIdRoute =
@@ -102,12 +115,14 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/signup': typeof SignupRoute
   '/admin': typeof AuthenticatedAdminRoute
+  '/api/retention': typeof ApiRetentionRoute
   '/billing/cancel': typeof BillingCancelRoute
   '/billing/success': typeof BillingSuccessRoute
   '/projects/$slug': typeof ProjectsSlugRouteWithChildren
   '/billing/': typeof BillingIndexRoute
   '/communities/': typeof CommunitiesIndexRoute
   '/developers/': typeof DevelopersIndexRoute
+  '/admin/activity-log': typeof AuthenticatedAdminActivityLogRoute
   '/admin/platform': typeof AuthenticatedAdminPlatformRoute
   '/admin/projects/$id': typeof AuthenticatedAdminProjectsIdRoute
   '/projects/$slug/units/$unitTypeId': typeof ProjectsSlugUnitsUnitTypeIdRoute
@@ -117,12 +132,14 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/signup': typeof SignupRoute
   '/admin': typeof AuthenticatedAdminRoute
+  '/api/retention': typeof ApiRetentionRoute
   '/billing/cancel': typeof BillingCancelRoute
   '/billing/success': typeof BillingSuccessRoute
   '/projects/$slug': typeof ProjectsSlugRouteWithChildren
   '/billing': typeof BillingIndexRoute
   '/communities': typeof CommunitiesIndexRoute
   '/developers': typeof DevelopersIndexRoute
+  '/admin/activity-log': typeof AuthenticatedAdminActivityLogRoute
   '/admin/platform': typeof AuthenticatedAdminPlatformRoute
   '/admin/projects/$id': typeof AuthenticatedAdminProjectsIdRoute
   '/projects/$slug/units/$unitTypeId': typeof ProjectsSlugUnitsUnitTypeIdRoute
@@ -134,12 +151,14 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/signup': typeof SignupRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
+  '/api/retention': typeof ApiRetentionRoute
   '/billing/cancel': typeof BillingCancelRoute
   '/billing/success': typeof BillingSuccessRoute
   '/projects/$slug': typeof ProjectsSlugRouteWithChildren
   '/billing/': typeof BillingIndexRoute
   '/communities/': typeof CommunitiesIndexRoute
   '/developers/': typeof DevelopersIndexRoute
+  '/_authenticated/admin_/activity-log': typeof AuthenticatedAdminActivityLogRoute
   '/_authenticated/admin_/platform': typeof AuthenticatedAdminPlatformRoute
   '/_authenticated/admin_/projects/$id': typeof AuthenticatedAdminProjectsIdRoute
   '/projects/$slug/units/$unitTypeId': typeof ProjectsSlugUnitsUnitTypeIdRoute
@@ -151,12 +170,14 @@ export interface FileRouteTypes {
     | '/auth'
     | '/signup'
     | '/admin'
+    | '/api/retention'
     | '/billing/cancel'
     | '/billing/success'
     | '/projects/$slug'
     | '/billing/'
     | '/communities/'
     | '/developers/'
+    | '/admin/activity-log'
     | '/admin/platform'
     | '/admin/projects/$id'
     | '/projects/$slug/units/$unitTypeId'
@@ -166,12 +187,14 @@ export interface FileRouteTypes {
     | '/auth'
     | '/signup'
     | '/admin'
+    | '/api/retention'
     | '/billing/cancel'
     | '/billing/success'
     | '/projects/$slug'
     | '/billing'
     | '/communities'
     | '/developers'
+    | '/admin/activity-log'
     | '/admin/platform'
     | '/admin/projects/$id'
     | '/projects/$slug/units/$unitTypeId'
@@ -182,12 +205,14 @@ export interface FileRouteTypes {
     | '/auth'
     | '/signup'
     | '/_authenticated/admin'
+    | '/api/retention'
     | '/billing/cancel'
     | '/billing/success'
     | '/projects/$slug'
     | '/billing/'
     | '/communities/'
     | '/developers/'
+    | '/_authenticated/admin_/activity-log'
     | '/_authenticated/admin_/platform'
     | '/_authenticated/admin_/projects/$id'
     | '/projects/$slug/units/$unitTypeId'
@@ -198,6 +223,7 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
   SignupRoute: typeof SignupRoute
+  ApiRetentionRoute: typeof ApiRetentionRoute
   BillingCancelRoute: typeof BillingCancelRoute
   BillingSuccessRoute: typeof BillingSuccessRoute
   ProjectsSlugRoute: typeof ProjectsSlugRouteWithChildren
@@ -278,6 +304,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BillingCancelRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/retention': {
+      id: '/api/retention'
+      path: '/api/retention'
+      fullPath: '/api/retention'
+      preLoaderRoute: typeof ApiRetentionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated/admin': {
       id: '/_authenticated/admin'
       path: '/admin'
@@ -290,6 +323,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/platform'
       fullPath: '/admin/platform'
       preLoaderRoute: typeof AuthenticatedAdminPlatformRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin_/activity-log': {
+      id: '/_authenticated/admin_/activity-log'
+      path: '/admin/activity-log'
+      fullPath: '/admin/activity-log'
+      preLoaderRoute: typeof AuthenticatedAdminActivityLogRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/projects/$slug/units/$unitTypeId': {
@@ -311,12 +351,14 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
+  AuthenticatedAdminActivityLogRoute: typeof AuthenticatedAdminActivityLogRoute
   AuthenticatedAdminPlatformRoute: typeof AuthenticatedAdminPlatformRoute
   AuthenticatedAdminProjectsIdRoute: typeof AuthenticatedAdminProjectsIdRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminRoute: AuthenticatedAdminRoute,
+  AuthenticatedAdminActivityLogRoute: AuthenticatedAdminActivityLogRoute,
   AuthenticatedAdminPlatformRoute: AuthenticatedAdminPlatformRoute,
   AuthenticatedAdminProjectsIdRoute: AuthenticatedAdminProjectsIdRoute,
 }
@@ -341,6 +383,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
   SignupRoute: SignupRoute,
+  ApiRetentionRoute: ApiRetentionRoute,
   BillingCancelRoute: BillingCancelRoute,
   BillingSuccessRoute: BillingSuccessRoute,
   ProjectsSlugRoute: ProjectsSlugRouteWithChildren,
