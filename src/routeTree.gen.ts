@@ -23,8 +23,11 @@ import { Route as ApiRetentionRouteImport } from './routes/api.retention'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as AuthenticatedAdminPlatformRouteImport } from './routes/_authenticated/admin_.platform'
 import { Route as AuthenticatedAdminActivityLogRouteImport } from './routes/_authenticated/admin_.activity-log'
+import { Route as ProjectsSlugTourTourIdRouteImport } from './routes/projects_.$slug.tour.$tourId'
 import { Route as ProjectsSlugUnitsUnitTypeIdRouteImport } from './routes/projects.$slug.units.$unitTypeId'
 import { Route as AuthenticatedAdminProjectsIdRouteImport } from './routes/_authenticated/admin_.projects.$id'
+import { Route as ProjectsSlugTourTourIdIndexRouteImport } from './routes/projects_.$slug.tour.$tourId.index'
+import { Route as ProjectsSlugTourTourIdSceneSceneIdRouteImport } from './routes/projects_.$slug.tour.$tourId.scene.$sceneId'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -97,6 +100,11 @@ const AuthenticatedAdminActivityLogRoute =
     path: '/admin/activity-log',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const ProjectsSlugTourTourIdRoute = ProjectsSlugTourTourIdRouteImport.update({
+  id: '/projects_/$slug/tour/$tourId',
+  path: '/projects/$slug/tour/$tourId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProjectsSlugUnitsUnitTypeIdRoute =
   ProjectsSlugUnitsUnitTypeIdRouteImport.update({
     id: '/units/$unitTypeId',
@@ -108,6 +116,18 @@ const AuthenticatedAdminProjectsIdRoute =
     id: '/admin_/projects/$id',
     path: '/admin/projects/$id',
     getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const ProjectsSlugTourTourIdIndexRoute =
+  ProjectsSlugTourTourIdIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => ProjectsSlugTourTourIdRoute,
+  } as any)
+const ProjectsSlugTourTourIdSceneSceneIdRoute =
+  ProjectsSlugTourTourIdSceneSceneIdRouteImport.update({
+    id: '/scene/$sceneId',
+    path: '/scene/$sceneId',
+    getParentRoute: () => ProjectsSlugTourTourIdRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -126,6 +146,9 @@ export interface FileRoutesByFullPath {
   '/admin/platform': typeof AuthenticatedAdminPlatformRoute
   '/admin/projects/$id': typeof AuthenticatedAdminProjectsIdRoute
   '/projects/$slug/units/$unitTypeId': typeof ProjectsSlugUnitsUnitTypeIdRoute
+  '/projects/$slug/tour/$tourId': typeof ProjectsSlugTourTourIdRouteWithChildren
+  '/projects/$slug/tour/$tourId/': typeof ProjectsSlugTourTourIdIndexRoute
+  '/projects/$slug/tour/$tourId/scene/$sceneId': typeof ProjectsSlugTourTourIdSceneSceneIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -143,6 +166,8 @@ export interface FileRoutesByTo {
   '/admin/platform': typeof AuthenticatedAdminPlatformRoute
   '/admin/projects/$id': typeof AuthenticatedAdminProjectsIdRoute
   '/projects/$slug/units/$unitTypeId': typeof ProjectsSlugUnitsUnitTypeIdRoute
+  '/projects/$slug/tour/$tourId': typeof ProjectsSlugTourTourIdIndexRoute
+  '/projects/$slug/tour/$tourId/scene/$sceneId': typeof ProjectsSlugTourTourIdSceneSceneIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -162,6 +187,9 @@ export interface FileRoutesById {
   '/_authenticated/admin_/platform': typeof AuthenticatedAdminPlatformRoute
   '/_authenticated/admin_/projects/$id': typeof AuthenticatedAdminProjectsIdRoute
   '/projects/$slug/units/$unitTypeId': typeof ProjectsSlugUnitsUnitTypeIdRoute
+  '/projects_/$slug/tour/$tourId': typeof ProjectsSlugTourTourIdRouteWithChildren
+  '/projects_/$slug/tour/$tourId/': typeof ProjectsSlugTourTourIdIndexRoute
+  '/projects_/$slug/tour/$tourId/scene/$sceneId': typeof ProjectsSlugTourTourIdSceneSceneIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -181,6 +209,9 @@ export interface FileRouteTypes {
     | '/admin/platform'
     | '/admin/projects/$id'
     | '/projects/$slug/units/$unitTypeId'
+    | '/projects/$slug/tour/$tourId'
+    | '/projects/$slug/tour/$tourId/'
+    | '/projects/$slug/tour/$tourId/scene/$sceneId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -198,6 +229,8 @@ export interface FileRouteTypes {
     | '/admin/platform'
     | '/admin/projects/$id'
     | '/projects/$slug/units/$unitTypeId'
+    | '/projects/$slug/tour/$tourId'
+    | '/projects/$slug/tour/$tourId/scene/$sceneId'
   id:
     | '__root__'
     | '/'
@@ -216,6 +249,9 @@ export interface FileRouteTypes {
     | '/_authenticated/admin_/platform'
     | '/_authenticated/admin_/projects/$id'
     | '/projects/$slug/units/$unitTypeId'
+    | '/projects_/$slug/tour/$tourId'
+    | '/projects_/$slug/tour/$tourId/'
+    | '/projects_/$slug/tour/$tourId/scene/$sceneId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -230,6 +266,7 @@ export interface RootRouteChildren {
   BillingIndexRoute: typeof BillingIndexRoute
   CommunitiesIndexRoute: typeof CommunitiesIndexRoute
   DevelopersIndexRoute: typeof DevelopersIndexRoute
+  ProjectsSlugTourTourIdRoute: typeof ProjectsSlugTourTourIdRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -332,6 +369,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminActivityLogRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/projects_/$slug/tour/$tourId': {
+      id: '/projects_/$slug/tour/$tourId'
+      path: '/projects/$slug/tour/$tourId'
+      fullPath: '/projects/$slug/tour/$tourId'
+      preLoaderRoute: typeof ProjectsSlugTourTourIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/projects/$slug/units/$unitTypeId': {
       id: '/projects/$slug/units/$unitTypeId'
       path: '/units/$unitTypeId'
@@ -345,6 +389,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/projects/$id'
       preLoaderRoute: typeof AuthenticatedAdminProjectsIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/projects_/$slug/tour/$tourId/': {
+      id: '/projects_/$slug/tour/$tourId/'
+      path: '/'
+      fullPath: '/projects/$slug/tour/$tourId/'
+      preLoaderRoute: typeof ProjectsSlugTourTourIdIndexRouteImport
+      parentRoute: typeof ProjectsSlugTourTourIdRoute
+    }
+    '/projects_/$slug/tour/$tourId/scene/$sceneId': {
+      id: '/projects_/$slug/tour/$tourId/scene/$sceneId'
+      path: '/scene/$sceneId'
+      fullPath: '/projects/$slug/tour/$tourId/scene/$sceneId'
+      preLoaderRoute: typeof ProjectsSlugTourTourIdSceneSceneIdRouteImport
+      parentRoute: typeof ProjectsSlugTourTourIdRoute
     }
   }
 }
@@ -378,6 +436,23 @@ const ProjectsSlugRouteWithChildren = ProjectsSlugRoute._addFileChildren(
   ProjectsSlugRouteChildren,
 )
 
+interface ProjectsSlugTourTourIdRouteChildren {
+  ProjectsSlugTourTourIdIndexRoute: typeof ProjectsSlugTourTourIdIndexRoute
+  ProjectsSlugTourTourIdSceneSceneIdRoute: typeof ProjectsSlugTourTourIdSceneSceneIdRoute
+}
+
+const ProjectsSlugTourTourIdRouteChildren: ProjectsSlugTourTourIdRouteChildren =
+  {
+    ProjectsSlugTourTourIdIndexRoute: ProjectsSlugTourTourIdIndexRoute,
+    ProjectsSlugTourTourIdSceneSceneIdRoute:
+      ProjectsSlugTourTourIdSceneSceneIdRoute,
+  }
+
+const ProjectsSlugTourTourIdRouteWithChildren =
+  ProjectsSlugTourTourIdRoute._addFileChildren(
+    ProjectsSlugTourTourIdRouteChildren,
+  )
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
@@ -390,6 +465,7 @@ const rootRouteChildren: RootRouteChildren = {
   BillingIndexRoute: BillingIndexRoute,
   CommunitiesIndexRoute: CommunitiesIndexRoute,
   DevelopersIndexRoute: DevelopersIndexRoute,
+  ProjectsSlugTourTourIdRoute: ProjectsSlugTourTourIdRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
