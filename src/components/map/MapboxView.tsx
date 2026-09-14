@@ -281,11 +281,9 @@ export function MapboxView({
 
     const map = new mapboxgl.Map({
       container: containerRef.current,
-      // Satellite mode → flat Mapbox satellite imagery; 3D mode → Standard style.
-      style:
-        mode === "3d"
-          ? "mapbox://styles/2shraf-tamer/cmrarm85z002x01shfp2680g9"
-          : "mapbox://styles/mapbox/satellite-streets-v12",
+      // Keep the same clear satellite base in both modes. In 3D, only the
+      // camera pitch and each project's own GLB model change.
+      style: "mapbox://styles/mapbox/satellite-streets-v12",
       center: [camera.lng, camera.lat],
       zoom: isMobile ? mobileZoom : camera.zoom,
       pitch: isMobile ? mobilePitch : 0,

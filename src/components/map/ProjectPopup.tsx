@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, MapPin, Bed, Calendar, Wallet, Building2, ArrowRight, MessageCircle, CalendarCheck, Ruler, FileDown } from "lucide-react";
+import { X, MapPin, Bed, Calendar, Wallet, Building2, ArrowRight, MessageCircle, CalendarCheck, Ruler, FileDown, Box, PlayCircle } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import type { ProjectWithRelations } from "@/lib/types";
 import { formatAed, bedroomsLabel } from "@/lib/dubai";
@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { UnitOfferDialog } from "@/components/offers/UnitOfferDialog";
 import { ProjectTeaserVideo } from "@/components/map/ProjectTeaserVideo";
 import { safeHttpUrl } from "@/lib/utils";
+import { useFiltersStore } from "@/store/filters";
 
 export function ProjectPopup({ project, onClose }: { project: ProjectWithRelations | null; onClose: () => void }) {
   // Hero + gallery images (hero first, deduped) for the click-to-swap viewer.
@@ -43,6 +44,9 @@ export function ProjectPopup({ project, onClose }: { project: ProjectWithRelatio
   const mailto = project ? viewingMailto(project.name) : null;
   const [offerOpen, setOfferOpen] = useState(false);
   const safeVideoUrl = safeHttpUrl(project?.video_url);
+  const safeTourUrl = safeHttpUrl(project?.tour_360_url);
+  const has3DModel = Boolean(project?.model_3d_enabled && safeHttpUrl(project?.model_3d_url));
+  const setMapMode = useFiltersStore((state) => state.setMapMode);
   const [teaserVisible, setTeaserVisible] = useState(Boolean(safeVideoUrl));
   // Reset the hero when a different project is selected.
   useEffect(() => {
@@ -220,6 +224,31 @@ export function ProjectPopup({ project, onClose }: { project: ProjectWithRelatio
                 )}
 
                 <div className="flex flex-wrap gap-2 pt-1">
+                  {has3DModel && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="shimmer bg-gold text-gold-foreground hover:bg-gold/90"
+                      onClick={() => {
+                        setMapMode("3d");
+                        track("view_project_3d", { slug: project.slug, name: project.name });
+                      }}
+                    >
+                      <Box className="mr-1 h-3.5 w-3.5" /> View 3D model
+                    </Button>
+                  )}
+                  {safeTourUrl && (
+                    <Button asChild size="sm" variant="outline" className="glass gold-hairline text-cream">
+                      <a
+                        href={safeTourUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={() => track("view_project_360", { slug: project.slug, name: project.name })}
+                      >
+                        <PlayCircle className="mr-1 h-3.5 w-3.5" /> Enter 360° tour
+                      </a>
+                    </Button>
+                  )}
                   <Button asChild size="sm" className="shimmer bg-gold text-gold-foreground shadow-[0_0_0_rgba(201,168,76,0)] transition-shadow hover:bg-gold/90 hover:shadow-[0_6px_22px_rgba(201,168,76,0.45)]">
                     <Link to="/projects/$slug" params={{ slug: projectDetailSlug({ name: project.name, slug: project.slug }) }}>
                       View details <ArrowRight className="ml-1 h-3.5 w-3.5" />
