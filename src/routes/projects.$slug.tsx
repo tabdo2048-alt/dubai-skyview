@@ -29,6 +29,7 @@ import type { ProjectWithRelations } from "@/lib/types";
 import { areaLabel, displayUnitTypes, highestUnitPrice, lowestUnitPrice, pricedUnitTypes, projectDetailSlug, unitAvailabilityLabel } from "@/lib/unit-types";
 import { displayPaymentPlans, paymentPlanSummary } from "@/lib/payment-plans";
 import { UnitOfferDialog } from "@/components/offers/UnitOfferDialog";
+import { useFirstPublishedProjectTour } from "@/features/virtual-tour/queries";
 
 export const Route = createFileRoute("/projects/$slug")({
   // Fetch on the server so <head> SEO tags + structured data are built from real
@@ -90,6 +91,7 @@ function ProjectDetail() {
   const { slug } = Route.useParams();
   const clientProject = useProject(slug);
   const p = clientProject.data ?? loaderData.project;
+  const internalTour = useFirstPublishedProjectTour(p?.id);
   useEffect(() => {
     if (p) track("view_project", { slug: p.slug, name: p.name, price: lowestUnitPrice(p.unit_types, p.starting_price_aed) });
   }, [p]);
@@ -350,11 +352,20 @@ function ProjectDetail() {
                   <FileDown className="mr-1 h-4 w-4" /> Sales offer PDF
                 </Button>
               )}
-              {safeHttpUrl(p.tour_360_url) && (
+              {internalTour.data ? (
+                <Button asChild variant="outline" className="glass gold-hairline text-cream">
+                  <Link
+                    to="/projects/$slug/tour/$tourId"
+                    params={{ slug: p.slug, tourId: internalTour.data.id }}
+                  >
+                    <PlayCircle className="mr-1 h-4 w-4" /> استكشف 360°
+                  </Link>
+                </Button>
+              ) : !internalTour.isLoading && safeHttpUrl(p.tour_360_url) ? (
                 <Button asChild variant="outline" className="glass gold-hairline text-cream">
                   <a href={safeHttpUrl(p.tour_360_url) ?? undefined} target="_blank" rel="noreferrer"><PlayCircle className="mr-1 h-4 w-4" /> 360° Tour</a>
                 </Button>
-              )}
+              ) : null}
               {safeHttpUrl(p.video_url) && (
                 <Button asChild variant="outline" className="glass gold-hairline text-cream">
                   <a href={safeHttpUrl(p.video_url) ?? undefined} target="_blank" rel="noreferrer"><PlayCircle className="mr-1 h-4 w-4" /> Video</a>

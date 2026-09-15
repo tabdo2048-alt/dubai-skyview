@@ -19,10 +19,18 @@ import { Route as BillingIndexRouteImport } from './routes/billing.index'
 import { Route as ProjectsSlugRouteImport } from './routes/projects.$slug'
 import { Route as BillingSuccessRouteImport } from './routes/billing.success'
 import { Route as BillingCancelRouteImport } from './routes/billing.cancel'
+import { Route as ApiRetentionRouteImport } from './routes/api.retention'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as AuthenticatedAdminPlatformRouteImport } from './routes/_authenticated/admin_.platform'
+import { Route as AuthenticatedAdminActivityLogRouteImport } from './routes/_authenticated/admin_.activity-log'
+import { Route as ProjectsSlugTourTourIdRouteImport } from './routes/projects_.$slug.tour.$tourId'
 import { Route as ProjectsSlugUnitsUnitTypeIdRouteImport } from './routes/projects.$slug.units.$unitTypeId'
 import { Route as AuthenticatedAdminProjectsIdRouteImport } from './routes/_authenticated/admin_.projects.$id'
+import { Route as ProjectsSlugTourTourIdIndexRouteImport } from './routes/projects_.$slug.tour.$tourId.index'
+import { Route as AuthenticatedAdminProjectsIdToursRouteImport } from './routes/_authenticated/admin_.projects.$id_.tours'
+import { Route as ProjectsSlugTourTourIdSceneSceneIdRouteImport } from './routes/projects_.$slug.tour.$tourId.scene.$sceneId'
+import { Route as AuthenticatedAdminProjectsIdToursTourIdRouteImport } from './routes/_authenticated/admin_.projects.$id_.tours_.$tourId'
+import { Route as AuthenticatedAdminProjectsIdToursTourIdFloorsFloorIdEditorRouteImport } from './routes/_authenticated/admin_.projects.$id_.tours_.$tourId_.floors_.$floorId_.editor'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -73,6 +81,11 @@ const BillingCancelRoute = BillingCancelRouteImport.update({
   path: '/billing/cancel',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiRetentionRoute = ApiRetentionRouteImport.update({
+  id: '/api/retention',
+  path: '/api/retention',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedAdminRoute = AuthenticatedAdminRouteImport.update({
   id: '/admin',
   path: '/admin',
@@ -84,6 +97,17 @@ const AuthenticatedAdminPlatformRoute =
     path: '/admin/platform',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedAdminActivityLogRoute =
+  AuthenticatedAdminActivityLogRouteImport.update({
+    id: '/admin_/activity-log',
+    path: '/admin/activity-log',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const ProjectsSlugTourTourIdRoute = ProjectsSlugTourTourIdRouteImport.update({
+  id: '/projects_/$slug/tour/$tourId',
+  path: '/projects/$slug/tour/$tourId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProjectsSlugUnitsUnitTypeIdRoute =
   ProjectsSlugUnitsUnitTypeIdRouteImport.update({
     id: '/units/$unitTypeId',
@@ -96,36 +120,81 @@ const AuthenticatedAdminProjectsIdRoute =
     path: '/admin/projects/$id',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const ProjectsSlugTourTourIdIndexRoute =
+  ProjectsSlugTourTourIdIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => ProjectsSlugTourTourIdRoute,
+  } as any)
+const AuthenticatedAdminProjectsIdToursRoute =
+  AuthenticatedAdminProjectsIdToursRouteImport.update({
+    id: '/admin_/projects/$id_/tours',
+    path: '/admin/projects/$id/tours',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const ProjectsSlugTourTourIdSceneSceneIdRoute =
+  ProjectsSlugTourTourIdSceneSceneIdRouteImport.update({
+    id: '/scene/$sceneId',
+    path: '/scene/$sceneId',
+    getParentRoute: () => ProjectsSlugTourTourIdRoute,
+  } as any)
+const AuthenticatedAdminProjectsIdToursTourIdRoute =
+  AuthenticatedAdminProjectsIdToursTourIdRouteImport.update({
+    id: '/admin_/projects/$id_/tours_/$tourId',
+    path: '/admin/projects/$id/tours/$tourId',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminProjectsIdToursTourIdFloorsFloorIdEditorRoute =
+  AuthenticatedAdminProjectsIdToursTourIdFloorsFloorIdEditorRouteImport.update({
+    id: '/admin_/projects/$id_/tours_/$tourId_/floors_/$floorId_/editor',
+    path: '/admin/projects/$id/tours/$tourId/floors/$floorId/editor',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/signup': typeof SignupRoute
   '/admin': typeof AuthenticatedAdminRoute
+  '/api/retention': typeof ApiRetentionRoute
   '/billing/cancel': typeof BillingCancelRoute
   '/billing/success': typeof BillingSuccessRoute
   '/projects/$slug': typeof ProjectsSlugRouteWithChildren
   '/billing/': typeof BillingIndexRoute
   '/communities/': typeof CommunitiesIndexRoute
   '/developers/': typeof DevelopersIndexRoute
+  '/admin/activity-log': typeof AuthenticatedAdminActivityLogRoute
   '/admin/platform': typeof AuthenticatedAdminPlatformRoute
   '/admin/projects/$id': typeof AuthenticatedAdminProjectsIdRoute
   '/projects/$slug/units/$unitTypeId': typeof ProjectsSlugUnitsUnitTypeIdRoute
+  '/projects/$slug/tour/$tourId': typeof ProjectsSlugTourTourIdRouteWithChildren
+  '/admin/projects/$id/tours': typeof AuthenticatedAdminProjectsIdToursRoute
+  '/projects/$slug/tour/$tourId/': typeof ProjectsSlugTourTourIdIndexRoute
+  '/admin/projects/$id/tours/$tourId': typeof AuthenticatedAdminProjectsIdToursTourIdRoute
+  '/projects/$slug/tour/$tourId/scene/$sceneId': typeof ProjectsSlugTourTourIdSceneSceneIdRoute
+  '/admin/projects/$id/tours/$tourId/floors/$floorId/editor': typeof AuthenticatedAdminProjectsIdToursTourIdFloorsFloorIdEditorRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/signup': typeof SignupRoute
   '/admin': typeof AuthenticatedAdminRoute
+  '/api/retention': typeof ApiRetentionRoute
   '/billing/cancel': typeof BillingCancelRoute
   '/billing/success': typeof BillingSuccessRoute
   '/projects/$slug': typeof ProjectsSlugRouteWithChildren
   '/billing': typeof BillingIndexRoute
   '/communities': typeof CommunitiesIndexRoute
   '/developers': typeof DevelopersIndexRoute
+  '/admin/activity-log': typeof AuthenticatedAdminActivityLogRoute
   '/admin/platform': typeof AuthenticatedAdminPlatformRoute
   '/admin/projects/$id': typeof AuthenticatedAdminProjectsIdRoute
   '/projects/$slug/units/$unitTypeId': typeof ProjectsSlugUnitsUnitTypeIdRoute
+  '/admin/projects/$id/tours': typeof AuthenticatedAdminProjectsIdToursRoute
+  '/projects/$slug/tour/$tourId': typeof ProjectsSlugTourTourIdIndexRoute
+  '/admin/projects/$id/tours/$tourId': typeof AuthenticatedAdminProjectsIdToursTourIdRoute
+  '/projects/$slug/tour/$tourId/scene/$sceneId': typeof ProjectsSlugTourTourIdSceneSceneIdRoute
+  '/admin/projects/$id/tours/$tourId/floors/$floorId/editor': typeof AuthenticatedAdminProjectsIdToursTourIdFloorsFloorIdEditorRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -134,15 +203,23 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/signup': typeof SignupRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
+  '/api/retention': typeof ApiRetentionRoute
   '/billing/cancel': typeof BillingCancelRoute
   '/billing/success': typeof BillingSuccessRoute
   '/projects/$slug': typeof ProjectsSlugRouteWithChildren
   '/billing/': typeof BillingIndexRoute
   '/communities/': typeof CommunitiesIndexRoute
   '/developers/': typeof DevelopersIndexRoute
+  '/_authenticated/admin_/activity-log': typeof AuthenticatedAdminActivityLogRoute
   '/_authenticated/admin_/platform': typeof AuthenticatedAdminPlatformRoute
   '/_authenticated/admin_/projects/$id': typeof AuthenticatedAdminProjectsIdRoute
   '/projects/$slug/units/$unitTypeId': typeof ProjectsSlugUnitsUnitTypeIdRoute
+  '/projects_/$slug/tour/$tourId': typeof ProjectsSlugTourTourIdRouteWithChildren
+  '/_authenticated/admin_/projects/$id_/tours': typeof AuthenticatedAdminProjectsIdToursRoute
+  '/projects_/$slug/tour/$tourId/': typeof ProjectsSlugTourTourIdIndexRoute
+  '/_authenticated/admin_/projects/$id_/tours_/$tourId': typeof AuthenticatedAdminProjectsIdToursTourIdRoute
+  '/projects_/$slug/tour/$tourId/scene/$sceneId': typeof ProjectsSlugTourTourIdSceneSceneIdRoute
+  '/_authenticated/admin_/projects/$id_/tours_/$tourId_/floors_/$floorId_/editor': typeof AuthenticatedAdminProjectsIdToursTourIdFloorsFloorIdEditorRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -151,30 +228,45 @@ export interface FileRouteTypes {
     | '/auth'
     | '/signup'
     | '/admin'
+    | '/api/retention'
     | '/billing/cancel'
     | '/billing/success'
     | '/projects/$slug'
     | '/billing/'
     | '/communities/'
     | '/developers/'
+    | '/admin/activity-log'
     | '/admin/platform'
     | '/admin/projects/$id'
     | '/projects/$slug/units/$unitTypeId'
+    | '/projects/$slug/tour/$tourId'
+    | '/admin/projects/$id/tours'
+    | '/projects/$slug/tour/$tourId/'
+    | '/admin/projects/$id/tours/$tourId'
+    | '/projects/$slug/tour/$tourId/scene/$sceneId'
+    | '/admin/projects/$id/tours/$tourId/floors/$floorId/editor'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/auth'
     | '/signup'
     | '/admin'
+    | '/api/retention'
     | '/billing/cancel'
     | '/billing/success'
     | '/projects/$slug'
     | '/billing'
     | '/communities'
     | '/developers'
+    | '/admin/activity-log'
     | '/admin/platform'
     | '/admin/projects/$id'
     | '/projects/$slug/units/$unitTypeId'
+    | '/admin/projects/$id/tours'
+    | '/projects/$slug/tour/$tourId'
+    | '/admin/projects/$id/tours/$tourId'
+    | '/projects/$slug/tour/$tourId/scene/$sceneId'
+    | '/admin/projects/$id/tours/$tourId/floors/$floorId/editor'
   id:
     | '__root__'
     | '/'
@@ -182,15 +274,23 @@ export interface FileRouteTypes {
     | '/auth'
     | '/signup'
     | '/_authenticated/admin'
+    | '/api/retention'
     | '/billing/cancel'
     | '/billing/success'
     | '/projects/$slug'
     | '/billing/'
     | '/communities/'
     | '/developers/'
+    | '/_authenticated/admin_/activity-log'
     | '/_authenticated/admin_/platform'
     | '/_authenticated/admin_/projects/$id'
     | '/projects/$slug/units/$unitTypeId'
+    | '/projects_/$slug/tour/$tourId'
+    | '/_authenticated/admin_/projects/$id_/tours'
+    | '/projects_/$slug/tour/$tourId/'
+    | '/_authenticated/admin_/projects/$id_/tours_/$tourId'
+    | '/projects_/$slug/tour/$tourId/scene/$sceneId'
+    | '/_authenticated/admin_/projects/$id_/tours_/$tourId_/floors_/$floorId_/editor'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -198,12 +298,14 @@ export interface RootRouteChildren {
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
   SignupRoute: typeof SignupRoute
+  ApiRetentionRoute: typeof ApiRetentionRoute
   BillingCancelRoute: typeof BillingCancelRoute
   BillingSuccessRoute: typeof BillingSuccessRoute
   ProjectsSlugRoute: typeof ProjectsSlugRouteWithChildren
   BillingIndexRoute: typeof BillingIndexRoute
   CommunitiesIndexRoute: typeof CommunitiesIndexRoute
   DevelopersIndexRoute: typeof DevelopersIndexRoute
+  ProjectsSlugTourTourIdRoute: typeof ProjectsSlugTourTourIdRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
@@ -278,6 +380,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BillingCancelRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/retention': {
+      id: '/api/retention'
+      path: '/api/retention'
+      fullPath: '/api/retention'
+      preLoaderRoute: typeof ApiRetentionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated/admin': {
       id: '/_authenticated/admin'
       path: '/admin'
@@ -291,6 +400,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/platform'
       preLoaderRoute: typeof AuthenticatedAdminPlatformRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin_/activity-log': {
+      id: '/_authenticated/admin_/activity-log'
+      path: '/admin/activity-log'
+      fullPath: '/admin/activity-log'
+      preLoaderRoute: typeof AuthenticatedAdminActivityLogRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/projects_/$slug/tour/$tourId': {
+      id: '/projects_/$slug/tour/$tourId'
+      path: '/projects/$slug/tour/$tourId'
+      fullPath: '/projects/$slug/tour/$tourId'
+      preLoaderRoute: typeof ProjectsSlugTourTourIdRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/projects/$slug/units/$unitTypeId': {
       id: '/projects/$slug/units/$unitTypeId'
@@ -306,19 +429,65 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminProjectsIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/projects_/$slug/tour/$tourId/': {
+      id: '/projects_/$slug/tour/$tourId/'
+      path: '/'
+      fullPath: '/projects/$slug/tour/$tourId/'
+      preLoaderRoute: typeof ProjectsSlugTourTourIdIndexRouteImport
+      parentRoute: typeof ProjectsSlugTourTourIdRoute
+    }
+    '/_authenticated/admin_/projects/$id_/tours': {
+      id: '/_authenticated/admin_/projects/$id_/tours'
+      path: '/admin/projects/$id/tours'
+      fullPath: '/admin/projects/$id/tours'
+      preLoaderRoute: typeof AuthenticatedAdminProjectsIdToursRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/projects_/$slug/tour/$tourId/scene/$sceneId': {
+      id: '/projects_/$slug/tour/$tourId/scene/$sceneId'
+      path: '/scene/$sceneId'
+      fullPath: '/projects/$slug/tour/$tourId/scene/$sceneId'
+      preLoaderRoute: typeof ProjectsSlugTourTourIdSceneSceneIdRouteImport
+      parentRoute: typeof ProjectsSlugTourTourIdRoute
+    }
+    '/_authenticated/admin_/projects/$id_/tours_/$tourId': {
+      id: '/_authenticated/admin_/projects/$id_/tours_/$tourId'
+      path: '/admin/projects/$id/tours/$tourId'
+      fullPath: '/admin/projects/$id/tours/$tourId'
+      preLoaderRoute: typeof AuthenticatedAdminProjectsIdToursTourIdRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin_/projects/$id_/tours_/$tourId_/floors_/$floorId_/editor': {
+      id: '/_authenticated/admin_/projects/$id_/tours_/$tourId_/floors_/$floorId_/editor'
+      path: '/admin/projects/$id/tours/$tourId/floors/$floorId/editor'
+      fullPath: '/admin/projects/$id/tours/$tourId/floors/$floorId/editor'
+      preLoaderRoute: typeof AuthenticatedAdminProjectsIdToursTourIdFloorsFloorIdEditorRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
+  AuthenticatedAdminActivityLogRoute: typeof AuthenticatedAdminActivityLogRoute
   AuthenticatedAdminPlatformRoute: typeof AuthenticatedAdminPlatformRoute
   AuthenticatedAdminProjectsIdRoute: typeof AuthenticatedAdminProjectsIdRoute
+  AuthenticatedAdminProjectsIdToursRoute: typeof AuthenticatedAdminProjectsIdToursRoute
+  AuthenticatedAdminProjectsIdToursTourIdRoute: typeof AuthenticatedAdminProjectsIdToursTourIdRoute
+  AuthenticatedAdminProjectsIdToursTourIdFloorsFloorIdEditorRoute: typeof AuthenticatedAdminProjectsIdToursTourIdFloorsFloorIdEditorRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminRoute: AuthenticatedAdminRoute,
+  AuthenticatedAdminActivityLogRoute: AuthenticatedAdminActivityLogRoute,
   AuthenticatedAdminPlatformRoute: AuthenticatedAdminPlatformRoute,
   AuthenticatedAdminProjectsIdRoute: AuthenticatedAdminProjectsIdRoute,
+  AuthenticatedAdminProjectsIdToursRoute:
+    AuthenticatedAdminProjectsIdToursRoute,
+  AuthenticatedAdminProjectsIdToursTourIdRoute:
+    AuthenticatedAdminProjectsIdToursTourIdRoute,
+  AuthenticatedAdminProjectsIdToursTourIdFloorsFloorIdEditorRoute:
+    AuthenticatedAdminProjectsIdToursTourIdFloorsFloorIdEditorRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =
@@ -336,17 +505,36 @@ const ProjectsSlugRouteWithChildren = ProjectsSlugRoute._addFileChildren(
   ProjectsSlugRouteChildren,
 )
 
+interface ProjectsSlugTourTourIdRouteChildren {
+  ProjectsSlugTourTourIdIndexRoute: typeof ProjectsSlugTourTourIdIndexRoute
+  ProjectsSlugTourTourIdSceneSceneIdRoute: typeof ProjectsSlugTourTourIdSceneSceneIdRoute
+}
+
+const ProjectsSlugTourTourIdRouteChildren: ProjectsSlugTourTourIdRouteChildren =
+  {
+    ProjectsSlugTourTourIdIndexRoute: ProjectsSlugTourTourIdIndexRoute,
+    ProjectsSlugTourTourIdSceneSceneIdRoute:
+      ProjectsSlugTourTourIdSceneSceneIdRoute,
+  }
+
+const ProjectsSlugTourTourIdRouteWithChildren =
+  ProjectsSlugTourTourIdRoute._addFileChildren(
+    ProjectsSlugTourTourIdRouteChildren,
+  )
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
   SignupRoute: SignupRoute,
+  ApiRetentionRoute: ApiRetentionRoute,
   BillingCancelRoute: BillingCancelRoute,
   BillingSuccessRoute: BillingSuccessRoute,
   ProjectsSlugRoute: ProjectsSlugRouteWithChildren,
   BillingIndexRoute: BillingIndexRoute,
   CommunitiesIndexRoute: CommunitiesIndexRoute,
   DevelopersIndexRoute: DevelopersIndexRoute,
+  ProjectsSlugTourTourIdRoute: ProjectsSlugTourTourIdRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
