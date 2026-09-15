@@ -33,6 +33,12 @@ export interface AdminTourBundle {
   units: AdminTourUnit[];
 }
 
+export interface AdminFloorEditorBundle {
+  tour: VirtualTourRow;
+  floor: TourFloorRow;
+  scenes: TourSceneRow[];
+}
+
 export async function canManageTourProject(tenantId: string): Promise<boolean> {
   const [{ data: isOwner, error: ownerError }, membership] = await Promise.all([
     supabase.rpc("current_user_is_platform_owner"),
@@ -170,6 +176,44 @@ export function useAdminTour(projectId: string, tourId: string) {
   return useQuery(adminTourQueryOptions(projectId, tourId));
 }
 
+export async function fetchAdminFloorEditor(
+  projectId: string,
+  tourId: string,
+  floorId: string,
+): Promise<AdminFloorEditorBundle | null> {
+  const { data: tour, error: tourError } = await supabase
+    .from("virtual_tours")
+    .select("*")
+    .eq("id", tourId)
+    .eq("project_id", projectId)
+    .maybeSingle();
+  if (tourError) throw tourError;
+  if (!tour) return null;
+
+  const [floorResult, scenesResult] = await Promise.all([
+    supabase.from("tour_floors").select("*").eq("id", floorId).eq("tour_id", tour.id).maybeSingle(),
+    supabase
+      .from("tour_scenes")
+      .select("*")
+      .eq("tour_id", tour.id)
+      .eq("floor_id", floorId)
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true }),
+  ]);
+  if (floorResult.error) throw floorResult.error;
+  if (scenesResult.error) throw scenesResult.error;
+  if (!floorResult.data) return null;
+  return { tour, floor: floorResult.data, scenes: scenesResult.data ?? [] };
+}
+
+export function useAdminFloorEditor(projectId: string, tourId: string, floorId: string) {
+  return useQuery({
+    queryKey: ["virtual-tour-admin", "projects", projectId, "tours", tourId, "floors", floorId],
+    queryFn: () => fetchAdminFloorEditor(projectId, tourId, floorId),
+    staleTime: 15_000,
+  });
+}
+
 export async function createTour(
   input: Pick<
     VirtualTourInsert,
@@ -234,6 +278,23 @@ export async function updateFloor(
   return data;
 }
 
+export async function updateFloorPlan(
+  tourId: string,
+  floorId: string,
+  input: Pick<TablesUpdate<"tour_floors">, "floor_plan_url" | "width" | "height">,
+): Promise<TourFloorRow> {
+  const { data, error } = await supabase
+    .from("tour_floors")
+    .update(input)
+    .eq("id", floorId)
+    .eq("tour_id", tourId)
+    .select("*")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("Floor not found or update is not permitted.");
+  return data;
+}
+
 export async function deleteFloor(floorId: string): Promise<void> {
   const { error } = await supabase.from("tour_floors").delete().eq("id", floorId);
   if (error) throw error;
@@ -254,6 +315,37 @@ export async function updateScene(sceneId: string, input: TourSceneUpdate): Prom
     .single();
   if (error) throw error;
   return data;
+}
+
+export async function updateSceneFloorPosition(
+  tourId: string,
+  floorId: string,
+  sceneId: string,
+  point: { x: number; y: number } | null,
+): Promise<TourSceneRow> {
+  const { data, error } = await supabase
+    .from("tour_scenes")
+    .update({
+      floor_plan_x: point?.x ?? null,
+      floor_plan_y: point?.y ?? null,
+    })
+    .eq("id", sceneId)
+    .eq("tour_id", tourId)
+    .eq("floor_id", floorId)
+    .select("*")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("Scene not found on this floor or update is not permitted.");
+  return data;
+}
+
+export async function clearFloorScenePositions(tourId: string, floorId: string): Promise<void> {
+  const { error } = await supabase
+    .from("tour_scenes")
+    .update({ floor_plan_x: null, floor_plan_y: null })
+    .eq("tour_id", tourId)
+    .eq("floor_id", floorId);
+  if (error) throw error;
 }
 
 export async function deleteScene(sceneId: string): Promise<void> {

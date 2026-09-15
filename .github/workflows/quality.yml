@@ -56,6 +56,9 @@ jobs:
       - name: Verify virtual tour admin management
         run: npm run test:virtual-tour-admin
 
+      - name: Verify virtual tour floor plan editor
+        run: npm run test:virtual-tour-floor-editor
+
       - name: Build
         run: npm run build
 

@@ -30,6 +30,7 @@ import { Route as ProjectsSlugTourTourIdIndexRouteImport } from './routes/projec
 import { Route as AuthenticatedAdminProjectsIdToursRouteImport } from './routes/_authenticated/admin_.projects.$id_.tours'
 import { Route as ProjectsSlugTourTourIdSceneSceneIdRouteImport } from './routes/projects_.$slug.tour.$tourId.scene.$sceneId'
 import { Route as AuthenticatedAdminProjectsIdToursTourIdRouteImport } from './routes/_authenticated/admin_.projects.$id_.tours_.$tourId'
+import { Route as AuthenticatedAdminProjectsIdToursTourIdFloorsFloorIdEditorRouteImport } from './routes/_authenticated/admin_.projects.$id_.tours_.$tourId_.floors_.$floorId_.editor'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -143,6 +144,12 @@ const AuthenticatedAdminProjectsIdToursTourIdRoute =
     path: '/admin/projects/$id/tours/$tourId',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedAdminProjectsIdToursTourIdFloorsFloorIdEditorRoute =
+  AuthenticatedAdminProjectsIdToursTourIdFloorsFloorIdEditorRouteImport.update({
+    id: '/admin_/projects/$id_/tours_/$tourId_/floors_/$floorId_/editor',
+    path: '/admin/projects/$id/tours/$tourId/floors/$floorId/editor',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -165,6 +172,7 @@ export interface FileRoutesByFullPath {
   '/projects/$slug/tour/$tourId/': typeof ProjectsSlugTourTourIdIndexRoute
   '/admin/projects/$id/tours/$tourId': typeof AuthenticatedAdminProjectsIdToursTourIdRoute
   '/projects/$slug/tour/$tourId/scene/$sceneId': typeof ProjectsSlugTourTourIdSceneSceneIdRoute
+  '/admin/projects/$id/tours/$tourId/floors/$floorId/editor': typeof AuthenticatedAdminProjectsIdToursTourIdFloorsFloorIdEditorRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -186,6 +194,7 @@ export interface FileRoutesByTo {
   '/projects/$slug/tour/$tourId': typeof ProjectsSlugTourTourIdIndexRoute
   '/admin/projects/$id/tours/$tourId': typeof AuthenticatedAdminProjectsIdToursTourIdRoute
   '/projects/$slug/tour/$tourId/scene/$sceneId': typeof ProjectsSlugTourTourIdSceneSceneIdRoute
+  '/admin/projects/$id/tours/$tourId/floors/$floorId/editor': typeof AuthenticatedAdminProjectsIdToursTourIdFloorsFloorIdEditorRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -210,6 +219,7 @@ export interface FileRoutesById {
   '/projects_/$slug/tour/$tourId/': typeof ProjectsSlugTourTourIdIndexRoute
   '/_authenticated/admin_/projects/$id_/tours_/$tourId': typeof AuthenticatedAdminProjectsIdToursTourIdRoute
   '/projects_/$slug/tour/$tourId/scene/$sceneId': typeof ProjectsSlugTourTourIdSceneSceneIdRoute
+  '/_authenticated/admin_/projects/$id_/tours_/$tourId_/floors_/$floorId_/editor': typeof AuthenticatedAdminProjectsIdToursTourIdFloorsFloorIdEditorRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -234,6 +244,7 @@ export interface FileRouteTypes {
     | '/projects/$slug/tour/$tourId/'
     | '/admin/projects/$id/tours/$tourId'
     | '/projects/$slug/tour/$tourId/scene/$sceneId'
+    | '/admin/projects/$id/tours/$tourId/floors/$floorId/editor'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -255,6 +266,7 @@ export interface FileRouteTypes {
     | '/projects/$slug/tour/$tourId'
     | '/admin/projects/$id/tours/$tourId'
     | '/projects/$slug/tour/$tourId/scene/$sceneId'
+    | '/admin/projects/$id/tours/$tourId/floors/$floorId/editor'
   id:
     | '__root__'
     | '/'
@@ -278,6 +290,7 @@ export interface FileRouteTypes {
     | '/projects_/$slug/tour/$tourId/'
     | '/_authenticated/admin_/projects/$id_/tours_/$tourId'
     | '/projects_/$slug/tour/$tourId/scene/$sceneId'
+    | '/_authenticated/admin_/projects/$id_/tours_/$tourId_/floors_/$floorId_/editor'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -444,6 +457,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminProjectsIdToursTourIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/admin_/projects/$id_/tours_/$tourId_/floors_/$floorId_/editor': {
+      id: '/_authenticated/admin_/projects/$id_/tours_/$tourId_/floors_/$floorId_/editor'
+      path: '/admin/projects/$id/tours/$tourId/floors/$floorId/editor'
+      fullPath: '/admin/projects/$id/tours/$tourId/floors/$floorId/editor'
+      preLoaderRoute: typeof AuthenticatedAdminProjectsIdToursTourIdFloorsFloorIdEditorRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
@@ -454,6 +474,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminProjectsIdRoute: typeof AuthenticatedAdminProjectsIdRoute
   AuthenticatedAdminProjectsIdToursRoute: typeof AuthenticatedAdminProjectsIdToursRoute
   AuthenticatedAdminProjectsIdToursTourIdRoute: typeof AuthenticatedAdminProjectsIdToursTourIdRoute
+  AuthenticatedAdminProjectsIdToursTourIdFloorsFloorIdEditorRoute: typeof AuthenticatedAdminProjectsIdToursTourIdFloorsFloorIdEditorRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -465,6 +486,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
     AuthenticatedAdminProjectsIdToursRoute,
   AuthenticatedAdminProjectsIdToursTourIdRoute:
     AuthenticatedAdminProjectsIdToursTourIdRoute,
+  AuthenticatedAdminProjectsIdToursTourIdFloorsFloorIdEditorRoute:
+    AuthenticatedAdminProjectsIdToursTourIdFloorsFloorIdEditorRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =

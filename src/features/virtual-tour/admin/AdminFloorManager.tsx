@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Loader2, Plus, Save, Trash2, Upload } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { Loader2, MapPinned, Plus, Save, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -122,7 +123,7 @@ export function AdminFloorManager({ tour, floors, onChanged }: AdminFloorManager
             Floors
           </h2>
           <p className="text-xs text-muted-foreground">
-            إدارة الطوابق ورفع Floor Plans. تحديد نقاط الغرف سيكون في Phase 7.
+            إدارة الطوابق ورفع المخططات وتحديد مواقع المشاهد بصريًا.
           </p>
         </div>
       </div>
@@ -157,7 +158,7 @@ export function AdminFloorManager({ tour, floors, onChanged }: AdminFloorManager
               event.preventDefault();
               void saveFloor(floor, event.currentTarget);
             }}
-            className="grid gap-2 rounded-xl border border-white/10 p-3 lg:grid-cols-[1fr_7rem_7rem_auto]"
+            className="grid gap-2 rounded-xl border border-white/10 p-3 xl:grid-cols-[1fr_7rem_7rem_auto]"
           >
             <Input name="name" defaultValue={floor.name} aria-label={`اسم ${floor.name}`} />
             <Input
@@ -208,6 +209,14 @@ export function AdminFloorManager({ tour, floors, onChanged }: AdminFloorManager
                     }}
                   />
                 </label>
+              </Button>
+              <Button asChild type="button" size="sm" variant="outline">
+                <Link
+                  to="/admin/projects/$id/tours/$tourId/floors/$floorId/editor"
+                  params={{ id: tour.project_id, tourId: tour.id, floorId: floor.id }}
+                >
+                  <MapPinned className="mr-1 size-4" /> Edit Floor Plan
+                </Link>
               </Button>
               <Button
                 type="button"
