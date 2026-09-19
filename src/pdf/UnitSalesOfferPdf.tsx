@@ -807,6 +807,9 @@ function OnePagePaymentTable({
         <Text style={[offerStyles.headerText, offerStyles.oneHeaderText, offerStyles.colAmount]}>
           Amount
         </Text>
+        <Text style={[offerStyles.headerText, offerStyles.oneHeaderText, offerStyles.colMonthly]}>
+          Monthly
+        </Text>
         <Text style={[offerStyles.headerText, offerStyles.oneHeaderText, offerStyles.colDue]}>
           Due / period
         </Text>
@@ -821,6 +824,11 @@ function OnePagePaymentTable({
           </Text>
           <Text style={[offerStyles.cellText, offerStyles.oneCellText, offerStyles.colAmount]}>
             {formatCurrency(installment.amount)}
+          </Text>
+          <Text style={[offerStyles.cellText, offerStyles.oneCellText, offerStyles.colMonthly]}>
+            {installment.monthlyAmount == null
+              ? "—"
+              : `${formatCurrency(installment.monthlyAmount)} / mo`}
           </Text>
           <Text style={[offerStyles.cellText, offerStyles.oneCellText, offerStyles.colDue]}>
             {installment.due_label ?? installment.due_type ?? ""}
@@ -837,6 +845,7 @@ function OnePagePaymentTable({
         <Text style={[offerStyles.cellStrong, offerStyles.oneCellStrong, offerStyles.colAmount]}>
           {formatCurrency(calculation.totalInstallmentAmount)}
         </Text>
+        <Text style={[offerStyles.cellStrong, offerStyles.oneCellStrong, offerStyles.colMonthly]} />
         <Text style={[offerStyles.cellStrong, offerStyles.oneCellStrong, offerStyles.colDue]} />
       </View>
     </View>
@@ -965,6 +974,7 @@ function PaymentTable({
         <Text style={[offerStyles.headerText, offerStyles.colStage]}>Installment</Text>
         <Text style={[offerStyles.headerText, offerStyles.colPercent]}>% of price</Text>
         <Text style={[offerStyles.headerText, offerStyles.colAmount]}>Amount</Text>
+        <Text style={[offerStyles.headerText, offerStyles.colMonthly]}>Monthly</Text>
         <Text style={[offerStyles.headerText, offerStyles.colDue]}>Due / period</Text>
       </View>
       {calculation.installments.map((installment, index) => (
@@ -977,6 +987,11 @@ function PaymentTable({
           </Text>
           <Text style={[offerStyles.cellText, offerStyles.colAmount]}>
             {formatCurrency(installment.amount)}
+          </Text>
+          <Text style={[offerStyles.cellText, offerStyles.colMonthly]}>
+            {installment.monthlyAmount == null
+              ? "—"
+              : `${formatCurrency(installment.monthlyAmount)} / month`}
           </Text>
           <Text style={[offerStyles.cellText, offerStyles.colDue]}>
             {installment.due_label ?? installment.due_type ?? ""}
@@ -991,6 +1006,7 @@ function PaymentTable({
         <Text style={[offerStyles.cellStrong, offerStyles.colAmount]}>
           {formatCurrency(calculation.totalInstallmentAmount)}
         </Text>
+        <Text style={[offerStyles.cellStrong, offerStyles.colMonthly]} />
         <Text style={[offerStyles.cellStrong, offerStyles.colDue]} />
       </View>
     </View>

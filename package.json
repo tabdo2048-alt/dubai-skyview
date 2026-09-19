@@ -27,7 +27,12 @@
     "geodata:validate": "esbuild scripts/geodata/validate-geodata.ts --bundle --platform=node --format=esm --packages=external --outfile=.output/geodata-validate.mjs && node .output/geodata-validate.mjs",
     "geodata:pilot": "npm run geodata:download:pilot && npm run geodata:process:osm && npm run geodata:generate && npm run geodata:validate",
     "format": "prettier --write .",
-    "test:photorealistic": "esbuild scripts/verify-photorealistic.ts --bundle --platform=node --format=esm --packages=external --outfile=artifacts/photorealistic-check.mjs && node artifacts/photorealistic-check.mjs"
+    "test:photorealistic": "esbuild scripts/verify-photorealistic.ts --bundle --platform=node --format=esm --packages=external --outfile=artifacts/photorealistic-check.mjs && node artifacts/photorealistic-check.mjs",
+    "test:virtual-tour-data": "esbuild scripts/verify-virtual-tour-data.ts --bundle --platform=node --format=esm --packages=external --outfile=artifacts/virtual-tour-data-check.mjs && node artifacts/virtual-tour-data-check.mjs",
+    "test:virtual-tour-viewer": "esbuild scripts/verify-virtual-tour-viewer.ts --bundle --platform=node --format=esm --packages=external --outfile=artifacts/virtual-tour-viewer-check.mjs && node artifacts/virtual-tour-viewer-check.mjs",
+    "test:virtual-tour-floors": "esbuild scripts/verify-virtual-tour-floors.ts --bundle --platform=node --format=esm --packages=external --outfile=artifacts/virtual-tour-floors-check.mjs && node artifacts/virtual-tour-floors-check.mjs",
+    "test:virtual-tour-admin": "esbuild scripts/verify-virtual-tour-admin.ts --bundle --platform=node --format=esm --packages=external --outfile=artifacts/virtual-tour-admin-check.mjs && node artifacts/virtual-tour-admin-check.mjs",
+    "test:virtual-tour-floor-editor": "esbuild scripts/verify-virtual-tour-floor-editor.ts --bundle --platform=node --format=esm --packages=external --outfile=artifacts/virtual-tour-floor-editor-check.mjs && node artifacts/virtual-tour-floor-editor-check.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -77,6 +82,7 @@
     "input-otp": "^1.4.2",
     "lucide-react": "^0.575.0",
     "mapbox-gl": "^3.25.0",
+    "pannellum": "2.5.7",
     "qrcode": "1.5.4",
     "react": "^19.2.0",
     "react-day-picker": "^9.14.0",

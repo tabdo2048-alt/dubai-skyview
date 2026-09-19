@@ -22,12 +22,14 @@ const project = { name: "KEYORA DEMO RESIDENCES", slug: "demo", description: "Il
 const image = `data:image/png;base64,${(await readFile("public/landmarks/dubai-opera.png")).toString("base64")}`;
 await mkdir("artifacts/unit-offer-check", { recursive: true });
 for (const count of [4, 24]) {
-  const plan = { id: `plan-${count}`, label: "Illustrative payment plan", installments: Array.from({ length: count }, (_, index) => ({ id: `row-${index}`, label: `Installment ${index + 1}`, stage: index ? "construction" : "booking", percentage: 100 / count, due_label: `Month ${index + 1}`, sort_order: index, months: null })) } as unknown as DisplayPaymentPlan;
+  const plan = { id: `plan-${count}`, label: "Illustrative payment plan", installments: Array.from({ length: count }, (_, index) => ({ id: `row-${index}`, label: `Installment ${index + 1}`, stage: index ? "construction" : "booking", percentage: 100 / count, due_label: `Month ${index + 1}`, sort_order: index, months: index === 0 ? 10 : null })) } as unknown as DisplayPaymentPlan;
   const calculation = calculatePaymentPlan(unit.price_aed!, { ...plan, installments: [...plan.installments, { ...plan.installments[0], id: "zero", percentage: 0 }] }, [{ id: "fee", label: "DLD", fee_type: "percentage", value: 4, sort_order: 0 }, { id: "zero-fee", label: "Zero fee", fee_type: "fixed", value: 0, sort_order: 1 }]);
   assert.equal(calculation.validation.valid, true);
   assert.equal(calculation.installments.length, count);
   assert.equal(calculation.financialSummary.totalInvestment, 1040000);
   assert.equal(calculation.financialSummary.feeRows.length, 1);
+  assert.equal(calculation.installments[0].monthlyAmount, (1000000 * (100 / count) / 100) / 10);
+  assert.equal(calculation.installments[1].monthlyAmount, null);
   await renderToFile(<UnitSalesOfferPdf project={project} unit={unit} plan={plan} calculation={calculation} offerId={`DRAFT-TEST-${count}`} offerDate="07 Sep 2026" validUntil="14 Sep 2026" shareUrl="https://example.com" projectImageSrc={image} unitPhotoImageSrc={image} />, `artifacts/unit-offer-check/offer-${count}.pdf`);
 }
 console.log("Passed: sold-unit guard, missing price, route ownership, ambiguous labels, invalid plans, zero rows, fee totals and two PDF layouts.");
