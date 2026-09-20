@@ -12,10 +12,8 @@ import {
   panoramaStoragePath,
   sceneThumbnailStoragePath,
 } from "../src/features/virtual-tour/storage";
-import type {
-  TourCameraState,
-  VirtualTourInsert,
-} from "../src/features/virtual-tour/types";
+import type { TourCameraState, VirtualTourInsert } from "../src/features/virtual-tour/types";
+import { resolveTourScope, tourScopeIds } from "../src/features/virtual-tour/hierarchy";
 
 assert.equal(isNormalizedCoordinate(0), true);
 assert.equal(isNormalizedCoordinate(1), true);
@@ -109,6 +107,22 @@ const camera: TourCameraState = {
 assert.equal(insert.name, "Compile-time tour");
 assert.equal(camera.version, 1);
 
+assert.equal(resolveTourScope({ building_id: null, unit_id: null }), "project");
+assert.equal(resolveTourScope({ building_id: "tower-a", unit_id: null }), "building");
+assert.equal(resolveTourScope({ building_id: "tower-a", unit_id: "unit-a" }), "unit");
+assert.deepEqual(tourScopeIds("project", { buildingId: "tower-a", unitId: "unit-a" }), {
+  building_id: null,
+  unit_id: null,
+});
+assert.deepEqual(tourScopeIds("building", { buildingId: "tower-a", unitId: "unit-a" }), {
+  building_id: "tower-a",
+  unit_id: null,
+});
+assert.deepEqual(tourScopeIds("unit", { buildingId: "tower-a", unitId: "unit-a" }), {
+  building_id: "tower-a",
+  unit_id: "unit-a",
+});
+
 console.log(
-  "Virtual-tour data checks passed: domain types, normalized coordinates, hotspot/panorama validation, safe URLs, upload metadata, and tenant-scoped storage paths.",
+  "Virtual-tour data checks passed: domain types, hierarchy scopes, normalized coordinates, hotspot/panorama validation, safe URLs, upload metadata, and tenant-scoped storage paths.",
 );

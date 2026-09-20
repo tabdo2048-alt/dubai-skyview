@@ -9,6 +9,9 @@ import type {
   TourSceneInsert,
   TourSceneRow,
   TourSceneUpdate,
+  ProjectBuildingInsert,
+  ProjectBuildingRow,
+  ProjectBuildingUpdate,
   VirtualTourInsert,
   VirtualTourRow,
   VirtualTourUpdate,
@@ -16,7 +19,7 @@ import type {
 
 export type AdminTourUnit = Pick<
   Tables<"project_unit_types">,
-  "id" | "label" | "project_id" | "tenant_id"
+  "id" | "label" | "project_id" | "tenant_id" | "building_id"
 >;
 
 export interface AdminTourSummary {
@@ -31,6 +34,7 @@ export interface AdminTourBundle {
   scenes: TourSceneRow[];
   hotspots: TourHotspotRow[];
   units: AdminTourUnit[];
+  buildings: ProjectBuildingRow[];
 }
 
 export interface AdminFloorEditorBundle {
@@ -104,6 +108,67 @@ export function useAdminTours(projectId: string) {
   });
 }
 
+export async function fetchProjectBuildings(projectId: string): Promise<ProjectBuildingRow[]> {
+  const { data, error } = await supabase
+    .from("project_buildings")
+    .select("*")
+    .eq("project_id", projectId)
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export function useProjectBuildings(projectId: string) {
+  return useQuery({
+    queryKey: ["virtual-tour-admin", "projects", projectId, "buildings"],
+    queryFn: () => fetchProjectBuildings(projectId),
+    staleTime: 30_000,
+  });
+}
+
+export async function createProjectBuilding(
+  input: ProjectBuildingInsert,
+): Promise<ProjectBuildingRow> {
+  const { data, error } = await supabase
+    .from("project_buildings")
+    .insert(input)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateProjectBuilding(
+  buildingId: string,
+  input: ProjectBuildingUpdate,
+): Promise<ProjectBuildingRow> {
+  const { data, error } = await supabase
+    .from("project_buildings")
+    .update(input)
+    .eq("id", buildingId)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteProjectBuilding(buildingId: string): Promise<void> {
+  const { error } = await supabase.from("project_buildings").delete().eq("id", buildingId);
+  if (error) throw error;
+}
+
+export async function assignUnitToBuilding(
+  unitId: string,
+  buildingId: string | null,
+): Promise<void> {
+  const { error } = await supabase
+    .from("project_unit_types")
+    .update({ building_id: buildingId })
+    .eq("id", unitId);
+  if (error) throw error;
+}
+
 export async function fetchAdminTour(
   projectId: string,
   tourId: string,
@@ -117,7 +182,7 @@ export async function fetchAdminTour(
   if (error) throw error;
   if (!tour) return null;
 
-  const [floorsResult, scenesResult, unitsResult] = await Promise.all([
+  const [floorsResult, scenesResult, unitsResult, buildingsResult] = await Promise.all([
     supabase
       .from("tour_floors")
       .select("*")
@@ -132,13 +197,20 @@ export async function fetchAdminTour(
       .order("created_at", { ascending: true }),
     supabase
       .from("project_unit_types")
-      .select("id,label,project_id,tenant_id")
+      .select("id,label,project_id,tenant_id,building_id")
       .eq("project_id", projectId)
       .order("sort_order", { ascending: true }),
+    supabase
+      .from("project_buildings")
+      .select("*")
+      .eq("project_id", projectId)
+      .order("sort_order", { ascending: true })
+      .order("name", { ascending: true }),
   ]);
   if (floorsResult.error) throw floorsResult.error;
   if (scenesResult.error) throw scenesResult.error;
   if (unitsResult.error) throw unitsResult.error;
+  if (buildingsResult.error) throw buildingsResult.error;
 
   const scenes = scenesResult.data ?? [];
   let hotspots: TourHotspotRow[] = [];
@@ -161,6 +233,7 @@ export async function fetchAdminTour(
     scenes,
     hotspots,
     units: unitsResult.data ?? [],
+    buildings: buildingsResult.data ?? [],
   };
 }
 
@@ -219,6 +292,7 @@ export async function createTour(
     VirtualTourInsert,
     | "project_id"
     | "tenant_id"
+    | "building_id"
     | "unit_id"
     | "name"
     | "description"
@@ -240,7 +314,7 @@ export async function updateTour(
   tourId: string,
   input: Pick<
     VirtualTourUpdate,
-    "name" | "description" | "thumbnail_url" | "unit_id" | "is_published"
+    "name" | "description" | "thumbnail_url" | "building_id" | "unit_id" | "is_published"
   >,
 ): Promise<VirtualTourRow> {
   const { data, error } = await supabase

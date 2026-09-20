@@ -18,6 +18,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import { safeHttpUrl } from "@/lib/utils";
 import type { ProjectWithRelations } from "@/lib/types";
+import { resolveTourScope, tourScopeIds, tourScopeLabel } from "../hierarchy";
+import type { TourScope } from "../types";
+import { AdminBuildingManager } from "./AdminBuildingManager";
 import {
   createTour,
   deleteTour,
@@ -25,6 +28,7 @@ import {
   updateTour,
   useAdminTours,
   useCanManageTourProject,
+  useProjectBuildings,
 } from "./adminQueries";
 import { validateTourForPublish } from "./adminValidation";
 
@@ -40,12 +44,15 @@ export function AdminTourManager({ project }: AdminTourManagerProps) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const toursQuery = useAdminTours(project.id);
+  const buildingsQuery = useProjectBuildings(project.id);
   const accessQuery = useCanManageTourProject(project.tenant_id);
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [scope, setScope] = useState<TourScope>("project");
+  const [buildingId, setBuildingId] = useState("");
   const [unitId, setUnitId] = useState("");
   const [thumbnailUrl, setThumbnailUrl] = useState("");
 
@@ -72,6 +79,8 @@ export function AdminTourManager({ project }: AdminTourManagerProps) {
   const submitCreate = async () => {
     const cleanName = name.trim();
     if (!cleanName) return toast.error("اسم الجولة مطلوب.");
+    if (scope === "building" && !buildingId) return toast.error("اختر البرج.");
+    if (scope === "unit" && !unitId) return toast.error("اختر الوحدة.");
     const safeThumbnail = thumbnailUrl.trim() ? safeHttpUrl(thumbnailUrl.trim()) : null;
     if (thumbnailUrl.trim() && !safeThumbnail) return toast.error("رابط Thumbnail غير صالح.");
     setSaving(true);
@@ -79,7 +88,7 @@ export function AdminTourManager({ project }: AdminTourManagerProps) {
       const tour = await createTour({
         project_id: project.id,
         tenant_id: project.tenant_id,
-        unit_id: unitId || null,
+        ...tourScopeIds(scope, { buildingId, unitId }),
         name: cleanName,
         description: description.trim() || null,
         thumbnail_url: safeThumbnail,
@@ -114,8 +123,11 @@ export function AdminTourManager({ project }: AdminTourManagerProps) {
     }
   };
 
+  const buildings = buildingsQuery.data ?? [];
+
   return (
     <section className="mt-8" aria-labelledby="tour-manager-title">
+      <AdminBuildingManager project={project} />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 id="tour-manager-title" className="font-display text-2xl text-cream">
@@ -140,20 +152,63 @@ export function AdminTourManager({ project }: AdminTourManagerProps) {
             <Input value={name} onChange={(event) => setName(event.target.value)} maxLength={120} />
           </label>
           <label className="grid gap-1.5 text-sm text-cream">
-            الوحدة — اختياري
+            نوع الجولة
             <select
-              value={unitId}
-              onChange={(event) => setUnitId(event.target.value)}
+              value={scope}
+              onChange={(event) => {
+                setScope(event.target.value as TourScope);
+                setBuildingId("");
+                setUnitId("");
+              }}
               className="h-9 rounded-md border border-input bg-background px-3 text-sm"
             >
-              <option value="">Project Tour</option>
-              {(project.unit_types ?? []).map((unit) => (
-                <option key={unit.id} value={unit.id}>
-                  {unit.label}
-                </option>
-              ))}
+              <option value="project">جولة المشروع العامة</option>
+              <option value="building" disabled={buildings.length === 0}>
+                جولة برج
+              </option>
+              <option value="unit">جولة وحدة</option>
             </select>
           </label>
+          {scope === "building" && (
+            <label className="grid gap-1.5 text-sm text-cream">
+              البرج
+              <select
+                value={buildingId}
+                onChange={(event) => setBuildingId(event.target.value)}
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="">اختر البرج</option>
+                {buildings.map((building) => (
+                  <option key={building.id} value={building.id}>
+                    {building.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {scope === "unit" && (
+            <label className="grid gap-1.5 text-sm text-cream">
+              الوحدة
+              <select
+                value={unitId}
+                onChange={(event) => {
+                  const nextUnitId = event.target.value;
+                  setUnitId(nextUnitId);
+                  setBuildingId(
+                    project.unit_types.find((unit) => unit.id === nextUnitId)?.building_id ?? "",
+                  );
+                }}
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="">اختر الوحدة</option>
+                {(project.unit_types ?? []).map((unit) => (
+                  <option key={unit.id} value={unit.id}>
+                    {unit.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="grid gap-1.5 text-sm text-cream md:col-span-2">
             الوصف
             <Textarea
@@ -203,6 +258,11 @@ export function AdminTourManager({ project }: AdminTourManagerProps) {
         <div className="mt-5 grid gap-3">
           {toursQuery.data?.map(({ tour, floorCount, sceneCount }) => {
             const thumbnail = safeHttpUrl(tour.thumbnail_url);
+            const tourScope = resolveTourScope(tour);
+            const buildingName = buildings.find(
+              (building) => building.id === tour.building_id,
+            )?.name;
+            const unitName = project.unit_types.find((unit) => unit.id === tour.unit_id)?.label;
             return (
               <article
                 key={tour.id}
@@ -222,6 +282,11 @@ export function AdminTourManager({ project }: AdminTourManagerProps) {
                   <p className="text-xs text-muted-foreground">
                     {sceneCount} scenes · {floorCount} floors · Updated{" "}
                     {new Date(tour.updated_at).toLocaleDateString()}
+                  </p>
+                  <p className="mt-1 text-xs text-gold/85">
+                    {tourScopeLabel(tourScope)}
+                    {buildingName ? ` · ${buildingName}` : ""}
+                    {unitName ? ` · ${unitName}` : ""}
                   </p>
                   <span
                     className={`mt-2 inline-flex rounded-full px-2 py-1 text-[11px] ${tour.is_published ? "bg-emerald-500/15 text-emerald-300" : "bg-white/10 text-cream/65"}`}

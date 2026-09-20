@@ -1,5 +1,5 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
-import { ArrowLeft, Bath, Bed, Building2, FileDown, Ruler, MessageCircle, Share2 } from "lucide-react";
+import { ArrowLeft, Bath, Bed, Building2, FileDown, Ruler, MessageCircle, PlayCircle, Share2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { whatsappUrl } from "@/lib/contact";
@@ -13,6 +13,7 @@ import { formatAed } from "@/lib/dubai";
 import { areaLabel, projectDetailSlug, findUnitForRoute, canOfferUnit, unitAvailabilityLabel } from "@/lib/unit-types";
 import { formatCurrency, calculateInstallmentAmount } from "@/lib/offer-calculations";
 import { displayPaymentPlans } from "@/lib/payment-plans";
+import { useFirstPublishedUnitTour } from "@/features/virtual-tour/queries";
 
 export const Route = createFileRoute("/projects/$slug/units/$unitTypeId")({
   loader: async ({ params }) => {
@@ -59,6 +60,10 @@ function UnitTypeDetail() {
   const baseUnit = useMemo(() => findUnitForRoute(project, unitTypeId), [project, unitTypeId]);
   const unitImages = useUnitImages(baseUnit?.id === "legacy-starting-price" ? null : baseUnit?.id ?? null);
   const unit = useMemo(() => baseUnit ? { ...baseUnit, images: unitImages.data ?? baseUnit.images ?? [] } : null, [baseUnit, unitImages.data]);
+  const unitTour = useFirstPublishedUnitTour(
+    project?.id,
+    baseUnit?.id === "legacy-starting-price" ? null : baseUnit?.id,
+  );
   const offerProject = useMemo(() => project && unit ? { ...project, unit_types: project.unit_types.map((item) => item.id === unit.id ? { ...item, images: unit.images } : item) } : project, [project, unit]);
 
   const [offerOpen, setOfferOpen] = useState(false);
@@ -127,6 +132,16 @@ function UnitTypeDetail() {
                 <div className="mt-1 font-display text-3xl text-gold-gradient">{formatAed(unit.price_aed)}</div>
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
+                {unitTour.data && (
+                  <Button asChild className="bg-gold text-gold-foreground hover:bg-gold/90">
+                    <Link
+                      to="/projects/$slug/tour/$tourId"
+                      params={{ slug: project.slug, tourId: unitTour.data.id }}
+                    >
+                      <PlayCircle className="mr-1 h-4 w-4" /> استكشف الوحدة 360°
+                    </Link>
+                  </Button>
+                )}
                 <Button type="button" disabled={!canOfferUnit(unit)} onClick={() => setOfferOpen(true)} className="bg-gold text-gold-foreground hover:bg-gold/90"><FileDown className="mr-1 h-4 w-4" /> Sales offer PDF</Button>
                 <Button asChild variant="outline" className="glass gold-hairline text-cream"><Link to="/projects/$slug" params={{ slug: projectDetailSlug({ name: project.name, slug: project.slug }) }}>View full project</Link></Button>
               </div>

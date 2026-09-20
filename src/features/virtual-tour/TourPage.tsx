@@ -4,7 +4,12 @@ import { Map as MapIcon } from "lucide-react";
 import { track } from "@/lib/analytics";
 import type { TourHotspotRow, TourSceneRow } from "./types";
 import type { VirtualTourBundle } from "./queries";
-import { useSceneHotspots, useTourFloors } from "./queries";
+import {
+  useFirstPublishedBuildingTour,
+  useFirstPublishedProjectTour,
+  useSceneHotspots,
+  useTourFloors,
+} from "./queries";
 import { publishedScenesForFloor, resolveCurrentFloor, visibleTourFloors } from "./floorData";
 import { resolveFloorPlanUrl } from "./floorPlanUrl";
 import { hotspotExternalUrl, validateSceneHotspots } from "./hotspotData";
@@ -39,6 +44,21 @@ export function TourPage({ bundle, scene, panoramaUrl }: TourPageProps) {
   const { project, tour, scenes } = bundle;
   const hotspotQuery = useSceneHotspots(scene.id);
   const floorsQuery = useTourFloors(tour.id);
+  const projectTourQuery = useFirstPublishedProjectTour(project.id);
+  const buildingTourQuery = useFirstPublishedBuildingTour(project.id, tour.building_id);
+  const parentTour = useMemo(() => {
+    if (tour.unit_id && buildingTourQuery.data && buildingTourQuery.data.id !== tour.id) {
+      return { id: buildingTourQuery.data.id, label: "جولة البرج" };
+    }
+    if (
+      (tour.unit_id || tour.building_id) &&
+      projectTourQuery.data &&
+      projectTourQuery.data.id !== tour.id
+    ) {
+      return { id: projectTourQuery.data.id, label: "جولة المشروع" };
+    }
+    return null;
+  }, [buildingTourQuery.data, projectTourQuery.data, tour.building_id, tour.id, tour.unit_id]);
   const floors = useMemo(
     () => visibleTourFloors(tour.id, floorsQuery.data ?? [], scenes),
     [floorsQuery.data, scenes, tour.id],
@@ -183,6 +203,8 @@ export function TourPage({ bundle, scene, panoramaUrl }: TourPageProps) {
           slug={project.slug}
           projectName={project.name}
           tourName={tour.name}
+          contextName={bundle.unitName ?? bundle.buildingName}
+          parentTour={parentTour}
           fullscreenSupported={fullscreenSupported}
           onFullscreen={() => viewerRef.current?.toggleFullscreen()}
         />
@@ -226,6 +248,7 @@ export function TourPage({ bundle, scene, panoramaUrl }: TourPageProps) {
         {activeHotspot && (
           <TourHotspotCard
             hotspot={activeHotspot}
+            projectId={project.id}
             projectSlug={project.slug}
             onClose={closeHotspotCard}
           />

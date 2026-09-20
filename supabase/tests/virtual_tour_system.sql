@@ -30,8 +30,12 @@ insert into public.projects (id, tenant_id, slug, name, lat, lng, is_public) val
   ('00000000-0000-4000-8000-00000000b001', '00000000-0000-4000-8000-00000000a001', 'phase2-vt-project-a', 'Phase 2 project A', 25, 55, true),
   ('00000000-0000-4000-8000-00000000b002', '00000000-0000-4000-8000-00000000a002', 'phase2-vt-project-b', 'Phase 2 project B', 25, 55, false);
 
-insert into public.project_unit_types (id, tenant_id, project_id, label) values
-  ('00000000-0000-4000-8000-00000000c001', '00000000-0000-4000-8000-00000000a001', '00000000-0000-4000-8000-00000000b001', 'Test unit');
+insert into public.project_buildings (id, tenant_id, project_id, name, sort_order) values
+  ('20000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-00000000a001', '00000000-0000-4000-8000-00000000b001', 'Tower A', 0),
+  ('20000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-00000000a002', '00000000-0000-4000-8000-00000000b002', 'Tower B', 0);
+
+insert into public.project_unit_types (id, tenant_id, project_id, building_id, label) values
+  ('00000000-0000-4000-8000-00000000c001', '00000000-0000-4000-8000-00000000a001', '00000000-0000-4000-8000-00000000b001', '20000000-0000-4000-8000-000000000001', 'Test unit');
 
 insert into public.virtual_tours (
   id, tenant_id, project_id, unit_id, name, is_published, updated_at
@@ -72,6 +76,9 @@ do $$
 begin
   if (select count(*) from public.virtual_tours) <> 1 then
     raise exception 'anonymous tour visibility check failed';
+  end if;
+  if (select count(*) from public.project_buildings) <> 1 then
+    raise exception 'anonymous building visibility check failed';
   end if;
   if (select count(*) from public.tour_floors) <> 1 then
     raise exception 'anonymous floor visibility check failed';
@@ -161,6 +168,43 @@ do $$
 declare
   invalid_write_succeeded boolean;
 begin
+  if not exists (
+    select 1
+      from public.virtual_tours
+     where id = '00000000-0000-4000-8000-00000000d001'
+       and building_id = '20000000-0000-4000-8000-000000000001'
+  ) then
+    raise exception 'unit tour did not inherit its unit building';
+  end if;
+
+  update public.project_unit_types
+     set building_id = null
+   where id = '00000000-0000-4000-8000-00000000c001';
+  if exists (
+    select 1 from public.virtual_tours
+     where id = '00000000-0000-4000-8000-00000000d001'
+       and building_id is not null
+  ) then
+    raise exception 'unit building change did not synchronize its tours';
+  end if;
+  update public.project_unit_types
+     set building_id = '20000000-0000-4000-8000-000000000001'
+   where id = '00000000-0000-4000-8000-00000000c001';
+
+  invalid_write_succeeded := false;
+  begin
+    insert into public.virtual_tours (tenant_id, project_id, building_id, name)
+    values (
+      '00000000-0000-4000-8000-00000000a001',
+      '00000000-0000-4000-8000-00000000b001',
+      '20000000-0000-4000-8000-000000000002',
+      'Cross-project building tour'
+    );
+    invalid_write_succeeded := true;
+  exception when others then null;
+  end;
+  if invalid_write_succeeded then raise exception 'cross-project tour building was accepted'; end if;
+
   invalid_write_succeeded := false;
   begin
     insert into public.tour_scenes (tour_id, floor_id, name, panorama_url)
@@ -206,14 +250,14 @@ declare
 begin
   select updated_at into previous_updated_at
     from public.virtual_tours
-   where id = '00000000-0000-4000-8000-00000000d001';
+   where id = '00000000-0000-4000-8000-00000000d002';
   perform pg_sleep(0.01);
   update public.virtual_tours
      set description = 'updated_at trigger check'
-   where id = '00000000-0000-4000-8000-00000000d001';
+   where id = '00000000-0000-4000-8000-00000000d002';
   select updated_at into next_updated_at
     from public.virtual_tours
-   where id = '00000000-0000-4000-8000-00000000d001';
+   where id = '00000000-0000-4000-8000-00000000d002';
   if next_updated_at <= previous_updated_at then
     raise exception 'updated_at trigger check failed';
   end if;

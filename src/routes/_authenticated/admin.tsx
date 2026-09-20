@@ -126,6 +126,7 @@ function unitTypeDraft(row: ProjectUnitTypeRow): UnitTypeDraft {
     availability: row.availability ?? "available",
     bedrooms: row.bedrooms ?? null,
     bathrooms: row.bathrooms ?? null,
+    building_id: row.building_id ?? null,
     view_description: row.view_description ?? null,
     price_aed: row.price_aed,
     area_sqm_min: row.area_sqm_min,
@@ -848,6 +849,7 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
       availability: item.availability,
       bedrooms: item.bedrooms,
       bathrooms: item.bathrooms,
+      building_id: item.building_id,
       view_description: item.view_description?.trim() || null,
       price_aed: item.price_aed,
       area_sqm_min: item.area_sqm_min,
@@ -1567,7 +1569,7 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
             className="glass gold-hairline text-cream"
             onClick={() => setUnitTypes((current) => [
               ...current,
-              { label: "", availability: "available", bedrooms: null, bathrooms: null, view_description: null, price_aed: null, area_sqm_min: null, area_sqm_max: null, floor: null, floor_plan_url: null, sort_order: current.length, images: [], imageFiles: [], floorPlanImageKey: null },
+              { label: "", availability: "available", bedrooms: null, bathrooms: null, building_id: null, view_description: null, price_aed: null, area_sqm_min: null, area_sqm_max: null, floor: null, floor_plan_url: null, sort_order: current.length, images: [], imageFiles: [], floorPlanImageKey: null },
             ])}
           >
             <Plus className="mr-1 h-4 w-4" /> Add unit type
