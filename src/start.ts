@@ -31,14 +31,17 @@ const CSP = [
   "object-src 'none'",
   "frame-ancestors 'none'",
   "form-action 'self'",
-  "img-src 'self' data: blob: https://*.supabase.co https://*.mapbox.com https://*.googleapis.com https://*.gstatic.com https://*.google.com",
-  "font-src 'self' data:",
-  "style-src 'self' 'unsafe-inline'",
-  "script-src 'self' 'unsafe-inline' blob:",
+  "img-src 'self' data: blob: https:",
+  "font-src 'self' data: https://fonts.gstatic.com",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com",
   "worker-src 'self' blob:",
-  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.cloudinary.com https://res.cloudinary.com https://api.mapbox.com https://events.mapbox.com https://*.tiles.mapbox.com https://*.googleapis.com https://*.google.com",
+  "child-src 'self' blob:",
+  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.mapbox.com https://*.tiles.mapbox.com https://*.cesium.com https://*.googleapis.com https://*.google.com https://api.cloudinary.com https://res.cloudinary.com https://www.google-analytics.com https://*.google-analytics.com",
   "media-src 'self' blob: https:",
+  "frame-src 'none'",
   "manifest-src 'self'",
+  "upgrade-insecure-requests",
 ].join("; ");
 
 // Apply hardening headers to every response. Runs around the error middleware so
@@ -51,7 +54,10 @@ const securityHeadersMiddleware = createMiddleware().server(async ({ next }) => 
   h.set("X-Content-Type-Options", "nosniff");
   h.set("Referrer-Policy", "strict-origin-when-cross-origin");
   h.set("X-Frame-Options", "DENY");
-  h.set("Permissions-Policy", "geolocation=(self), camera=(), microphone=(), payment=()");
+  h.set(
+    "Permissions-Policy",
+    "camera=(), microphone=(), geolocation=(), payment=(), usb=(), fullscreen=(self)",
+  );
   // Only advertise CSP on HTML documents (avoids constraining API/asset responses
   // that set their own content types).
   const ct = h.get("content-type") ?? "";
