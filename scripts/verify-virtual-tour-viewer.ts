@@ -14,10 +14,14 @@ import {
   setPannellumHotspots,
   type PannellumViewer,
 } from "../src/features/virtual-tour/viewer/pannellumAdapter";
-import type {
-  TourHotspotRow,
-  TourSceneRow,
-} from "../src/features/virtual-tour/types";
+import type { TourHotspotRow, TourSceneRow } from "../src/features/virtual-tour/types";
+import {
+  adjacentTourScenes,
+  findTimeOfDayPair,
+  normalizeHeading,
+  sceneExperienceMetadata,
+  withSceneExperienceMetadata,
+} from "../src/features/virtual-tour/sceneExperience";
 
 function scene(id: string, sortOrder: number): TourSceneRow {
   return {
@@ -69,11 +73,35 @@ assert.equal(selectDefaultTourScene(scenes)?.id, "entrance");
 assert.equal(selectDefaultTourScene([]), null);
 assert.equal(findTourScene(scenes, "lobby")?.id, "lobby");
 assert.equal(findTourScene(scenes, "another-tour-scene"), null);
+assert.equal(adjacentTourScenes(scenes, "entrance").next?.id, "lobby");
+assert.equal(adjacentTourScenes(scenes, "lobby").previous?.id, "entrance");
+assert.equal(normalizeHeading(-10), 350);
+const dayScene = {
+  ...scene("tower-day", 2),
+  name: "Tower Day",
+  multires_config: withSceneExperienceMetadata(null, {
+    timeOfDay: "day",
+    pairedSceneId: "tower-night",
+    compassNorthOffset: 370,
+    verticalLabel: "Rooftop",
+  }),
+};
+const nightScene = {
+  ...scene("tower-night", 3),
+  name: "Tower Night",
+  multires_config: withSceneExperienceMetadata(null, { timeOfDay: "night" }),
+};
+assert.equal(sceneExperienceMetadata(dayScene).compassNorthOffset, 10);
+assert.equal(sceneExperienceMetadata(dayScene).verticalLabel, "Rooftop");
+assert.equal(findTimeOfDayPair(dayScene, [...scenes, dayScene, nightScene])?.id, "tower-night");
 
-const objectPath = "00000000-0000-4000-8000-000000000001/projects/00000000-0000-4000-8000-000000000002/tours/00000000-0000-4000-8000-000000000003/scenes/00000000-0000-4000-8000-000000000004/panorama.jpg";
+const objectPath =
+  "00000000-0000-4000-8000-000000000001/projects/00000000-0000-4000-8000-000000000002/tours/00000000-0000-4000-8000-000000000003/scenes/00000000-0000-4000-8000-000000000004/panorama.jpg";
 assert.equal(panoramaStoragePathFromValue(objectPath), objectPath);
 assert.equal(
-  panoramaStoragePathFromValue("https://example.supabase.co/storage/v1/object/public/tour-panoramas/" + objectPath),
+  panoramaStoragePathFromValue(
+    "https://example.supabase.co/storage/v1/object/public/tour-panoramas/" + objectPath,
+  ),
   objectPath,
 );
 assert.equal(panoramaStoragePathFromValue("../another-tenant/panorama.jpg"), null);

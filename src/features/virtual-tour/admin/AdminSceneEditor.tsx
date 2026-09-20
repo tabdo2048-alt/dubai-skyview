@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { hotspotExternalUrl } from "../hotspotData";
 import { resolvePanoramaUrl } from "../panoramaUrl";
+import { sceneExperienceMetadata, withSceneExperienceMetadata } from "../sceneExperience";
 import type { TourHotspotRow, TourSceneRow } from "../types";
 import { AdminHotspotForm } from "./AdminHotspotForm";
 import {
@@ -72,6 +73,7 @@ export function AdminSceneEditor({
     () => bundle.hotspots.filter((hotspot) => hotspot.scene_id === scene.id),
     [bundle.hotspots, scene.id],
   );
+  const experience = useMemo(() => sceneExperienceMetadata(scene), [scene]);
 
   const saveScene = async (form: HTMLFormElement) => {
     const values = new FormData(form);
@@ -82,6 +84,17 @@ export function AdminSceneEditor({
     const hfov = Number(values.get("hfov"));
     const cameraErrors = validateCameraValues(yaw, pitch, hfov);
     if (cameraErrors.length) return toast.error(cameraErrors[0]);
+    const pairedSceneId = String(values.get("pairedSceneId") ?? "") || null;
+    if (
+      pairedSceneId === scene.id ||
+      (pairedSceneId && !bundle.scenes.some((item) => item.id === pairedSceneId))
+    ) {
+      return toast.error("مشهد Day/Night المرتبط غير صالح.");
+    }
+    const timeValue = String(values.get("timeOfDay") ?? "");
+    const timeOfDay = timeValue === "day" || timeValue === "night" ? timeValue : null;
+    const northOffset = Number(values.get("compassNorthOffset"));
+    if (!Number.isFinite(northOffset)) return toast.error("اتجاه الشمال غير صالح.");
     setSaving(true);
     try {
       await updateScene(scene.id, {
@@ -93,6 +106,12 @@ export function AdminSceneEditor({
         initial_hfov: hfov,
         sort_order: Math.max(0, Number(values.get("sortOrder")) || 0),
         is_published: values.get("published") === "on",
+        multires_config: withSceneExperienceMetadata(scene.multires_config, {
+          timeOfDay,
+          pairedSceneId,
+          compassNorthOffset: northOffset,
+          verticalLabel: String(values.get("verticalLabel") ?? "").trim() || null,
+        }),
       });
       await onChanged();
       toast.success("تم حفظ المشهد.");
@@ -402,6 +421,60 @@ export function AdminSceneEditor({
             Sort order
             <Input name="sortOrder" type="number" min={0} defaultValue={scene.sort_order} />
           </label>
+          <div className="grid gap-3 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+            <div>
+              <div className="text-xs font-medium text-cream">Experience controls</div>
+              <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
+                Optional settings for compass, tower stops and Day/Night switching.
+              </p>
+            </div>
+            <label className="grid gap-1 text-xs text-cream">
+              Tower stop label
+              <Input
+                name="verticalLabel"
+                defaultValue={experience.verticalLabel ?? ""}
+                placeholder="Floor 17 · Unit 911"
+              />
+            </label>
+            <label className="grid gap-1 text-xs text-cream">
+              North heading offset
+              <Input
+                name="compassNorthOffset"
+                type="number"
+                step="0.1"
+                defaultValue={experience.compassNorthOffset}
+              />
+            </label>
+            <label className="grid gap-1 text-xs text-cream">
+              Time of day
+              <select
+                name="timeOfDay"
+                defaultValue={experience.timeOfDay ?? ""}
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="">Standard</option>
+                <option value="day">Day</option>
+                <option value="night">Night</option>
+              </select>
+            </label>
+            <label className="grid gap-1 text-xs text-cream">
+              Paired Day/Night scene
+              <select
+                name="pairedSceneId"
+                defaultValue={experience.pairedSceneId ?? ""}
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="">No paired scene</option>
+                {bundle.scenes
+                  .filter((item) => item.id !== scene.id)
+                  .map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          </div>
           <label className="flex items-center gap-2 text-xs text-cream">
             <input name="published" type="checkbox" defaultChecked={scene.is_published} /> Scene
             published

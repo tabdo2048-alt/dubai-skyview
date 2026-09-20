@@ -9,6 +9,7 @@ import type {
   TourSceneRow,
   VirtualTourRow,
 } from "./types";
+import type { Tables } from "@/integrations/supabase/types";
 
 export type VirtualTourProject = Pick<ProjectRow, "id" | "slug" | "name" | "tour_360_url">;
 
@@ -19,6 +20,21 @@ export interface VirtualTourBundle {
   buildingName: string | null;
   unitName: string | null;
 }
+
+export type TourUnitSummary = Pick<
+  Tables<"project_unit_types">,
+  | "id"
+  | "project_id"
+  | "label"
+  | "price_aed"
+  | "bedrooms"
+  | "bathrooms"
+  | "area_sqm_min"
+  | "area_sqm_max"
+  | "availability"
+  | "floor"
+  | "view_description"
+>;
 
 export async function fetchPublishedVirtualTour(
   slug: string,
@@ -177,6 +193,34 @@ export function useFirstPublishedUnitTour(
     queryFn: () => fetchFirstPublishedUnitTour(projectId!, unitId!),
     enabled: Boolean(projectId && unitId),
     staleTime: 60_000,
+  });
+}
+
+export async function fetchTourUnitSummary(
+  projectId: string,
+  unitId: string,
+): Promise<TourUnitSummary | null> {
+  const { data, error } = await supabase
+    .from("project_unit_types")
+    .select(
+      "id,project_id,label,price_aed,bedrooms,bathrooms,area_sqm_min,area_sqm_max,availability,floor,view_description",
+    )
+    .eq("id", unitId)
+    .eq("project_id", projectId)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export function useTourUnitSummary(
+  projectId: string | null | undefined,
+  unitId: string | null | undefined,
+) {
+  return useQuery({
+    queryKey: ["virtual-tours", "project", projectId, "unit", unitId, "summary"],
+    queryFn: () => fetchTourUnitSummary(projectId!, unitId!),
+    enabled: Boolean(projectId && unitId),
+    staleTime: 5 * 60 * 1000,
   });
 }
 

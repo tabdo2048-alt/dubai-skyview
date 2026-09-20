@@ -1,4 +1,4 @@
-import { ArrowLeft, Building2, Maximize2 } from "lucide-react";
+import { ArrowLeft, Building2, Maximize2, Share2 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 
@@ -10,6 +10,7 @@ interface TourControlsProps {
   parentTour?: { id: string; label: string } | null;
   fullscreenSupported: boolean;
   onFullscreen: () => void;
+  onShare: () => void;
 }
 export function TourControls({
   slug,
@@ -19,6 +20,7 @@ export function TourControls({
   parentTour,
   fullscreenSupported,
   onFullscreen,
+  onShare,
 }: TourControlsProps) {
   return (
     <header className="absolute inset-x-0 top-0 z-40 flex items-center gap-3 bg-gradient-to-b from-black/85 to-transparent px-3 pb-10 pt-3 sm:px-5">
@@ -56,6 +58,16 @@ export function TourControls({
           </Link>
         </Button>
       )}
+      <Button
+        type="button"
+        size="icon"
+        variant="ghost"
+        onClick={onShare}
+        className="text-cream hover:bg-white/10 hover:text-gold"
+        aria-label="Share this tour scene"
+      >
+        <Share2 className="h-5 w-5" aria-hidden="true" />
+      </Button>
       {fullscreenSupported && (
         <Button
           type="button"

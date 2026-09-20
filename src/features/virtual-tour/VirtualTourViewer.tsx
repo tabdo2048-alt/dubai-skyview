@@ -3,13 +3,16 @@ import type { TourHotspotRow, TourSceneRow } from "./types";
 import {
   createPannellumViewer,
   destroyPannellumViewer,
+  getPannellumCamera,
   setPannellumHotspots,
   type PannellumHotspot,
   type PannellumViewer,
+  type PannellumCameraState,
 } from "./viewer/pannellumAdapter";
 
 export interface VirtualTourViewerHandle {
   toggleFullscreen(): void;
+  getCamera(): PannellumCameraState | null;
 }
 
 interface VirtualTourViewerProps {
@@ -48,15 +51,7 @@ function renderHotspots(
 
 export const VirtualTourViewer = forwardRef<VirtualTourViewerHandle, VirtualTourViewerProps>(
   function VirtualTourViewer(
-    {
-      scene,
-      panoramaUrl,
-      hotspots,
-      retryKey,
-      onLoadingChange,
-      onError,
-      onHotspotActivate,
-    },
+    { scene, panoramaUrl, hotspots, retryKey, onLoadingChange, onError, onHotspotActivate },
     forwardedRef,
   ) {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -72,6 +67,9 @@ export const VirtualTourViewer = forwardRef<VirtualTourViewerHandle, VirtualTour
       () => ({
         toggleFullscreen() {
           viewerRef.current?.toggleFullscreen();
+        },
+        getCamera() {
+          return viewerRef.current ? getPannellumCamera(viewerRef.current) : null;
         },
       }),
       [],
@@ -93,10 +91,8 @@ export const VirtualTourViewer = forwardRef<VirtualTourViewerHandle, VirtualTour
           if (!active) return;
           onLoadingChange(false);
           if (viewerRef.current) {
-            renderHotspots(
-              viewerRef.current,
-              hotspotsRef.current,
-              (hotspot) => onHotspotActivateRef.current(hotspot),
+            renderHotspots(viewerRef.current, hotspotsRef.current, (hotspot) =>
+              onHotspotActivateRef.current(hotspot),
             );
           }
         },
@@ -139,10 +135,8 @@ export const VirtualTourViewer = forwardRef<VirtualTourViewerHandle, VirtualTour
 
     useEffect(() => {
       if (!viewerRef.current) return;
-      renderHotspots(
-        viewerRef.current,
-        hotspots,
-        (hotspot) => onHotspotActivateRef.current(hotspot),
+      renderHotspots(viewerRef.current, hotspots, (hotspot) =>
+        onHotspotActivateRef.current(hotspot),
       );
     }, [hotspots]);
 
