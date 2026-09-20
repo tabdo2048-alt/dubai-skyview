@@ -24,8 +24,6 @@ export type UnitSalesOfferPdfProps = {
   offerDate: string;
   validUntil: string;
   qrCodeDataUrl?: string;
-  whatsappNumber?: string;
-  shareUrl: string;
   projectImageSrc?: string;
   projectMainImageSrc?: string;
   unitPhotoImageSrc?: string;
@@ -42,8 +40,6 @@ function MultiPageSalesOffer({
   offerDate,
   validUntil,
   qrCodeDataUrl,
-  whatsappNumber,
-  shareUrl,
   projectImageSrc,
   projectMainImageSrc,
   unitPhotoImageSrc,
@@ -322,22 +318,15 @@ function MultiPageSalesOffer({
             )}
           </View>
 
-          {(project.developer?.name || project.developer?.website || qrCodeDataUrl) && (
-            <View style={[offerStyles.contactBox, { backgroundColor: primaryColor }]}>
-              <View style={offerStyles.contactCopy}>
-                <Text style={[offerStyles.contactTitle, { color: accentColor }]}>Prepared by</Text>
-                {project.developer?.name && (
-                  <Text style={offerStyles.contactName}>{project.developer.name}</Text>
-                )}
-                {project.developer?.website && (
-                  <Text style={offerStyles.contactLine}>{project.developer.website}</Text>
-                )}
-                {whatsappNumber && (
-                  <Text style={offerStyles.contactLine}>WhatsApp: +{whatsappNumber}</Text>
-                )}
-                <Text style={offerStyles.contactLine}>Project page: {shareUrl}</Text>
-              </View>
-              {qrCodeDataUrl && <Image src={qrCodeDataUrl} style={offerStyles.qr} />}
+          {qrCodeDataUrl && (
+            <View
+              style={[
+                offerStyles.contactBox,
+                offerStyles.qrOnlyBox,
+                { backgroundColor: primaryColor },
+              ]}
+            >
+              <Image src={qrCodeDataUrl} style={offerStyles.qr} />
             </View>
           )}
         </View>
@@ -367,8 +356,6 @@ function OnePageSalesOffer({
   offerDate,
   validUntil,
   qrCodeDataUrl,
-  whatsappNumber,
-  shareUrl,
   projectImageSrc,
   unitPhotoImageSrc,
   unitPlanImageSrc,
@@ -614,33 +601,19 @@ function OnePageSalesOffer({
                 <Image src={unitPlanImage} style={offerStyles.oneUnitPlanImage} />
               </View>
             )}
-            {(project.developer?.name || project.developer?.website || qrCodeDataUrl) && (
+            {qrCodeDataUrl && (
               <View
                 style={[
                   offerStyles.contactBox,
                   offerStyles.oneContactBlock,
+                  offerStyles.qrOnlyBox,
                   {
                     backgroundColor: primaryColor,
                     width: unitPhoto || unitPlanImage ? "38%" : "100%",
                   },
                 ]}
               >
-                <View style={offerStyles.contactCopy}>
-                  <Text style={[offerStyles.contactTitle, { color: accentColor }]}>
-                    Prepared by
-                  </Text>
-                  {project.developer?.name && (
-                    <Text style={offerStyles.contactName}>{project.developer.name}</Text>
-                  )}
-                  {project.developer?.website && (
-                    <Text style={offerStyles.contactLine}>{project.developer.website}</Text>
-                  )}
-                  {whatsappNumber && (
-                    <Text style={offerStyles.contactLine}>WhatsApp: +{whatsappNumber}</Text>
-                  )}
-                  <Text style={offerStyles.contactLine}>Project page: {shareUrl}</Text>
-                </View>
-                {qrCodeDataUrl && <Image src={qrCodeDataUrl} style={offerStyles.qr} />}
+                <Image src={qrCodeDataUrl} style={offerStyles.qr} />
               </View>
             )}
           </View>
