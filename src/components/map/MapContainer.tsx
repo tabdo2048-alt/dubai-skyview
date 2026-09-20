@@ -26,10 +26,6 @@ import { ProjectPopup } from "./ProjectPopup";
 const WaterDebugEditor = lazy(() =>
   import("./WaterDebugEditor").then((m) => ({ default: m.WaterDebugEditor })),
 );
-const CesiumView = lazy(async () => {
-  globalThis.CESIUM_BASE_URL = "/cesium/";
-  return import("./cesium/CesiumView");
-});
 import { shouldShowWaterDebugEditor } from "./waterDebugState";
 import { ROAD_GUIDE, setRouteHighlight } from "./roadsLayer";
 import { useMapConfig } from "@/hooks/use-map-config";
@@ -158,61 +154,29 @@ export function MapContainer() {
 
       {cfg && (
         <>
-          {/* Flat Mapbox satellite view (satellite-streets) with metro/train + water overlay */}
-          {mapMode === "satellite" && (
-            <div className="absolute inset-0">
-              <MapboxView
-                accessToken={cfg.mapboxAccessToken}
-                projects={projectsToShow}
-                pois={pois}
-                flyToTarget={emirateTarget}
-                browsingPois={browsingPois}
-                zones={zones}
-                zoneCategories={zoneCategories}
-                camera={camera}
-                onCameraChange={setCamera}
-                onReady={() => mapMode === "satellite" && setMapReady(true)}
-                onMapReady={waterEditorEnabled ? setEditorMap : undefined}
-                active={mapMode === "satellite"}
-                metroMode={visibleMetroMode}
-                trainMode={trainMode}
-                roadsMode={roadsMode}
-                lightPreset={lightPreset}
-                mode="satellite"
-              />
-            </div>
-          )}
-
-          {/* Cesium is the sole WebGL engine in 3D mode; Mapbox is unmounted. */}
-          {mapMode === "3d" && (
-            <div className="absolute inset-0">
-              <Suspense
-                fallback={
-                  <div className="grid h-full place-items-center bg-[#d8cbb3]">
-                    <Loader2 className="h-7 w-7 animate-spin text-gold" />
-                  </div>
-                }
-              >
-              <CesiumView
-                ionToken={import.meta.env.VITE_CESIUM_ION_TOKEN}
-                projects={projectsToShow}
-                pois={pois}
-                flyToTarget={emirateTarget}
-                browsingPois={browsingPois}
-                zones={zones}
-                zoneCategories={zoneCategories}
-                camera={camera}
-                onCameraChange={setCamera}
-                onReady={() => mapMode === "3d" && setMapReady(true)}
-                active={mapMode === "3d"}
-                metroMode={visibleMetroMode}
-                trainMode={trainMode}
-                roadsMode={roadsMode}
-                lightPreset={lightPreset}
-              />
-              </Suspense>
-            </div>
-          )}
+          {/* One lightweight satellite engine for both views. 3D only tilts the
+              camera and mounts the selected projects' own GLB models. */}
+          <div className="absolute inset-0">
+            <MapboxView
+              accessToken={cfg.mapboxAccessToken}
+              projects={projectsToShow}
+              pois={pois}
+              flyToTarget={emirateTarget}
+              browsingPois={browsingPois}
+              zones={zones}
+              zoneCategories={zoneCategories}
+              camera={camera}
+              onCameraChange={setCamera}
+              onReady={() => setMapReady(true)}
+              onMapReady={waterEditorEnabled && mapMode === "satellite" ? setEditorMap : undefined}
+              active
+              metroMode={visibleMetroMode}
+              trainMode={trainMode}
+              roadsMode={roadsMode}
+              lightPreset={lightPreset}
+              mode={mapMode}
+            />
+          </div>
         </>
       )}
 
@@ -281,7 +245,7 @@ export function MapContainer() {
         </button>
       </div>
 
-      {/* Light preset switcher — drives Cesium sun/scene lighting. */}
+      {/* Light preset switcher — controls the selected project's 3D presentation. */}
       {mapMode === "3d" && (
         <div className="pointer-events-auto glass gold-hairline absolute right-4 top-16 z-20 flex gap-1 rounded-full p-1">
           {LIGHT_PRESETS.map(({ value, label, Icon }) => (
