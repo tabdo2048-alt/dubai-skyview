@@ -658,6 +658,10 @@ export const offerStyles = StyleSheet.create({
     gap: 10,
   },
   contactCopy: { flexGrow: 1 },
+  qrOnlyBox: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
   contactTitle: {
     color: offerColors.gold,
     fontSize: 7,

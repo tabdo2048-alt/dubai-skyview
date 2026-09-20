@@ -3,12 +3,11 @@ import { Check, FileDown, Loader2, Ruler, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import type { ProjectWithRelations } from "@/lib/types";
 import { fetchProjectById } from "@/hooks/use-projects";
-import { areaLabel, displayUnitTypes, pricedUnitTypes, canOfferUnit, projectDetailSlug, type DisplayUnitType, unitDetailSlug } from "@/lib/unit-types";
+import { areaLabel, displayUnitTypes, pricedUnitTypes, canOfferUnit, type DisplayUnitType } from "@/lib/unit-types";
 import { preparePdfImage, projectMainImage, projectOfferImage, unitFloorPlanImage, unitPhotoImage } from "@/lib/pdf-media";
 import { DEFAULT_OFFER_ACCENT_COLOR, DEFAULT_OFFER_PRIMARY_COLOR, safeOfferColor } from "@/lib/offer-branding";
 import { safeHttpUrl } from "@/lib/utils";
 import { displayPaymentPlans, type DisplayPaymentPlan } from "@/lib/payment-plans";
-import { whatsappUrl, CONTACT_WHATSAPP } from "@/lib/contact";
 import {
   calculatePaymentPlan,
   formatCurrency,
@@ -23,6 +22,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+
+const OFFER_QR_URL = "https://www.tiktok.com/@hassan_abu_allail?_r=1&_t=ZS-99tF31wkWsn";
 
 export function UnitOfferDialog({
   project,
@@ -152,24 +153,11 @@ export function UnitOfferDialog({
       const validUntilDate = new Date();
       validUntilDate.setDate(validUntilDate.getDate() + 7);
       const validUntil = formatDate(validUntilDate);
-      const baseUrl = (import.meta.env.VITE_PUBLIC_APP_URL as string | undefined)?.trim() ||
-        (import.meta.env.VITE_APP_URL as string | undefined)?.trim() ||
-        window.location.origin;
-      const unitPath = unitDetailSlug({
-        projectName: offerProject.name,
-        projectSlug: offerProject.slug,
-        developerName: offerProject.developer?.name,
-        developerSlug: offerProject.developer?.slug,
-        unitLabel: selectedUnit.label,
+      const qrCodeDataUrl = await QRCode.toDataURL(OFFER_QR_URL, {
+        errorCorrectionLevel: "M",
+        margin: 1,
+        width: 256,
       });
-      const shareUrl = `${baseUrl.replace(/\/$/, "")}/projects/${encodeURIComponent(projectDetailSlug({ name: offerProject.name, slug: offerProject.slug }))}/units/${encodeURIComponent(unitPath)}?offer=${encodeURIComponent(offerId)}`;
-      // VITE_OFFER_QR_URL can point the PDF QR to any URL. Keep the WhatsApp
-      // contact link as the fallback for existing environments.
-      const configuredQrUrl = (import.meta.env.VITE_OFFER_QR_URL as string | undefined)?.trim();
-      const qrTarget = configuredQrUrl || whatsappUrl(offerProject.name);
-      const qrCodeDataUrl = qrTarget
-        ? await QRCode.toDataURL(qrTarget, { errorCorrectionLevel: "M", margin: 1, width: 256 })
-        : undefined;
       const [projectImageSrc, projectMainImageSrc, unitPhotoImageSrc, unitPlanImageSrc, developerLogoSrc] = await Promise.all([
         preparePdfImage(projectOfferImage(offerProject)),
         preparePdfImage(projectMainImage(offerProject)),
@@ -187,8 +175,6 @@ export function UnitOfferDialog({
           offerDate={offerDate}
           validUntil={validUntil}
           qrCodeDataUrl={qrCodeDataUrl}
-          whatsappNumber={CONTACT_WHATSAPP ?? undefined}
-          shareUrl={shareUrl}
           projectImageSrc={projectImageSrc || undefined}
           projectMainImageSrc={projectMainImageSrc || undefined}
           unitPhotoImageSrc={unitPhotoImageSrc || undefined}

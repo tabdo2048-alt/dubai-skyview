@@ -30,6 +30,6 @@ for (const count of [4, 24]) {
   assert.equal(calculation.financialSummary.feeRows.length, 1);
   assert.equal(calculation.installments[0].monthlyAmount, (1000000 * (100 / count) / 100) / 10);
   assert.equal(calculation.installments[1].monthlyAmount, null);
-  await renderToFile(<UnitSalesOfferPdf project={project} unit={unit} plan={plan} calculation={calculation} offerId={`DRAFT-TEST-${count}`} offerDate="07 Sep 2026" validUntil="14 Sep 2026" shareUrl="https://example.com" projectImageSrc={image} unitPhotoImageSrc={image} />, `artifacts/unit-offer-check/offer-${count}.pdf`);
+  await renderToFile(<UnitSalesOfferPdf project={project} unit={unit} plan={plan} calculation={calculation} offerId={`DRAFT-TEST-${count}`} offerDate="07 Sep 2026" validUntil="14 Sep 2026" qrCodeDataUrl={image} projectImageSrc={image} unitPhotoImageSrc={image} />, `artifacts/unit-offer-check/offer-${count}.pdf`);
 }
 console.log("Passed: sold-unit guard, missing price, route ownership, ambiguous labels, invalid plans, zero rows, fee totals and two PDF layouts.");
