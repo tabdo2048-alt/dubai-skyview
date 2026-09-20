@@ -1,12 +1,16 @@
 import type { Json, Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
-import type { PANORAMA_TYPES, TOUR_HOTSPOT_TYPES } from "./constants";
+import type { PANORAMA_TYPES, TOUR_HOTSPOT_TYPES, TOUR_SCOPES } from "./constants";
 
 export type TourHotspotType = (typeof TOUR_HOTSPOT_TYPES)[number];
 export type PanoramaType = (typeof PANORAMA_TYPES)[number];
+export type TourScope = (typeof TOUR_SCOPES)[number];
 
 export type VirtualTourRow = Tables<"virtual_tours">;
 export type VirtualTourInsert = TablesInsert<"virtual_tours">;
 export type VirtualTourUpdate = TablesUpdate<"virtual_tours">;
+export type ProjectBuildingRow = Tables<"project_buildings">;
+export type ProjectBuildingInsert = TablesInsert<"project_buildings">;
+export type ProjectBuildingUpdate = TablesUpdate<"project_buildings">;
 export type TourFloorRow = Tables<"tour_floors">;
 export type TourFloorInsert = TablesInsert<"tour_floors">;
 export type TourFloorUpdate = TablesUpdate<"tour_floors">;
@@ -21,6 +25,7 @@ export interface VirtualTour {
   id: VirtualTourRow["id"];
   tenantId: VirtualTourRow["tenant_id"];
   projectId: VirtualTourRow["project_id"];
+  buildingId: VirtualTourRow["building_id"];
   unitId: VirtualTourRow["unit_id"];
   name: VirtualTourRow["name"];
   description: VirtualTourRow["description"];

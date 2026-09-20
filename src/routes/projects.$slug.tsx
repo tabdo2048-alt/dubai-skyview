@@ -29,7 +29,10 @@ import type { ProjectWithRelations } from "@/lib/types";
 import { areaLabel, displayUnitTypes, highestUnitPrice, lowestUnitPrice, pricedUnitTypes, projectDetailSlug, unitAvailabilityLabel } from "@/lib/unit-types";
 import { displayPaymentPlans, paymentPlanSummary } from "@/lib/payment-plans";
 import { UnitOfferDialog } from "@/components/offers/UnitOfferDialog";
-import { useFirstPublishedProjectTour } from "@/features/virtual-tour/queries";
+import {
+  useFirstPublishedProjectTour,
+  usePublishedBuildingTours,
+} from "@/features/virtual-tour/queries";
 
 export const Route = createFileRoute("/projects/$slug")({
   // Fetch on the server so <head> SEO tags + structured data are built from real
@@ -92,6 +95,7 @@ function ProjectDetail() {
   const clientProject = useProject(slug);
   const p = clientProject.data ?? loaderData.project;
   const internalTour = useFirstPublishedProjectTour(p?.id);
+  const buildingTours = usePublishedBuildingTours(p?.id);
   useEffect(() => {
     if (p) track("view_project", { slug: p.slug, name: p.name, price: lowestUnitPrice(p.unit_types, p.starting_price_aed) });
   }, [p]);
@@ -372,6 +376,24 @@ function ProjectDetail() {
                 </Button>
               )}
             </div>
+
+            {(buildingTours.data?.length ?? 0) > 0 && (
+              <div className="glass gold-hairline rounded-2xl p-4">
+                <div className="text-xs uppercase tracking-widest text-gold">جولات الأبراج</div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {buildingTours.data?.map(({ building, tour }) => (
+                    <Button key={tour.id} asChild size="sm" variant="outline">
+                      <Link
+                        to="/projects/$slug/tour/$tourId"
+                        params={{ slug: p.slug, tourId: tour.id }}
+                      >
+                        <Building2 className="mr-1 h-4 w-4" /> {building.name}
+                      </Link>
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {p.description && (
               <div className="glass rounded-2xl p-4 text-sm leading-relaxed text-cream/90">{p.description}</div>

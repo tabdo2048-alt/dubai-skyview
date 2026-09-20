@@ -8,6 +8,8 @@ export const TOUR_HOTSPOT_TYPES = [
 
 export const PANORAMA_TYPES = ["equirectangular", "multires"] as const;
 
+export const TOUR_SCOPES = ["project", "building", "unit"] as const;
+
 export const TOUR_IMAGE_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
 
 export const TOUR_STORAGE_BUCKETS = {

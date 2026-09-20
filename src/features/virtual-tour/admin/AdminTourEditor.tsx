@@ -18,7 +18,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { safeHttpUrl } from "@/lib/utils";
 import type { ProjectWithRelations } from "@/lib/types";
-import type { TourSceneRow } from "../types";
+import { resolveTourScope, tourScopeIds } from "../hierarchy";
+import type { TourSceneRow, TourScope } from "../types";
 import { AdminFloorManager } from "./AdminFloorManager";
 import { AdminSceneEditor } from "./AdminSceneEditor";
 import { AdminSceneListItem } from "./AdminSceneListItem";
@@ -65,6 +66,7 @@ export function AdminTourEditor({
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
   const [uploadState, setUploadState] = useState<UploadState>("idle");
   const [savingTour, setSavingTour] = useState(false);
+  const [editScope, setEditScope] = useState<TourScope | null>(null);
   const [deleteSceneId, setDeleteSceneId] = useState<string | null>(null);
 
   const refresh = async () => {
@@ -99,6 +101,7 @@ export function AdminTourEditor({
     );
 
   const bundle = bundleQuery.data;
+  const tourScope = editScope ?? resolveTourScope(bundle.tour);
   const selectedScene =
     bundle.scenes.find((scene) => scene.id === selectedSceneId) ?? bundle.scenes[0] ?? null;
   const hotspotCounts = new Map<string, number>();
@@ -115,6 +118,18 @@ export function AdminTourEditor({
     if (thumbnailValue && !safeHttpUrl(thumbnailValue))
       return toast.error("رابط Thumbnail غير صالح.");
     const publish = values.get("published") === "on";
+    const scope = String(values.get("scope") ?? "project") as TourScope;
+    const unitId = String(values.get("unitId") ?? "") || null;
+    const selectedUnit = bundle.units.find((unit) => unit.id === unitId);
+    const scopeIds = tourScopeIds(scope, {
+      buildingId:
+        scope === "unit"
+          ? (selectedUnit?.building_id ?? null)
+          : String(values.get("buildingId") ?? "") || null,
+      unitId,
+    });
+    if (scope === "building" && !scopeIds.building_id) return toast.error("اختر البرج.");
+    if (scope === "unit" && !scopeIds.unit_id) return toast.error("اختر الوحدة.");
     if (publish) {
       const errors = validateTourForPublish(bundle.scenes, bundle.hotspots);
       if (errors.length) return toast.error(errors[0]);
@@ -125,7 +140,7 @@ export function AdminTourEditor({
         name,
         description: String(values.get("description") ?? "").trim() || null,
         thumbnail_url: thumbnailValue || null,
-        unit_id: String(values.get("unitId") ?? "") || null,
+        ...scopeIds,
         is_published: publish,
       });
       await refresh();
@@ -264,20 +279,54 @@ export function AdminTourEditor({
           <Input name="name" defaultValue={bundle.tour.name} />
         </label>
         <label className="grid gap-1 text-xs text-cream">
-          Unit
+          Tour Scope
           <select
-            name="unitId"
-            defaultValue={bundle.tour.unit_id ?? ""}
+            name="scope"
+            value={tourScope}
+            onChange={(event) => setEditScope(event.target.value as TourScope)}
             className="h-9 rounded-md border border-input bg-background px-3 text-sm"
           >
-            <option value="">Project Tour</option>
-            {bundle.units.map((unit) => (
-              <option key={unit.id} value={unit.id}>
-                {unit.label}
-              </option>
-            ))}
+            <option value="project">Project Tour</option>
+            <option value="building" disabled={bundle.buildings.length === 0}>
+              Building Tour
+            </option>
+            <option value="unit">Unit Tour</option>
           </select>
         </label>
+        {tourScope === "building" && (
+          <label className="grid gap-1 text-xs text-cream">
+            Building
+            <select
+              name="buildingId"
+              defaultValue={bundle.tour.building_id ?? ""}
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="">Select building</option>
+              {bundle.buildings.map((building) => (
+                <option key={building.id} value={building.id}>
+                  {building.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {tourScope === "unit" && (
+          <label className="grid gap-1 text-xs text-cream">
+            Unit
+            <select
+              name="unitId"
+              defaultValue={bundle.tour.unit_id ?? ""}
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="">Select unit</option>
+              {bundle.units.map((unit) => (
+                <option key={unit.id} value={unit.id}>
+                  {unit.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="grid gap-1 text-xs text-cream md:col-span-2">
           Description
           <Textarea name="description" defaultValue={bundle.tour.description ?? ""} />

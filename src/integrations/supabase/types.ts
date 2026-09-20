@@ -477,6 +477,60 @@ export type Database = {
           },
         ]
       }
+      project_buildings: {
+        Row: {
+          created_at: string
+          description: string | null
+          floors_count: number | null
+          id: string
+          is_active: boolean
+          name: string
+          project_id: string
+          sort_order: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          floors_count?: number | null
+          id?: string
+          is_active?: boolean
+          name: string
+          project_id: string
+          sort_order?: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          floors_count?: number | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          project_id?: string
+          sort_order?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_buildings_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_buildings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_unit_type_images: {
         Row: {
           content_hash: string | null
@@ -545,6 +599,7 @@ export type Database = {
           availability: string
           bathrooms: number | null
           bedrooms: number | null
+          building_id: string | null
           created_at: string
           floor: string | null
           floor_plan_url: string | null
@@ -563,6 +618,7 @@ export type Database = {
           availability?: string
           bathrooms?: number | null
           bedrooms?: number | null
+          building_id?: string | null
           created_at?: string
           floor?: string | null
           floor_plan_url?: string | null
@@ -581,6 +637,7 @@ export type Database = {
           availability?: string
           bathrooms?: number | null
           bedrooms?: number | null
+          building_id?: string | null
           created_at?: string
           floor?: string | null
           floor_plan_url?: string | null
@@ -594,6 +651,13 @@ export type Database = {
           view_description?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "project_unit_types_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "project_buildings"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "project_unit_types_project_id_fkey"
             columns: ["project_id"]
@@ -1133,6 +1197,7 @@ export type Database = {
       }
       virtual_tours: {
         Row: {
+          building_id: string | null
           created_at: string
           created_by: string | null
           description: string | null
@@ -1146,6 +1211,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          building_id?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
@@ -1159,6 +1225,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          building_id?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
@@ -1172,6 +1239,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "virtual_tours_building_id_fkey"
+            columns: ["building_id"]
+            isOneToOne: false
+            referencedRelation: "project_buildings"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "virtual_tours_project_id_fkey"
             columns: ["project_id"]
