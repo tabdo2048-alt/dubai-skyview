@@ -160,6 +160,29 @@ assert.equal(offCalls, 1);
 assert.equal(destroyCalls, 1);
 destroyPannellumViewer(null);
 
+const failedViewer = {
+  addHotSpot: () => {
+    throw new Error("panorama not ready");
+  },
+  removeHotSpot: () => {
+    throw new Error("viewer already failed");
+  },
+} as unknown as PannellumViewer;
+assert.doesNotThrow(() =>
+  setPannellumHotspots(failedViewer, [
+    {
+      id: "safe-after-load-error",
+      pitch: 0,
+      yaw: 0,
+      type: "information",
+      label: "Info",
+      ariaLabel: "عرض معلومات Info",
+      onActivate: () => undefined,
+    },
+  ]),
+);
+assert.doesNotThrow(() => setPannellumHotspots(failedViewer, []));
+
 console.log(
-  "Virtual-tour checks passed: scene selection, signed URL safety, hotspot validation, external URL rejection, lifecycle cleanup, and viewer destruction.",
+  "Virtual-tour checks passed: scene selection, signed URL safety, hotspot validation, external URL rejection, failed-viewer isolation, lifecycle cleanup, and viewer destruction.",
 );

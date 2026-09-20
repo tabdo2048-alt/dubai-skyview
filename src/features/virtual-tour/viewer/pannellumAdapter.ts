@@ -116,23 +116,33 @@ export async function createPannellumViewer(
 
 export function setPannellumHotspots(viewer: PannellumViewer, hotspots: PannellumHotspot[]): void {
   const previousIds = renderedHotspotIds.get(viewer) ?? new Set<string>();
-  for (const id of previousIds) viewer.removeHotSpot(id);
+  for (const id of previousIds) {
+    try {
+      viewer.removeHotSpot(id);
+    } catch {
+      // Pannellum may reject hotspot operations after a failed panorama load.
+    }
+  }
 
   const nextIds = new Set<string>();
   for (const hotspot of hotspots) {
-    viewer.addHotSpot({
-      id: hotspot.id,
-      pitch: hotspot.pitch,
-      yaw: hotspot.yaw,
-      cssClass: "tour-hotspot tour-hotspot--" + hotspot.type,
-      createTooltipFunc: createAccessibleHotspot,
-      createTooltipArgs: {
-        label: hotspot.label,
-        ariaLabel: hotspot.ariaLabel,
-      },
-      clickHandlerFunc: hotspot.onActivate,
-    });
-    nextIds.add(hotspot.id);
+    try {
+      viewer.addHotSpot({
+        id: hotspot.id,
+        pitch: hotspot.pitch,
+        yaw: hotspot.yaw,
+        cssClass: "tour-hotspot tour-hotspot--" + hotspot.type,
+        createTooltipFunc: createAccessibleHotspot,
+        createTooltipArgs: {
+          label: hotspot.label,
+          ariaLabel: hotspot.ariaLabel,
+        },
+        clickHandlerFunc: hotspot.onActivate,
+      });
+      nextIds.add(hotspot.id);
+    } catch {
+      // A failed panorama or one invalid hotspot must not crash the viewer.
+    }
   }
   renderedHotspotIds.set(viewer, nextIds);
 }
@@ -140,7 +150,13 @@ export function setPannellumHotspots(viewer: PannellumViewer, hotspots: Pannellu
 export function clearPannellumHotspots(viewer: PannellumViewer): void {
   const ids = renderedHotspotIds.get(viewer);
   if (!ids) return;
-  for (const id of ids) viewer.removeHotSpot(id);
+  for (const id of ids) {
+    try {
+      viewer.removeHotSpot(id);
+    } catch {
+      // The viewer can already be in a failed / partially-destroyed state.
+    }
+  }
   ids.clear();
 }
 
