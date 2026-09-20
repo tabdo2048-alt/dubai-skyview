@@ -90,7 +90,15 @@ export const VirtualTourViewer = forwardRef<VirtualTourViewerHandle, VirtualTour
         pitch: scene.initial_pitch,
         hfov: scene.initial_hfov,
         onLoad: () => {
-          if (active) onLoadingChange(false);
+          if (!active) return;
+          onLoadingChange(false);
+          if (viewerRef.current) {
+            renderHotspots(
+              viewerRef.current,
+              hotspotsRef.current,
+              (hotspot) => onHotspotActivateRef.current(hotspot),
+            );
+          }
         },
         onError: (message) => {
           if (!active) return;
@@ -105,11 +113,6 @@ export const VirtualTourViewer = forwardRef<VirtualTourViewerHandle, VirtualTour
           }
           createdViewer = viewer;
           viewerRef.current = viewer;
-          renderHotspots(
-            viewer,
-            hotspotsRef.current,
-            (hotspot) => onHotspotActivateRef.current(hotspot),
-          );
         })
         .catch((error: unknown) => {
           if (!active) return;

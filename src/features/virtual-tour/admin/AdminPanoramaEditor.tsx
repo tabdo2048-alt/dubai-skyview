@@ -96,7 +96,18 @@ export const AdminPanoramaEditor = forwardRef<AdminPanoramaEditorHandle, AdminPa
         yaw: scene.initial_yaw,
         pitch: scene.initial_pitch,
         hfov: scene.initial_hfov,
-        onLoad: () => active && setLoading(false),
+        onLoad: () => {
+          if (!active) return;
+          setLoading(false);
+          if (viewerRef.current) {
+            setPannellumHotspots(
+              viewerRef.current,
+              editorHotspots(hotspotsRef.current, pendingRef.current, (hotspot) =>
+                selectRef.current(hotspot),
+              ),
+            );
+          }
+        },
         onError: () => {
           if (!active) return;
           setLoading(false);
@@ -107,12 +118,6 @@ export const AdminPanoramaEditor = forwardRef<AdminPanoramaEditorHandle, AdminPa
           if (!active) return destroyPannellumViewer(viewer);
           created = viewer;
           viewerRef.current = viewer;
-          setPannellumHotspots(
-            viewer,
-            editorHotspots(hotspotsRef.current, pendingRef.current, (hotspot) =>
-              selectRef.current(hotspot),
-            ),
-          );
         })
         .catch(() => {
           if (!active) return;
