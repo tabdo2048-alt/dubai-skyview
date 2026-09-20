@@ -2,6 +2,7 @@ import { useEffect, useId, useRef } from "react";
 import { Link } from "@tanstack/react-router";
 import { Building2, ExternalLink, Info, PlayCircle, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { formatAed } from "@/lib/dubai";
 import type { TourHotspotRow } from "./types";
 import {
   hotspotExternalUrl,
@@ -9,7 +10,7 @@ import {
   hotspotMetadataText,
   hotspotUnitTypeId,
 } from "./hotspotData";
-import { useFirstPublishedUnitTour } from "./queries";
+import { useFirstPublishedUnitTour, useTourUnitSummary } from "./queries";
 
 interface TourHotspotCardProps {
   hotspot: TourHotspotRow;
@@ -36,6 +37,12 @@ export function TourHotspotCard({
   const externalUrl = hotspotExternalUrl(hotspot.metadata);
   const unitTypeId = hotspotUnitTypeId(hotspot.metadata);
   const unitTour = useFirstPublishedUnitTour(projectId, unitTypeId);
+  const unitSummary = useTourUnitSummary(projectId, unitTypeId);
+  const area = unitSummary.data
+    ? unitSummary.data.area_sqm_min === unitSummary.data.area_sqm_max
+      ? unitSummary.data.area_sqm_min
+      : (unitSummary.data.area_sqm_min ?? unitSummary.data.area_sqm_max)
+    : null;
 
   useEffect(() => {
     closeRef.current?.focus();
@@ -97,6 +104,28 @@ export function TourHotspotCard({
         </div>
         {hotspot.type === "unit" && unitTypeId && (
           <div className="mt-4 grid gap-2">
+            {unitSummary.data && (
+              <div className="grid grid-cols-2 gap-2 rounded-xl border border-white/10 bg-white/[0.04] p-3 text-xs text-cream/75">
+                <div className="col-span-2 flex items-center justify-between gap-3 border-b border-white/10 pb-2">
+                  <span className="font-medium text-cream">{unitSummary.data.label}</span>
+                  <span className="text-gold">{formatAed(unitSummary.data.price_aed)}</span>
+                </div>
+                {unitSummary.data.floor && <span>Floor: {unitSummary.data.floor}</span>}
+                {unitSummary.data.bedrooms != null && (
+                  <span>{unitSummary.data.bedrooms || "Studio"} Beds</span>
+                )}
+                {unitSummary.data.bathrooms != null && (
+                  <span>{unitSummary.data.bathrooms} Baths</span>
+                )}
+                {area != null && <span>{area.toLocaleString()} m²</span>}
+                <span className="capitalize">{unitSummary.data.availability}</span>
+                {unitSummary.data.view_description && (
+                  <span className="col-span-2 text-cream/60">
+                    {unitSummary.data.view_description}
+                  </span>
+                )}
+              </div>
+            )}
             {unitTour.data && (
               <Button asChild className="w-full bg-gold text-gold-foreground hover:bg-gold/90">
                 <Link

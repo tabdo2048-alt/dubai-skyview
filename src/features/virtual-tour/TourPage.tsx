@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Map as MapIcon } from "lucide-react";
+import { toast } from "sonner";
 import { track } from "@/lib/analytics";
 import type { TourHotspotRow, TourSceneRow } from "./types";
 import type { VirtualTourBundle } from "./queries";
@@ -20,11 +21,19 @@ import { supportsFullscreen } from "./viewer/pannellumAdapter";
 import { VirtualTourViewer, type VirtualTourViewerHandle } from "./VirtualTourViewer";
 import { TourControls } from "./TourControls";
 import { TourError } from "./TourError";
+import { TourExperienceControls } from "./TourExperienceControls";
 import { TourFloorPlan } from "./TourFloorPlan";
 import { TourFloorSelector } from "./TourFloorSelector";
 import { TourHotspotCard } from "./TourHotspotCard";
 import { TourLoading } from "./TourLoading";
 import { TourSceneList } from "./TourSceneList";
+import {
+  adjacentTourScenes,
+  findTimeOfDayPair,
+  normalizeHeading,
+  sceneExperienceMetadata,
+  sceneVerticalLabel,
+} from "./sceneExperience";
 
 interface TourPageProps {
   bundle: VirtualTourBundle;
@@ -43,6 +52,12 @@ export function TourPage({ bundle, scene, panoramaUrl }: TourPageProps) {
   const [selectedFloorId, setSelectedFloorId] = useState<string | null>(null);
   const [floorPlanOpen, setFloorPlanOpen] = useState(false);
   const [floorPlanExpanded, setFloorPlanExpanded] = useState(false);
+  const [guided, setGuided] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      sessionStorage.getItem(`tour-guided:v1:${bundle.tour.id}`) === "1",
+  );
+  const [guidedPaused, setGuidedPaused] = useState(false);
   const { project, tour, scenes } = bundle;
   const routerNavigate = useNavigate();
   const queryClient = useQueryClient();
@@ -94,6 +109,13 @@ export function TourPage({ bundle, scene, panoramaUrl }: TourPageProps) {
     () => validateSceneHotspots(hotspotQuery.data ?? [], scene.id, scenes),
     [hotspotQuery.data, scene.id, scenes],
   );
+  const adjacentScenes = useMemo(() => adjacentTourScenes(scenes, scene.id), [scene.id, scenes]);
+  const sceneMetadata = useMemo(() => sceneExperienceMetadata(scene), [scene]);
+  const timePair = useMemo(() => findTimeOfDayPair(scene, scenes), [scene, scenes]);
+  const floorNames = useMemo(
+    () => new Map(floors.map((floor) => [floor.id, floor.name])),
+    [floors],
+  );
 
   const beforeSceneNavigation = useCallback(() => {
     setActiveHotspot(null);
@@ -122,9 +144,46 @@ export function TourPage({ bundle, scene, panoramaUrl }: TourPageProps) {
   useEffect(() => {
     track("tour_opened", { project_id: project.id, tour_id: tour.id });
   }, [project.id, tour.id]);
+  useEffect(() => {
+    if (!guided || guidedPaused || loading || viewerError) return;
+    if (!adjacentScenes.next) {
+      setGuided(false);
+      sessionStorage.removeItem(`tour-guided:v1:${tour.id}`);
+      return;
+    }
+    const timer = window.setTimeout(() => navigateToScene(adjacentScenes.next!.id), 10_000);
+    return () => window.clearTimeout(timer);
+  }, [adjacentScenes.next, guided, guidedPaused, loading, navigateToScene, tour.id, viewerError]);
 
   const handleLoadingChange = useCallback((next: boolean) => setLoading(next), []);
   const handleViewerError = useCallback((message: string) => setViewerError(message), []);
+  const getHeading = useCallback(() => {
+    const camera = viewerRef.current?.getCamera();
+    return normalizeHeading((camera?.yaw ?? scene.initial_yaw) + sceneMetadata.compassNorthOffset);
+  }, [scene.initial_yaw, sceneMetadata.compassNorthOffset]);
+
+  const shareCurrentScene = useCallback(async () => {
+    const url = window.location.href;
+    const data = { title: `${project.name} · ${scene.name}`, text: tour.name, url };
+    try {
+      if (navigator.share) await navigator.share(data);
+      else {
+        await navigator.clipboard.writeText(url);
+        toast.success("تم نسخ رابط المشهد.");
+      }
+      track("tour_shared", { project_id: project.id, tour_id: tour.id, scene_id: scene.id });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      toast.error("تعذر مشاركة رابط المشهد.");
+    }
+  }, [project.id, project.name, scene.id, scene.name, tour.id, tour.name]);
+
+  const toggleGuided = useCallback(() => {
+    setGuided(true);
+    setGuidedPaused(false);
+    sessionStorage.setItem(`tour-guided:v1:${tour.id}`, "1");
+    track("guided_tour_started", { tour_id: tour.id, scene_id: scene.id });
+  }, [scene.id, tour.id]);
 
   const closeHotspotCard = useCallback(() => {
     setActiveHotspot(null);
@@ -262,9 +321,59 @@ export function TourPage({ bundle, scene, panoramaUrl }: TourPageProps) {
           parentTour={parentTour}
           fullscreenSupported={fullscreenSupported}
           onFullscreen={() => viewerRef.current?.toggleFullscreen()}
+          onShare={() => void shareCurrentScene()}
+        />
+        <TourExperienceControls
+          getHeading={getHeading}
+          sceneIndex={adjacentScenes.index}
+          sceneCount={scenes.length}
+          previousScene={adjacentScenes.previous}
+          nextScene={adjacentScenes.next}
+          previousLabel={
+            adjacentScenes.previous
+              ? sceneVerticalLabel(
+                  adjacentScenes.previous,
+                  adjacentScenes.previous.floor_id
+                    ? floorNames.get(adjacentScenes.previous.floor_id)
+                    : null,
+                )
+              : null
+          }
+          nextLabel={
+            adjacentScenes.next
+              ? sceneVerticalLabel(
+                  adjacentScenes.next,
+                  adjacentScenes.next.floor_id
+                    ? floorNames.get(adjacentScenes.next.floor_id)
+                    : null,
+                )
+              : null
+          }
+          guided={guided}
+          guidedPaused={guidedPaused}
+          timeOfDay={sceneMetadata.timeOfDay}
+          timePair={timePair}
+          onNavigate={navigateToScene}
+          onToggleGuided={toggleGuided}
+          onToggleGuidedPause={() => setGuidedPaused((value) => !value)}
+          onStopGuided={() => {
+            setGuided(false);
+            setGuidedPaused(false);
+            sessionStorage.removeItem(`tour-guided:v1:${tour.id}`);
+            track("guided_tour_stopped", { tour_id: tour.id, scene_id: scene.id });
+          }}
+          onDayNight={() => {
+            if (!timePair) return;
+            track("tour_time_changed", {
+              tour_id: tour.id,
+              scene_id: scene.id,
+              target_scene_id: timePair.id,
+            });
+            navigateToScene(timePair.id);
+          }}
         />
         {floors.length > 0 && (
-          <div className="absolute left-3 top-20 z-40 flex max-w-[calc(100vw-1.5rem)] items-center gap-2 lg:left-5">
+          <div className="absolute left-3 top-20 z-40 flex max-w-[calc(100vw-6rem)] items-center gap-2 overflow-hidden lg:left-5 lg:max-w-[calc(100vw-8rem)]">
             <TourFloorSelector
               floors={floors}
               selectedFloorId={selectedFloorId}
