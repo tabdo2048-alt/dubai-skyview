@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { Map as MapIcon } from "lucide-react";
 import { track } from "@/lib/analytics";
 import type { TourHotspotRow, TourSceneRow } from "./types";
 import type { VirtualTourBundle } from "./queries";
 import {
+  fetchFirstPublishedUnitTour,
   useFirstPublishedBuildingTour,
   useFirstPublishedProjectTour,
   useSceneHotspots,
@@ -12,7 +14,7 @@ import {
 } from "./queries";
 import { publishedScenesForFloor, resolveCurrentFloor, visibleTourFloors } from "./floorData";
 import { resolveFloorPlanUrl } from "./floorPlanUrl";
-import { hotspotExternalUrl, validateSceneHotspots } from "./hotspotData";
+import { hotspotExternalUrl, hotspotUnitTypeId, validateSceneHotspots } from "./hotspotData";
 import { useTourNavigation } from "./useTourNavigation";
 import { supportsFullscreen } from "./viewer/pannellumAdapter";
 import { VirtualTourViewer, type VirtualTourViewerHandle } from "./VirtualTourViewer";
@@ -42,6 +44,8 @@ export function TourPage({ bundle, scene, panoramaUrl }: TourPageProps) {
   const [floorPlanOpen, setFloorPlanOpen] = useState(false);
   const [floorPlanExpanded, setFloorPlanExpanded] = useState(false);
   const { project, tour, scenes } = bundle;
+  const routerNavigate = useNavigate();
+  const queryClient = useQueryClient();
   const hotspotQuery = useSceneHotspots(scene.id);
   const floorsQuery = useTourFloors(tour.id);
   const projectTourQuery = useFirstPublishedProjectTour(project.id);
@@ -127,6 +131,13 @@ export function TourPage({ bundle, scene, panoramaUrl }: TourPageProps) {
     requestAnimationFrame(() => hotspotTriggerRef.current?.focus());
   }, []);
 
+  const openHotspotCard = useCallback((hotspot: TourHotspotRow) => {
+    hotspotTriggerRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setFloorPlanOpen(false);
+    setActiveHotspot(hotspot);
+  }, []);
+
   const handleHotspotActivate = useCallback(
     (hotspot: TourHotspotRow) => {
       track("hotspot_clicked", {
@@ -149,12 +160,56 @@ export function TourPage({ bundle, scene, panoramaUrl }: TourPageProps) {
         return;
       }
 
-      hotspotTriggerRef.current =
-        document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      setFloorPlanOpen(false);
-      setActiveHotspot(hotspot);
+      if (hotspot.type === "unit") {
+        const unitTypeId = hotspotUnitTypeId(hotspot.metadata);
+        if (unitTypeId) {
+          void queryClient
+            .fetchQuery({
+              queryKey: [
+                "virtual-tours",
+                "project",
+                project.id,
+                "unit",
+                unitTypeId,
+                "first-published",
+              ],
+              queryFn: () => fetchFirstPublishedUnitTour(project.id, unitTypeId),
+              staleTime: 5 * 60 * 1000,
+            })
+            .then((unitTour) => {
+              if (!unitTour) {
+                openHotspotCard(hotspot);
+                return;
+              }
+              beforeSceneNavigation();
+              track("unit_opened", {
+                project_id: project.id,
+                tour_id: unitTour.id,
+                unit_id: unitTypeId,
+              });
+              void routerNavigate({
+                to: "/projects/$slug/tour/$tourId",
+                params: { slug: project.slug, tourId: unitTour.id },
+              });
+            })
+            .catch(() => openHotspotCard(hotspot));
+          return;
+        }
+      }
+
+      openHotspotCard(hotspot);
     },
-    [navigateToScene, scene.id, tour.id],
+    [
+      beforeSceneNavigation,
+      navigateToScene,
+      openHotspotCard,
+      project.id,
+      project.slug,
+      queryClient,
+      routerNavigate,
+      scene.id,
+      tour.id,
+    ],
   );
 
   const handleFloorSelect = useCallback(

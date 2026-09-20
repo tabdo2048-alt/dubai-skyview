@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { findTourScene, selectDefaultTourScene } from "../src/features/virtual-tour/queries";
 import {
   hotspotExternalUrl,
+  hotspotUnitTypeId,
   validateSceneHotspots,
 } from "../src/features/virtual-tour/hotspotData";
 import {
@@ -113,6 +114,9 @@ assert.deepEqual(
 assert.equal(hotspotExternalUrl(validExternal.metadata), "https://example.com");
 assert.equal(hotspotExternalUrl({ url: "http://example.com" }), null);
 assert.equal(hotspotExternalUrl(invalidExternal.metadata), null);
+assert.equal(hotspotUnitTypeId({ unitTypeId: "unit-911" }), "unit-911");
+assert.equal(hotspotUnitTypeId({ unit_type_id: "legacy-unit" }), "legacy-unit");
+assert.equal(hotspotUnitTypeId({ unitTypeId: "" }), null);
 
 let offCalls = 0;
 let destroyCalls = 0;
