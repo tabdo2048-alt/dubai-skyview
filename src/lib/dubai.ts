@@ -10,6 +10,18 @@ export const EMIRATE_VIEWS = {
     center: DUBAI_CENTER,
     zoom: 11.2,
   },
+  sharjah: {
+    key: "sharjah",
+    label: "Sharjah",
+    center: { lat: 25.3463, lng: 55.4209 },
+    zoom: 11.2,
+  },
+  rasAlKhaimah: {
+    key: "rasAlKhaimah",
+    label: "Ras Al Khaimah",
+    center: { lat: 25.8007, lng: 55.9762 },
+    zoom: 11.2,
+  },
 } as const;
 
 export type EmirateKey = keyof typeof EMIRATE_VIEWS;
