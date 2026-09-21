@@ -30,6 +30,7 @@ import {
 import { detectProjectModelType } from "../src/components/map/cesium/projectModelTransforms";
 import {
   boundsFitZoom,
+  projectCinematicShots,
   viewBoundsNudge,
 } from "../src/components/map/cesium/CesiumCameraController";
 
@@ -167,6 +168,16 @@ assert.deepEqual(
   Object.keys(EMIRATE_VIEWS),
   ["dubai", "sharjah", "rasAlKhaimah"],
   "the Emirates control must retain every supported camera target",
+);
+const cinematicShots = projectCinematicShots(260);
+assert.equal(cinematicShots.length, 2, "project launch must approach and then orbit");
+assert(cinematicShots[1].heading > cinematicShots[0].heading, "orbit must move around the tower");
+assert(cinematicShots[1].range < cinematicShots[0].range, "the orbit must finish closer");
+assert(
+  projectCinematicShots(260, true).every(
+    (shot, index) => shot.duration < cinematicShots[index].duration,
+  ),
+  "reduced-motion launches must remain brief",
 );
 
 function sceneHarness() {
