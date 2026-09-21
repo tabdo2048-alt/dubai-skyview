@@ -1,6 +1,7 @@
 import {
   clampToDubai,
   DUBAI_BOUNDS,
+  EMIRATE_VIEWS,
   MAP_MAX_BOUNDS,
   ZOOM_OUT_BOUNDS,
 } from "../src/lib/dubai";
@@ -161,6 +162,11 @@ assert.equal(
   readPhotorealisticConfig({ VITE_PROJECT_INSERT_PADDING_METERS: "999" })
     .projectInsertPaddingMeters,
   20,
+);
+assert.deepEqual(
+  Object.keys(EMIRATE_VIEWS),
+  ["dubai", "sharjah", "rasAlKhaimah"],
+  "the Emirates control must retain every supported camera target",
 );
 
 function sceneHarness() {
