@@ -8,6 +8,7 @@ import {
   connectCesiumCamera,
   flyToEmirate,
   flyToProject,
+  playProjectCinematic,
   setInitialCesiumCamera,
 } from "./CesiumCameraController";
 import { connectProjectInteraction } from "./CesiumProjectInteraction";
@@ -37,6 +38,7 @@ type Runtime = {
 };
 
 export function CesiumView(props: CesiumViewProps) {
+  const { cinematicProjectId, onCinematicComplete, projects } = props;
   const containerRef = useRef<HTMLDivElement>(null);
   const creditRef = useRef<HTMLDivElement>(null);
   const [cityState, setCityState] = useState<CityState>("loading");
@@ -192,6 +194,7 @@ export function CesiumView(props: CesiumViewProps) {
           if (project) flyToProject(viewer, project.lng, project.lat);
         }
       },
+      (pick) => propsRef.current.onProjectDoubleClick?.(pick.projectId),
     );
 
     const ready = () => {
@@ -267,6 +270,23 @@ export function CesiumView(props: CesiumViewProps) {
     const runtime = runtimeRef.current;
     if (runtime && props.flyToTarget) flyToEmirate(runtime.viewer, props.flyToTarget);
   }, [props.flyToTarget]);
+
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    const projectId = cinematicProjectId;
+    if (!runtime || !projectId) return;
+    const project = projects.find((item) => item.id === projectId);
+    if (!project) return;
+    return playProjectCinematic(
+      runtime.viewer,
+      {
+        longitude: project.model_3d_lng ?? project.lng,
+        latitude: project.model_3d_lat ?? project.lat,
+        altitude: project.model_3d_altitude,
+      },
+      () => onCinematicComplete?.(projectId),
+    );
+  }, [cinematicProjectId, onCinematicComplete, projects]);
 
   return (
     <div
