@@ -174,6 +174,7 @@ const walkBackward = hotspot("walk-back", "navigation", {
 });
 assert.equal(resolveWalkScenes(scenes, [walkForward], null, null).forward?.id, "lobby");
 assert.equal(resolveWalkScenes(scenes, [walkBackward], null, null).backward?.id, "entrance");
+assert.equal(resolveWalkScenes(scenes, [walkBackward], scenes[0], scenes[1]).forward?.id, "lobby");
 
 const featureProperties = new Map<string, unknown>([
   ["name", "Apartment 1704"],
