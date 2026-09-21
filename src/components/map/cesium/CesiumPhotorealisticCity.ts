@@ -14,18 +14,30 @@ type CityLoader = (
   config: PhotorealisticConfig,
   options: Cesium3DTileset.ConstructorOptions,
 ) => Promise<Cesium3DTileset>;
-// Prefer the configured ion account, matching the official Building Insert flow.
-// A stale direct Google key must not override an authorized ion asset.
-const loadCity: CityLoader = async (config, options) =>
-  config.ionToken
-    ? Cesium3DTileset.fromUrl(
-        await IonResource.fromAssetId(2275207, { accessToken: config.ionToken }),
-        options,
-      )
-    : createGooglePhotorealistic3DTileset(
+// A configured Google Map Tiles key is the authoritative city source. The ion
+// asset remains a resilience path, but must not shadow a valid direct key: ion
+// access can be account/asset-specific even when the token itself is valid.
+const loadCity: CityLoader = async (config, options) => {
+  if (config.googleKey) {
+    try {
+      return await createGooglePhotorealistic3DTileset(
         { key: config.googleKey, onlyUsingWithGoogleGeocoder: true },
         options,
       );
+    } catch (error) {
+      if (!config.ionToken) throw error;
+    }
+  }
+
+  if (config.ionToken) {
+    return Cesium3DTileset.fromUrl(
+      await IonResource.fromAssetId(2275207, { accessToken: config.ionToken }),
+      options,
+    );
+  }
+
+  throw new Error("Photorealistic credentials are missing");
+};
 
 export type CityState = "loading" | "photorealistic" | "masterplan";
 
