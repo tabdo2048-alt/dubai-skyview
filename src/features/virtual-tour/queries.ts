@@ -167,6 +167,31 @@ export async function fetchFirstPublishedProjectTour(
   return data;
 }
 
+/**
+ * Resolve the best public tour for a map project marker. A project-wide tour is
+ * always preferred; a building tour is a useful fallback for tower projects
+ * that have not published a separate outdoor / master tour yet.
+ */
+export async function fetchPreferredPublishedProjectTour(
+  projectId: string,
+): Promise<VirtualTourRow | null> {
+  const projectTour = await fetchFirstPublishedProjectTour(projectId);
+  if (projectTour) return projectTour;
+
+  const { data, error } = await supabase
+    .from("virtual_tours")
+    .select("*")
+    .eq("project_id", projectId)
+    .eq("is_published", true)
+    .not("building_id", "is", null)
+    .is("unit_id", null)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
 export async function fetchFirstPublishedUnitTour(
   projectId: string,
   unitId: string,
