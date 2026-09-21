@@ -1,4 +1,6 @@
-import { useState, useMemo, lazy, Suspense, useEffect } from "react";
+import { useState, useMemo, lazy, Suspense, useEffect, useCallback, useRef } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { toast } from "sonner";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Globe2,
@@ -49,6 +51,13 @@ import {
   type EmirateView,
 } from "@/lib/dubai";
 import { CATEGORY_COLORS } from "@/lib/metro";
+import { safeHttpUrl } from "@/lib/utils";
+import { fetchPreferredPublishedProjectTour } from "@/features/virtual-tour/queries";
+import type { ProjectWithRelations } from "@/lib/types";
+
+type TourLaunchTarget =
+  | { kind: "internal"; slug: string; tourId: string }
+  | { kind: "external"; url: string };
 
 const LIGHT_PRESETS: { value: LightPreset; label: string; Icon: typeof Sun }[] = [
   { value: "dawn", label: "Dawn", Icon: Sunrise },
@@ -70,6 +79,7 @@ const RAIL_GUIDE: { category: keyof typeof CATEGORY_COLORS; name: string; status
 ];
 
 export function MapContainer() {
+  const navigate = useNavigate();
   const { data: cfg, isLoading: cfgLoading } = useMapConfig();
   const { data: projects = [] } = useProjects();
   const { user } = useAuth();
@@ -129,6 +139,11 @@ export function MapContainer() {
   // Camera destination selected by the emirate menu or the Dubai recenter button.
   const [emirateTarget, setEmirateTarget] = useState<EmirateView | null>(null);
   const [selectedEmirate, setSelectedEmirate] = useState<EmirateKey>("dubai");
+  const [tourLaunchingProjectId, setTourLaunchingProjectId] = useState<string | null>(null);
+  const [cinematicProjectId, setCinematicProjectId] = useState<string | null>(null);
+  const launchRequestRef = useRef(0);
+  const launchingProjectRef = useRef<string | null>(null);
+  const pendingTourRef = useRef<{ projectId: string; target: TourLaunchTarget } | null>(null);
 
   const goToEmirate = (view: EmirateView) => {
     setSelectedEmirate(view.key);
@@ -149,13 +164,77 @@ export function MapContainer() {
     projects.find((p) => p.id === selectedProjectId) ??
     null;
 
-  const switchMode = (mode: "satellite" | "3d") => {
+  const switchMode = useCallback((mode: "satellite" | "3d") => {
     if (mode === mapMode) return;
     setTransitioning(true);
     setMapReady(false); // Show loading overlay while new map loads
     setMapMode(mode);
     setTimeout(() => setTransitioning(false), 1200);
-  };
+  }, [mapMode, setMapMode]);
+
+  const enterTour = useCallback((target: TourLaunchTarget) => {
+    setTourLaunchingProjectId(null);
+    setCinematicProjectId(null);
+    launchingProjectRef.current = null;
+    pendingTourRef.current = null;
+    if (target.kind === "external") {
+      window.location.assign(target.url);
+      return;
+    }
+    void navigate({
+      to: "/projects/$slug/tour/$tourId",
+      params: { slug: target.slug, tourId: target.tourId },
+    });
+  }, [navigate]);
+
+  const finishProjectCinematic = useCallback((projectId: string) => {
+    const pending = pendingTourRef.current;
+    if (!pending || pending.projectId !== projectId) return;
+    enterTour(pending.target);
+  }, [enterTour]);
+
+  const launchProjectTour = useCallback(async (projectId: string) => {
+    if (launchingProjectRef.current === projectId) return;
+    const project = projects.find((item) => item.id === projectId);
+    if (!project) return;
+
+    const requestId = ++launchRequestRef.current;
+    launchingProjectRef.current = project.id;
+    setSelectedProjectId(project.id);
+    setTourLaunchingProjectId(project.id);
+
+    try {
+      const tour = await fetchPreferredPublishedProjectTour(project.id);
+      if (launchRequestRef.current !== requestId) return;
+      const legacyUrl = safeHttpUrl(project.tour_360_url);
+      const target: TourLaunchTarget | null = tour
+        ? { kind: "internal", slug: project.slug, tourId: tour.id }
+        : legacyUrl
+          ? { kind: "external", url: legacyUrl }
+          : null;
+
+      if (!target) {
+        launchingProjectRef.current = null;
+        setTourLaunchingProjectId(null);
+        toast.info("لا توجد جولة منشورة لهذا المشروع حتى الآن.");
+        return;
+      }
+
+      if (hasProject3d(project)) {
+        pendingTourRef.current = { projectId: project.id, target };
+        setCinematicProjectId(project.id);
+        switchMode("3d");
+        return;
+      }
+
+      enterTour(target);
+    } catch {
+      if (launchRequestRef.current !== requestId) return;
+      launchingProjectRef.current = null;
+      setTourLaunchingProjectId(null);
+      toast.error("تعذر تجهيز الجولة. حاول مرة أخرى.");
+    }
+  }, [enterTour, projects, setSelectedProjectId, switchMode]);
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-background">
@@ -182,6 +261,7 @@ export function MapContainer() {
                 onCameraChange={setCamera}
                 onReady={() => mapMode === "satellite" && setMapReady(true)}
                 onMapReady={waterEditorEnabled ? setEditorMap : undefined}
+                onProjectDoubleClick={(projectId) => void launchProjectTour(projectId)}
                 active={mapMode === "satellite"}
                 metroMode={visibleMetroMode}
                 trainMode={trainMode}
@@ -213,6 +293,9 @@ export function MapContainer() {
                 camera={camera}
                 onCameraChange={setCamera}
                 onReady={() => mapMode === "3d" && setMapReady(true)}
+                onProjectDoubleClick={(projectId) => void launchProjectTour(projectId)}
+                cinematicProjectId={cinematicProjectId}
+                onCinematicComplete={finishProjectCinematic}
                 active={mapMode === "3d"}
                 metroMode={visibleMetroMode}
                 trainMode={trainMode}
@@ -472,7 +555,46 @@ export function MapContainer() {
         )}
       </AnimatePresence>
 
-      <ProjectPopup project={selected} onClose={() => setSelectedProjectId(null)} />
+      <AnimatePresence>
+        {tourLaunchingProjectId && (
+          <motion.div
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 14 }}
+            className="pointer-events-auto absolute bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-2xl border border-gold/35 bg-slate-950/90 px-4 py-3 text-cream shadow-2xl backdrop-blur-md"
+            role="status"
+            aria-live="polite"
+          >
+            <Loader2 className="h-5 w-5 shrink-0 animate-spin text-gold" />
+            <div className="min-w-0">
+              <div className="text-[10px] uppercase tracking-[0.2em] text-gold">
+                {cinematicProjectId ? "3D preview" : "Preparing tour"}
+              </div>
+              <div className="truncate text-sm font-medium">
+                {projects.find((project) => project.id === tourLaunchingProjectId)?.name}
+              </div>
+            </div>
+            {cinematicProjectId && (
+              <button
+                type="button"
+                onClick={() => finishProjectCinematic(cinematicProjectId)}
+                className="ml-2 rounded-lg bg-gold px-3 py-2 text-xs font-semibold text-gold-foreground hover:bg-gold/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              >
+                Enter 360° now
+              </button>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <ProjectPopup
+        project={cinematicProjectId ? null : selected}
+        onClose={() => setSelectedProjectId(null)}
+      />
     </div>
   );
+}
+
+function hasProject3d(project: ProjectWithRelations) {
+  return Boolean(project.model_3d_enabled && safeHttpUrl(project.model_3d_url));
 }
