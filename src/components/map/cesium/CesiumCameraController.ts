@@ -3,6 +3,7 @@ import {
   Cartesian2,
   Cartesian3,
   Cartographic,
+  HeadingPitchRange,
   Math as CesiumMath,
   Viewer,
 } from "cesium";
@@ -155,6 +156,75 @@ export function flyToProject(viewer: Viewer, longitude: number, latitude: number
     new BoundingSphere(Cartesian3.fromDegrees(longitude, latitude, Math.max(10, radiusM / 3)), radiusM),
     { duration: 1.15 },
   );
+}
+
+export type ProjectCinematicShot = {
+  heading: number;
+  pitch: number;
+  range: number;
+  duration: number;
+};
+
+export function projectCinematicShots(radiusM = 260, reducedMotion = false): ProjectCinematicShot[] {
+  const radius = Math.max(120, radiusM);
+  const speed = reducedMotion ? 0.22 : 1;
+  return [
+    {
+      heading: CesiumMath.toRadians(-38),
+      pitch: CesiumMath.toRadians(-24),
+      range: radius * 3.1,
+      duration: 1.35 * speed,
+    },
+    {
+      heading: CesiumMath.toRadians(82),
+      pitch: CesiumMath.toRadians(-18),
+      range: radius * 2.35,
+      duration: 2.45 * speed,
+    },
+  ];
+}
+
+/** Approach and orbit a project once, then hand control back to the caller. */
+export function playProjectCinematic(
+  viewer: Viewer,
+  position: { longitude: number; latitude: number; altitude?: number | null },
+  onComplete: () => void,
+) {
+  let disposed = false;
+  let completed = false;
+  let settleTimer: ReturnType<typeof setTimeout> | undefined;
+  const reducedMotion =
+    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const shots = projectCinematicShots(260, reducedMotion);
+  const sphere = new BoundingSphere(
+    Cartesian3.fromDegrees(position.longitude, position.latitude, position.altitude ?? 80),
+    260,
+  );
+
+  const finish = () => {
+    if (disposed || completed) return;
+    completed = true;
+    settleTimer = setTimeout(onComplete, reducedMotion ? 80 : 520);
+  };
+  const runShot = (index: number) => {
+    if (disposed || viewer.isDestroyed()) return;
+    const shot = shots[index];
+    viewer.camera.flyToBoundingSphere(sphere, {
+      duration: shot.duration,
+      offset: new HeadingPitchRange(shot.heading, shot.pitch, shot.range),
+      complete: index + 1 < shots.length ? () => runShot(index + 1) : finish,
+      // A user drag cancels Cesium's flight. Continue into the tour instead of
+      // leaving the launch flow stuck behind an animation that can no longer end.
+      cancel: finish,
+    });
+  };
+  runShot(0);
+
+  return () => {
+    disposed = true;
+    clearTimeout(settleTimer);
+    if (!viewer.isDestroyed()) viewer.camera.cancelFlight();
+  };
 }
 
 export function readCesiumCamera(viewer: Viewer): MapCameraState {

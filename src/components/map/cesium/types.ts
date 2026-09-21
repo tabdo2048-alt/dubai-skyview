@@ -15,6 +15,9 @@ export type CesiumViewProps = {
   camera: MapCameraState;
   onCameraChange: (camera: MapCameraState) => void;
   onReady?: () => void;
+  onProjectDoubleClick?: (projectId: string) => void;
+  cinematicProjectId?: string | null;
+  onCinematicComplete?: (projectId: string) => void;
   active: boolean;
   metroMode: boolean;
   trainMode: boolean;
