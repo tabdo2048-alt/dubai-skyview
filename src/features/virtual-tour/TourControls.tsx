@@ -7,7 +7,7 @@ interface TourControlsProps {
   projectName: string;
   tourName: string;
   contextName?: string | null;
-  parentTour?: { id: string; label: string } | null;
+  parentTour?: { id: string; label: string; sceneId?: string | null } | null;
   fullscreenSupported: boolean;
   onFullscreen: () => void;
   onShare: () => void;
@@ -49,8 +49,16 @@ export function TourControls({
           className="shrink-0 text-cream hover:bg-white/10 hover:text-gold"
         >
           <Link
-            to="/projects/$slug/tour/$tourId"
-            params={{ slug, tourId: parentTour.id }}
+            to={
+              parentTour.sceneId
+                ? "/projects/$slug/tour/$tourId/scene/$sceneId"
+                : "/projects/$slug/tour/$tourId"
+            }
+            params={
+              parentTour.sceneId
+                ? { slug, tourId: parentTour.id, sceneId: parentTour.sceneId }
+                : { slug, tourId: parentTour.id }
+            }
             aria-label={parentTour.label}
           >
             <Building2 className="h-4 w-4 sm:mr-1" aria-hidden="true" />

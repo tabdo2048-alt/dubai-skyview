@@ -2,6 +2,7 @@ import {
   Cartesian2,
   Cartesian3,
   Cesium3DTileFeature,
+  Cesium3DTileStyle,
   Cesium3DTileset,
   Color,
   DistanceDisplayCondition,
@@ -25,6 +26,10 @@ import { detectProjectModelType, tilesetPlacementBasis } from "./projectModelTra
 import { PROJECT_STREAMING, modelDistanceState } from "./photorealisticConfig";
 import { isConstrainedCesiumDevice } from "./CesiumSceneController";
 import { CesiumTilesetManager } from "./CesiumTilesetManager";
+import {
+  projectAvailabilityStyleConditions,
+  readProjectFeatureMetadata,
+} from "./projectFeatureMetadata";
 
 type ProjectModelResource = Model | Cesium3DTileset;
 type LoadEntry = {
@@ -69,18 +74,6 @@ function modelMatrix(project: ProjectWithRelations) {
     Cartesian3.fromDegrees(position.longitude, position.latitude, position.altitude),
     new HeadingPitchRoll(CesiumMath.toRadians(project.model_3d_rotation ?? 0), 0, 0),
   );
-}
-
-function featureName(feature: Cesium3DTileFeature) {
-  const preferred = ["feature_name", "name", "Name", "tower", "building", "id"];
-  for (const key of preferred) {
-    if (feature.hasProperty(key)) {
-      const value = feature.getProperty(key);
-      if (typeof value === "string" && value.trim()) return value.trim();
-      if (typeof value === "number") return String(value);
-    }
-  }
-  return undefined;
 }
 
 export class CesiumProjectLayer {
@@ -325,6 +318,9 @@ export class CesiumProjectLayer {
           tilesetPlacementBasis(tileset),
           new Matrix4(),
         );
+        tileset.style = new Cesium3DTileStyle({
+          color: { conditions: projectAvailabilityStyleConditions(project.unit_types) },
+        });
         this.tilesetProject.set(tileset, project.id);
         this.modelByProject.set(project.id, tileset);
         entry.cleanup.push(
@@ -374,13 +370,29 @@ export class CesiumProjectLayer {
       const tileset = picked.tileset;
       const projectId = this.tilesetProject.get(tileset);
       if (!projectId) return null;
-      const name = featureName(picked);
+      const metadata = readProjectFeatureMetadata(picked);
+      const projectUnit = metadata.unitTypeId
+        ? this.projectById
+            .get(projectId)
+            ?.unit_types.find((unit) => unit.id === metadata.unitTypeId)
+        : null;
+      const projectAvailability =
+        projectUnit?.availability === "available" ||
+        projectUnit?.availability === "reserved" ||
+        projectUnit?.availability === "sold"
+          ? projectUnit.availability
+          : undefined;
+      const name = metadata.featureName ?? metadata.floorLabel;
       return {
-        kind: name ? "project-feature" : "project",
+        kind: name || metadata.unitTypeId || metadata.availability ? "project-feature" : "project",
         projectId,
         featureKey: name,
         featureName: name,
         source: "3d-tiles",
+        featureType: metadata.featureType,
+        floorLabel: metadata.floorLabel,
+        unitTypeId: metadata.unitTypeId,
+        availability: projectAvailability ?? metadata.availability,
       };
     }
     if (candidate.primitive instanceof Cesium3DTileset) {

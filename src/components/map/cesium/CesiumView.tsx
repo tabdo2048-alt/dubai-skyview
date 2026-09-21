@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import type { ImageryLayer, Primitive, Viewer } from "cesium";
 import "cesium/Build/Cesium/Widgets/widgets.css";
 import "./credits.css";
@@ -309,12 +310,49 @@ export function CesiumView(props: CesiumViewProps) {
         </div>
       )}
 
-      {featurePick?.featureName && (
-        <div className="pointer-events-none absolute bottom-16 right-4 z-10 rounded-xl border border-[#c9a84c]/40 bg-[#102729]/90 px-4 py-3 text-sm text-[#f5f0e4] shadow-xl backdrop-blur">
+      {featurePick?.kind === "project-feature" && (
+        <div className="pointer-events-auto absolute bottom-16 right-4 z-10 min-w-48 rounded-xl border border-[#c9a84c]/40 bg-[#102729]/90 px-4 py-3 text-sm text-[#f5f0e4] shadow-xl backdrop-blur">
           <span className="block text-[10px] uppercase tracking-[0.18em] text-[#c9a84c]">
-            3D feature
+            {featurePick.unitTypeId
+              ? "3D Unit"
+              : featurePick.floorLabel
+                ? "3D Floor"
+                : "3D Feature"}
           </span>
-          {featurePick.featureName}
+          <strong className="mt-1 block font-medium">
+            {featurePick.featureName ?? featurePick.floorLabel ?? "Project feature"}
+          </strong>
+          {featurePick.floorLabel && featurePick.featureName !== featurePick.floorLabel && (
+            <span className="mt-1 block text-xs text-[#f5f0e4]/70">
+              Floor {featurePick.floorLabel}
+            </span>
+          )}
+          {featurePick.availability && (
+            <span
+              className={`mt-2 inline-flex rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${
+                featurePick.availability === "available"
+                  ? "bg-emerald-500/20 text-emerald-200"
+                  : featurePick.availability === "reserved"
+                    ? "bg-amber-400/20 text-amber-100"
+                    : "bg-slate-400/20 text-slate-200"
+              }`}
+            >
+              {featurePick.availability}
+            </span>
+          )}
+          {featurePick.unitTypeId &&
+            (() => {
+              const project = props.projects.find((item) => item.id === featurePick.projectId);
+              return project ? (
+                <Link
+                  to="/projects/$slug/units/$unitTypeId"
+                  params={{ slug: project.slug, unitTypeId: featurePick.unitTypeId! }}
+                  className="mt-3 block rounded-lg bg-[#c9a84c] px-3 py-2 text-center text-xs font-semibold text-[#102729] hover:bg-[#e0c263] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                >
+                  View unit
+                </Link>
+              ) : null;
+            })()}
         </div>
       )}
     </div>

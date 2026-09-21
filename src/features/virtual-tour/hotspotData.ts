@@ -5,6 +5,8 @@ import type { TourHotspotRow, TourSceneRow } from "./types";
 
 type HotspotMetadataRecord = Record<string, Json | undefined>;
 
+export type HotspotNavigationDirection = "forward" | "backward" | "up" | "down" | "auto";
+
 export function hotspotMetadataRecord(metadata: Json): HotspotMetadataRecord {
   return metadata && typeof metadata === "object" && !Array.isArray(metadata)
     ? (metadata as HotspotMetadataRecord)
@@ -33,9 +35,15 @@ export function hotspotExternalUrl(metadata: Json): string | null {
 
 export function hotspotUnitTypeId(metadata: Json): string | null {
   return (
-    hotspotMetadataText(metadata, "unitTypeId") ??
-    hotspotMetadataText(metadata, "unit_type_id")
+    hotspotMetadataText(metadata, "unitTypeId") ?? hotspotMetadataText(metadata, "unit_type_id")
   );
+}
+
+export function hotspotNavigationDirection(metadata: Json): HotspotNavigationDirection {
+  const value = hotspotMetadataText(metadata, "direction");
+  return value === "forward" || value === "backward" || value === "up" || value === "down"
+    ? value
+    : "auto";
 }
 
 export function validateSceneHotspots(
@@ -66,8 +74,8 @@ export function validateSceneHotspots(
     if (hotspot.type === "navigation") {
       return Boolean(
         hotspot.target_scene_id &&
-          hotspot.target_scene_id !== currentSceneId &&
-          publishedSceneIds.has(hotspot.target_scene_id),
+        hotspot.target_scene_id !== currentSceneId &&
+        publishedSceneIds.has(hotspot.target_scene_id),
       );
     }
 

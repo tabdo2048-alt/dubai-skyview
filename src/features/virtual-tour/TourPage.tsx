@@ -22,11 +22,13 @@ import { VirtualTourViewer, type VirtualTourViewerHandle } from "./VirtualTourVi
 import { TourControls } from "./TourControls";
 import { TourError } from "./TourError";
 import { TourExperienceControls } from "./TourExperienceControls";
+import { TourElevator } from "./TourElevator";
 import { TourFloorPlan } from "./TourFloorPlan";
 import { TourFloorSelector } from "./TourFloorSelector";
 import { TourHotspotCard } from "./TourHotspotCard";
 import { TourLoading } from "./TourLoading";
 import { TourSceneList } from "./TourSceneList";
+import { TourWalkControls } from "./TourWalkControls";
 import {
   adjacentTourScenes,
   findTimeOfDayPair,
@@ -34,6 +36,8 @@ import {
   sceneExperienceMetadata,
   sceneVerticalLabel,
 } from "./sceneExperience";
+import { readTourOrigin, rememberTourOrigin, rememberTourScene } from "./tourSession";
+import { resolveWalkScenes } from "./walkData";
 
 interface TourPageProps {
   bundle: VirtualTourBundle;
@@ -66,15 +70,24 @@ export function TourPage({ bundle, scene, panoramaUrl }: TourPageProps) {
   const projectTourQuery = useFirstPublishedProjectTour(project.id);
   const buildingTourQuery = useFirstPublishedBuildingTour(project.id, tour.building_id);
   const parentTour = useMemo(() => {
+    const savedOrigin = readTourOrigin(tour.id);
     if (tour.unit_id && buildingTourQuery.data && buildingTourQuery.data.id !== tour.id) {
-      return { id: buildingTourQuery.data.id, label: "جولة البرج" };
+      return {
+        id: buildingTourQuery.data.id,
+        label: "الرجوع لنقطة البرج",
+        sceneId: savedOrigin?.tourId === buildingTourQuery.data.id ? savedOrigin.sceneId : null,
+      };
     }
     if (
       (tour.unit_id || tour.building_id) &&
       projectTourQuery.data &&
       projectTourQuery.data.id !== tour.id
     ) {
-      return { id: projectTourQuery.data.id, label: "جولة المشروع" };
+      return {
+        id: projectTourQuery.data.id,
+        label: "الرجوع لنقطة المشروع",
+        sceneId: savedOrigin?.tourId === projectTourQuery.data.id ? savedOrigin.sceneId : null,
+      };
     }
     return null;
   }, [buildingTourQuery.data, projectTourQuery.data, tour.building_id, tour.id, tour.unit_id]);
@@ -110,6 +123,10 @@ export function TourPage({ bundle, scene, panoramaUrl }: TourPageProps) {
     [hotspotQuery.data, scene.id, scenes],
   );
   const adjacentScenes = useMemo(() => adjacentTourScenes(scenes, scene.id), [scene.id, scenes]);
+  const walkScenes = useMemo(
+    () => resolveWalkScenes(scenes, hotspots, adjacentScenes.previous, adjacentScenes.next),
+    [adjacentScenes.next, adjacentScenes.previous, hotspots, scenes],
+  );
   const sceneMetadata = useMemo(() => sceneExperienceMetadata(scene), [scene]);
   const timePair = useMemo(() => findTimeOfDayPair(scene, scenes), [scene, scenes]);
   const floorNames = useMemo(
@@ -140,6 +157,7 @@ export function TourPage({ bundle, scene, panoramaUrl }: TourPageProps) {
     setViewerError(null);
     setLoading(true);
     track("scene_viewed", { project_id: project.id, tour_id: tour.id, scene_id: scene.id });
+    rememberTourScene(tour.id, scene.id);
   }, [project.id, scene.id, tour.id]);
   useEffect(() => {
     track("tour_opened", { project_id: project.id, tour_id: tour.id });
@@ -197,6 +215,29 @@ export function TourPage({ bundle, scene, panoramaUrl }: TourPageProps) {
     setActiveHotspot(hotspot);
   }, []);
 
+  const openUnitTour = useCallback(
+    (unitTourId: string, unitTypeId?: string | null) => {
+      rememberTourOrigin(unitTourId, {
+        slug: project.slug,
+        tourId: tour.id,
+        sceneId: scene.id,
+      });
+      beforeSceneNavigation();
+      if (unitTypeId) {
+        track("unit_opened", {
+          project_id: project.id,
+          tour_id: unitTourId,
+          unit_id: unitTypeId,
+        });
+      }
+      void routerNavigate({
+        to: "/projects/$slug/tour/$tourId",
+        params: { slug: project.slug, tourId: unitTourId },
+      });
+    },
+    [beforeSceneNavigation, project.id, project.slug, routerNavigate, scene.id, tour.id],
+  );
+
   const handleHotspotActivate = useCallback(
     (hotspot: TourHotspotRow) => {
       track("hotspot_clicked", {
@@ -240,16 +281,7 @@ export function TourPage({ bundle, scene, panoramaUrl }: TourPageProps) {
                 openHotspotCard(hotspot);
                 return;
               }
-              beforeSceneNavigation();
-              track("unit_opened", {
-                project_id: project.id,
-                tour_id: unitTour.id,
-                unit_id: unitTypeId,
-              });
-              void routerNavigate({
-                to: "/projects/$slug/tour/$tourId",
-                params: { slug: project.slug, tourId: unitTour.id },
-              });
+              openUnitTour(unitTour.id, unitTypeId);
             })
             .catch(() => openHotspotCard(hotspot));
           return;
@@ -258,17 +290,7 @@ export function TourPage({ bundle, scene, panoramaUrl }: TourPageProps) {
 
       openHotspotCard(hotspot);
     },
-    [
-      beforeSceneNavigation,
-      navigateToScene,
-      openHotspotCard,
-      project.id,
-      project.slug,
-      queryClient,
-      routerNavigate,
-      scene.id,
-      tour.id,
-    ],
+    [navigateToScene, openHotspotCard, openUnitTour, project.id, queryClient, scene.id, tour.id],
   );
 
   const handleFloorSelect = useCallback(
@@ -372,6 +394,11 @@ export function TourPage({ bundle, scene, panoramaUrl }: TourPageProps) {
             navigateToScene(timePair.id);
           }}
         />
+        <TourWalkControls
+          backward={walkScenes.backward}
+          forward={walkScenes.forward}
+          onNavigate={navigateToScene}
+        />
         {floors.length > 0 && (
           <div className="absolute left-3 top-20 z-40 flex max-w-[calc(100vw-6rem)] items-center gap-2 overflow-hidden lg:left-5 lg:max-w-[calc(100vw-8rem)]">
             <TourFloorSelector
@@ -396,6 +423,13 @@ export function TourPage({ bundle, scene, panoramaUrl }: TourPageProps) {
             )}
           </div>
         )}
+        <TourElevator
+          floors={floors}
+          scenes={scenes}
+          currentFloorId={currentFloorId}
+          onSelectFloor={handleFloorSelect}
+          onNavigate={navigateToScene}
+        />
         {loading && !viewerError && (
           <TourLoading projectName={project.name} sceneName={scene.name} />
         )}
@@ -415,6 +449,9 @@ export function TourPage({ bundle, scene, panoramaUrl }: TourPageProps) {
             projectId={project.id}
             projectSlug={project.slug}
             onClose={closeHotspotCard}
+            onOpenUnitTour={(unitTourId) =>
+              openUnitTour(unitTourId, hotspotUnitTypeId(activeHotspot.metadata))
+            }
           />
         )}
         {floorPlanOpen && selectedFloor && (

@@ -17,6 +17,7 @@ interface TourHotspotCardProps {
   projectId: string;
   projectSlug: string;
   onClose: () => void;
+  onOpenUnitTour: (tourId: string) => void;
 }
 
 export function TourHotspotCard({
@@ -24,6 +25,7 @@ export function TourHotspotCard({
   projectId,
   projectSlug,
   onClose,
+  onOpenUnitTour,
 }: TourHotspotCardProps) {
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -37,6 +39,7 @@ export function TourHotspotCard({
   const externalUrl = hotspotExternalUrl(hotspot.metadata);
   const unitTypeId = hotspotUnitTypeId(hotspot.metadata);
   const unitTour = useFirstPublishedUnitTour(projectId, unitTypeId);
+  const unitTourId = unitTour.data?.id ?? null;
   const unitSummary = useTourUnitSummary(projectId, unitTypeId);
   const area = unitSummary.data
     ? unitSummary.data.area_sqm_min === unitSummary.data.area_sqm_max
@@ -126,18 +129,17 @@ export function TourHotspotCard({
                 )}
               </div>
             )}
-            {unitTour.data && (
-              <Button asChild className="w-full bg-gold text-gold-foreground hover:bg-gold/90">
-                <Link
-                  to="/projects/$slug/tour/$tourId"
-                  params={{ slug: projectSlug, tourId: unitTour.data.id }}
-                >
-                  <PlayCircle className="mr-2 h-4 w-4" aria-hidden="true" />
-                  استكشف الوحدة 360°
-                </Link>
+            {unitTourId && (
+              <Button
+                type="button"
+                onClick={() => onOpenUnitTour(unitTourId)}
+                className="w-full bg-gold text-gold-foreground hover:bg-gold/90"
+              >
+                <PlayCircle className="mr-2 h-4 w-4" aria-hidden="true" />
+                استكشف الوحدة 360°
               </Button>
             )}
-            <Button asChild variant={unitTour.data ? "outline" : "default"} className="w-full">
+            <Button asChild variant={unitTourId ? "outline" : "default"} className="w-full">
               <Link
                 to="/projects/$slug/units/$unitTypeId"
                 params={{ slug: projectSlug, unitTypeId }}

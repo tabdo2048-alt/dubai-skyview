@@ -28,6 +28,10 @@ export type ProjectPick = {
   featureKey?: string;
   featureName?: string;
   source?: "marker" | "glb" | "3d-tiles";
+  featureType?: string;
+  floorLabel?: string;
+  unitTypeId?: string;
+  availability?: "available" | "reserved" | "sold";
 };
 
 export type RuntimeFeatureProperties = Record<string, string | number | boolean | null | undefined>;
