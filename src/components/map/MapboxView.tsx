@@ -102,6 +102,8 @@ type Props = {
    * Editor to attach click handlers / draw sources to the active map.
    */
   onMapReady?: (map: mapboxgl.Map) => void;
+  /** Opens the project's preferred tour after a deliberate double click / tap. */
+  onProjectDoubleClick?: (projectId: string) => void;
   active: boolean;
   metroMode: boolean;
   trainMode: boolean;
@@ -192,6 +194,7 @@ export function MapboxView({
   onCameraChange,
   onReady,
   onMapReady,
+  onProjectDoubleClick,
   active,
   metroMode,
   trainMode,
@@ -200,6 +203,8 @@ export function MapboxView({
   mode = "3d",
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const projectDoubleClickRef = useRef(onProjectDoubleClick);
+  projectDoubleClickRef.current = onProjectDoubleClick;
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<Map<string, mapboxgl.Marker>>(new globalThis.Map());
   const trainMarkersRef = useRef<Map<string, mapboxgl.Marker>>(new globalThis.Map());
@@ -1744,6 +1749,27 @@ export function MapboxView({
       el.append(pin, nm);
       el.title = p.name; // name also shown as native tooltip on hover
       el.onclick = () => setSelectedProjectId(p.id);
+      el.ondblclick = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        projectDoubleClickRef.current?.(p.id);
+      };
+      // Mobile browsers are inconsistent about synthesizing dblclick on map
+      // markers, so recognise a deliberate second touch without affecting the
+      // existing single-tap selection behaviour.
+      let lastTouchAt = 0;
+      el.onpointerup = (event) => {
+        if (event.pointerType !== "touch") return;
+        const now = performance.now();
+        if (now - lastTouchAt > 0 && now - lastTouchAt <= 420) {
+          lastTouchAt = 0;
+          event.preventDefault();
+          event.stopPropagation();
+          projectDoubleClickRef.current?.(p.id);
+          return;
+        }
+        lastTouchAt = now;
+      };
       // Hover syncs the shared highlight (sidebar card ⇄ marker) and fades this
       // project's plot in; leaving recomputes so a pinned/selected plot stays.
       el.onmouseenter = () => {
