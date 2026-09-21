@@ -14,6 +14,7 @@ export function connectProjectInteraction(
   resolvePick: (picked: unknown) => ProjectPick | null,
   onHover: (pick: ProjectPick | null) => void,
   onSelect: (pick: ProjectPick | null) => void,
+  onDoubleClick?: (pick: ProjectPick) => void,
 ) {
   const handler = new ScreenSpaceEventHandler(viewer.scene.canvas);
   let hoveredFeature: Cesium3DTileFeature | null = null;
@@ -72,6 +73,10 @@ export function connectProjectInteraction(
     onSelect(resolved);
     viewer.scene.requestRender();
   }, ScreenSpaceEventType.LEFT_CLICK);
+  handler.setInputAction((click: { position: Cartesian2 }) => {
+    const resolved = resolvePick(viewer.scene.pick(click.position));
+    if (resolved) onDoubleClick?.(resolved);
+  }, ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
   return () => {
     restoreHover();
     restoreSelection();
