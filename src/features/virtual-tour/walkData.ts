@@ -21,12 +21,15 @@ export function resolveWalkScenes(
   const autoTarget = navigation.find(
     (candidate) => hotspotNavigationDirection(candidate.metadata) === "auto",
   )?.target_scene_id;
+  const autoTargetScene = autoTarget
+    ? (scenes.find((candidate) => candidate.id === autoTarget) ?? null)
+    : null;
 
   return {
     backward: sceneForDirection("backward") ?? previous,
     forward:
       sceneForDirection("forward") ??
-      (autoTarget ? (scenes.find((candidate) => candidate.id === autoTarget) ?? null) : null) ??
+      (autoTargetScene?.id !== previous?.id ? autoTargetScene : null) ??
       next,
   };
 }
