@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { findTourScene, selectDefaultTourScene } from "../src/features/virtual-tour/queries";
 import {
   hotspotExternalUrl,
+  hotspotNavigationDirection,
   hotspotUnitTypeId,
   validateSceneHotspots,
 } from "../src/features/virtual-tour/hotspotData";
@@ -22,6 +23,11 @@ import {
   sceneExperienceMetadata,
   withSceneExperienceMetadata,
 } from "../src/features/virtual-tour/sceneExperience";
+import { resolveWalkScenes } from "../src/features/virtual-tour/walkData";
+import {
+  projectAvailabilityStyleConditions,
+  readProjectFeatureMetadata,
+} from "../src/components/map/cesium/projectFeatureMetadata";
 
 function scene(id: string, sortOrder: number): TourSceneRow {
   return {
@@ -139,12 +145,55 @@ assert.deepEqual(
   validated.map((item) => item.id),
   ["go-lobby", "details", "website"],
 );
+const availabilityConditions = projectAvailabilityStyleConditions([
+  { id: "unit-1704", availability: "available" },
+  { id: "unsafe'id", availability: "sold" },
+]);
+assert.match(availabilityConditions[0][0], /unit-1704/);
+assert.equal(
+  availabilityConditions.some(([condition]) => condition.includes("unsafe'id")),
+  false,
+);
 assert.equal(hotspotExternalUrl(validExternal.metadata), "https://example.com");
 assert.equal(hotspotExternalUrl({ url: "http://example.com" }), null);
 assert.equal(hotspotExternalUrl(invalidExternal.metadata), null);
 assert.equal(hotspotUnitTypeId({ unitTypeId: "unit-911" }), "unit-911");
 assert.equal(hotspotUnitTypeId({ unit_type_id: "legacy-unit" }), "legacy-unit");
 assert.equal(hotspotUnitTypeId({ unitTypeId: "" }), null);
+assert.equal(hotspotNavigationDirection({ direction: "forward" }), "forward");
+assert.equal(hotspotNavigationDirection({ direction: "sideways" }), "auto");
+
+const walkForward = hotspot("walk-forward", "navigation", {
+  target_scene_id: "lobby",
+  metadata: { direction: "forward" },
+});
+const walkBackward = hotspot("walk-back", "navigation", {
+  target_scene_id: "entrance",
+  scene_id: "lobby",
+  metadata: { direction: "backward" },
+});
+assert.equal(resolveWalkScenes(scenes, [walkForward], null, null).forward?.id, "lobby");
+assert.equal(resolveWalkScenes(scenes, [walkBackward], null, null).backward?.id, "entrance");
+
+const featureProperties = new Map<string, unknown>([
+  ["name", "Apartment 1704"],
+  ["floor_number", 17],
+  ["unit_type_id", "unit-1704"],
+  ["availability", "Available"],
+]);
+assert.deepEqual(
+  readProjectFeatureMetadata({
+    hasProperty: (name) => featureProperties.has(name),
+    getProperty: (name) => featureProperties.get(name),
+  }),
+  {
+    featureName: "Apartment 1704",
+    floorLabel: "17",
+    unitTypeId: "unit-1704",
+    availability: "available",
+    featureType: undefined,
+  },
+);
 
 let offCalls = 0;
 let destroyCalls = 0;
@@ -212,5 +261,5 @@ assert.doesNotThrow(() =>
 assert.doesNotThrow(() => setPannellumHotspots(failedViewer, []));
 
 console.log(
-  "Virtual-tour checks passed: scene selection, signed URL safety, hotspot validation, external URL rejection, failed-viewer isolation, lifecycle cleanup, and viewer destruction.",
+  "Virtual-tour checks passed: scene selection, walk navigation, 3D feature metadata, signed URL safety, hotspot validation, external URL rejection, failed-viewer isolation, lifecycle cleanup, and viewer destruction.",
 );

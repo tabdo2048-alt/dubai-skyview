@@ -117,6 +117,7 @@ export interface HotspotDraft {
   image?: string;
   url?: string;
   unitTypeId?: string;
+  navigationDirection?: "auto" | "forward" | "backward" | "up" | "down";
 }
 
 export function validateHotspotDraft(
@@ -164,6 +165,13 @@ export function hotspotMetadataFromDraft(draft: HotspotDraft): Record<string, st
   if (draft.image?.trim()) metadata.image = draft.image.trim();
   if (draft.url?.trim()) metadata.url = draft.url.trim();
   if (draft.unitTypeId) metadata.unitTypeId = draft.unitTypeId;
+  if (
+    draft.type === "navigation" &&
+    draft.navigationDirection &&
+    draft.navigationDirection !== "auto"
+  ) {
+    metadata.direction = draft.navigationDirection;
+  }
   return metadata;
 }
 

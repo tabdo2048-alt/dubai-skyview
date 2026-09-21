@@ -3,7 +3,7 @@ import { Crosshair, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { hotspotMetadataText, hotspotUnitTypeId } from "../hotspotData";
+import { hotspotMetadataText, hotspotNavigationDirection, hotspotUnitTypeId } from "../hotspotData";
 import type { TourHotspotRow, TourHotspotType, TourSceneRow } from "../types";
 import type { AdminTourUnit } from "./adminQueries";
 import {
@@ -40,6 +40,7 @@ function initialDraft(
     image: hotspot ? (hotspotMetadataText(hotspot.metadata, "image") ?? "") : "",
     url: hotspot ? (hotspotMetadataText(hotspot.metadata, "url") ?? "") : "",
     unitTypeId: hotspot ? (hotspotUnitTypeId(hotspot.metadata) ?? "") : "",
+    navigationDirection: hotspot ? hotspotNavigationDirection(hotspot.metadata) : "auto",
   };
 }
 
@@ -101,25 +102,46 @@ export function AdminHotspotForm({
         />
       </label>
       {draft.type === "navigation" && (
-        <label className="grid gap-1 text-xs text-cream">
-          Target Scene
-          <select
-            value={draft.targetSceneId ?? ""}
-            onChange={(event) => set("targetSceneId", event.target.value || null)}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-          >
-            <option value="">اختر المشهد</option>
-            {scenes
-              .filter(
-                (candidate) => candidate.id !== scene.id && candidate.tour_id === scene.tour_id,
-              )
-              .map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
-                  {candidate.name}
-                </option>
-              ))}
-          </select>
-        </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="grid gap-1 text-xs text-cream">
+            Target Scene
+            <select
+              value={draft.targetSceneId ?? ""}
+              onChange={(event) => set("targetSceneId", event.target.value || null)}
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="">اختر المشهد</option>
+              {scenes
+                .filter(
+                  (candidate) => candidate.id !== scene.id && candidate.tour_id === scene.tour_id,
+                )
+                .map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {candidate.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label className="grid gap-1 text-xs text-cream">
+            Walk Direction
+            <select
+              value={draft.navigationDirection ?? "auto"}
+              onChange={(event) =>
+                set(
+                  "navigationDirection",
+                  event.target.value as NonNullable<HotspotDraft["navigationDirection"]>,
+                )
+              }
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="auto">Auto</option>
+              <option value="forward">Forward</option>
+              <option value="backward">Backward</option>
+              <option value="up">Up</option>
+              <option value="down">Down</option>
+            </select>
+          </label>
+        </div>
       )}
       {(draft.type === "information" || draft.type === "amenity") && (
         <>
