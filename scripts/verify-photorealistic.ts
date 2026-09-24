@@ -6,6 +6,7 @@ import {
   ZOOM_OUT_BOUNDS,
 } from "../src/lib/dubai";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   Event,
   Cartesian3,
@@ -33,6 +34,20 @@ import {
   projectCinematicShots,
   viewBoundsNudge,
 } from "../src/components/map/cesium/CesiumCameraController";
+
+const fluenciaModel = readFileSync("public/models/fluencia-test-tower.glb");
+assert.equal(fluenciaModel.toString("ascii", 0, 4), "glTF");
+assert.equal(fluenciaModel.readUInt32LE(4), 2, "Fluencia model must be glTF 2.0");
+assert.equal(fluenciaModel.readUInt32LE(8), fluenciaModel.byteLength);
+const jsonChunkLength = fluenciaModel.readUInt32LE(12);
+assert.equal(fluenciaModel.toString("ascii", 16, 20), "JSON");
+const fluenciaGlb = JSON.parse(
+  fluenciaModel.toString("utf8", 20, 20 + jsonChunkLength).trim(),
+) as { nodes?: Array<{ name?: string }> };
+const fluenciaNodeNames = new Set(fluenciaGlb.nodes?.map((node) => node.name));
+for (const requiredNode of ["Tower_Exterior", "Floor_17", "Unit_911"]) {
+  assert(fluenciaNodeNames.has(requiredNode), `Fluencia model must keep ${requiredNode}`);
+}
 
 const plot = {
   type: "Polygon",

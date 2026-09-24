@@ -17,6 +17,7 @@
     "generate:hospitals": "esbuild scripts/generate-hospitals.ts --bundle --platform=node --format=cjs --outfile=.output/generate-hospitals.cjs && node .output/generate-hospitals.cjs",
     "generate:schools": "esbuild scripts/generate-schools.ts --bundle --platform=node --format=cjs --outfile=.output/generate-schools.cjs && node .output/generate-schools.cjs",
     "generate:demo-district": "node scripts/generate-demo-district.mjs",
+    "generate:fluencia-model": "node scripts/generate-fluencia-test-tower.mjs",
     "validate:water": "esbuild scripts/auditWaterOverlap.ts --bundle --platform=node --format=cjs --outfile=.output/audit-water.cjs && node .output/audit-water.cjs",
     "validate:metro": "esbuild scripts/validateMetro.ts --bundle --platform=node --format=cjs --outfile=.output/metro-validation.cjs && node .output/metro-validation.cjs",
     "verify:earcut": "esbuild scripts/earcut-check.ts --bundle --platform=node --format=cjs --outfile=.output/earcut-check.cjs && node .output/earcut-check.cjs",
