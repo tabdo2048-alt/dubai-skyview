@@ -39,3 +39,17 @@ procedural stand-in instead — the map never crashes.
    they sit statically at `lng`/`lat`.
 
 Tip: compress large GLBs with `gltf-transform` or Draco before shipping.
+
+## Fluencia test tower
+
+`fluencia-test-tower.glb` is a self-contained, metre-scale concept model used to
+verify the real Cesium project-model flow. It is generated reproducibly with:
+
+```bash
+npm run generate:fluencia-model
+```
+
+This is a technical test asset, not the project's official architectural model.
+The model keeps `Tower_Exterior`, `Floor_17`, and `Unit_911` as named nodes so a
+later phase can hide facade sections or focus a floor/unit without replacing the
+asset architecture.
