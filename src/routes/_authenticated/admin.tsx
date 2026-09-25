@@ -1343,9 +1343,9 @@ export function ProjectForm({ id, tenantId, onClose }: { id: string | null; tena
             <LocationFromLink onCoords={({ lat, lng }) => setF({ ...f, lat, lng })} />
           </Field>
         </div>
-        {!id && cfg?.mapboxAccessToken && mapsAvailable && (
+        {cfg?.mapboxAccessToken && mapsAvailable && (
           <div className="sm:col-span-2">
-            <Field label="Plot boundary (optional — draw the land parcel)">
+            <Field label="Plot boundary (draw or edit the land parcel)">
               <div className="mb-2 flex items-center gap-2">
                 <span className="text-[11px] text-muted-foreground">Boundary colour:</span>
                 {PLOT_SWATCHES.map((c) => (
