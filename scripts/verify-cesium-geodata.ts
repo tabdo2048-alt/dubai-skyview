@@ -4,10 +4,22 @@ import { processBuildings } from "./geodata/process-buildings";
 import { processParks } from "./geodata/process-parks";
 import { processRoads } from "./geodata/process-roads";
 import type { FeatureCollection } from "./geodata/lib";
+import { emptyFilters } from "../src/lib/types";
+import { useFiltersStore } from "../src/store/filters";
 
 const polygon = [[[55.25, 25.18], [55.27, 25.18], [55.27, 25.2], [55.25, 25.2], [55.25, 25.18]]];
 assert.equal(pointInPolygon(55.26, 25.19, polygon), true);
 assert.equal(pointInPolygon(55.3, 25.19, polygon), false);
+
+useFiltersStore.setState({
+  filters: { ...emptyFilters, search: "hidden by search" },
+  activeCategories: new Set(["schools"]),
+  visibleProjectIds: new Set(["old-project"]),
+});
+useFiltersStore.getState().showAllProjects(["project-a", "project-b"]);
+assert.deepEqual([...useFiltersStore.getState().visibleProjectIds], ["project-a", "project-b"]);
+assert.equal(useFiltersStore.getState().activeCategories.size, 0);
+assert.deepEqual(useFiltersStore.getState().filters, emptyFilters);
 
 const source: FeatureCollection = {
   type: "FeatureCollection",

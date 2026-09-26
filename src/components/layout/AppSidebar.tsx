@@ -30,6 +30,7 @@ export function AppSidebar() {
     setSidebarOpen,
     visibleProjectIds,
     toggleProjectVisible,
+    showAllProjects,
     pinnedPlotIds,
     togglePlotPinned,
     hoveredProjectId,
@@ -61,8 +62,25 @@ export function AppSidebar() {
           <div className="flex items-center justify-between">
             <div>
               <div className="text-xs uppercase tracking-widest text-muted-foreground">Discover</div>
-              <div className="font-display text-3xl leading-tight text-cream">
-                {countDisplay} <span className="text-gold-gradient">projects</span>
+              <div className="flex items-center gap-2">
+                <div className="font-display text-3xl leading-tight text-cream">
+                  {countDisplay} <span className="text-gold-gradient">projects</span>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={isLoading || projects.length === 0}
+                  onClick={() => {
+                    showAllProjects(projects.map((project) => project.id));
+                    track("show_all_projects", { count: projects.length });
+                  }}
+                  className="h-7 rounded-full px-2.5 text-[11px] text-gold"
+                  aria-label="Show all projects on the map"
+                  title="Show all projects on the map"
+                >
+                  <Eye className="mr-1 h-3.5 w-3.5" /> Show all
+                </Button>
               </div>
             </div>
             <Button size="sm" variant="ghost" onClick={reset} className="text-muted-foreground hover:text-cream">
